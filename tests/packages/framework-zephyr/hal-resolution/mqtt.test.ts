@@ -62,9 +62,20 @@ describe('mqtt init shim', () => {
     expect(shim).toContain('MQTT_TRANSPORT_SECURE');
     expect(shim).toContain('CONFIG_MQTT_LIB_TLS');
     expect(shim).toContain('mqtt_sec_config');
-    // The HAL MQTT surface has no CA-pinning op, so TLS skips identity verify
-    // (encryption only) until a mqtt.set_ca_cert op is added.
+    // Pinned CA (caCert): registered as a CA_CERTIFICATE sec tag with
+    // verification REQUIRED — the MQTT analogue of the HTTPS caCert path.
+    expect(shim).toContain('tls_credential_add');
+    expect(shim).toContain('TLS_CREDENTIAL_CA_CERTIFICATE');
+    expect(shim).toContain('TLS_PEER_VERIFY_REQUIRED');
+    expect(shim).toContain('sec_tag_list');
+    // Without a pinned CA the session stays encrypted-but-unverified.
     expect(shim).toContain('TLS_PEER_VERIFY_NONE');
+  });
+
+  it('reports credential-store conflicts + uses a strict IPv4 predicate (HTTP parity)', () => {
+    expect(shim).toContain('__tc_mqtt_host_is_ipv4');
+    expect(shim).toContain('ca_added_set');
+    expect(shim).toContain('already holds a CA');
   });
 });
 
@@ -72,6 +83,25 @@ describe('mqtt lowering — each op', () => {
   it('connect → __tc_mqtt_connect(uri, clientId)', () => {
     expect(lowerMqtt({ operation: 'mqtt.connect', brokerUri: '"mqtt://h"', clientId: '"dev"' } as any))
       .toEqual({ code: '__tc_mqtt_connect("mqtt://h", "dev");' });
+  });
+
+  it('set_ca_cert with the no-CA sentinel elides silently', () => {
+    expect(lowerMqtt({ operation: 'mqtt.set_ca_cert', pem: '""' } as any))
+      .toEqual({ code: '' });
+  });
+
+  it('set_ca_cert decodes the PEM to a DER byte array', () => {
+    // A real (if toy) self-signed CA cert PEM — enough base64 to pass the
+    // decoder's sanity floor.
+    const pem = '"-----BEGIN CERTIFICATE-----\\nMIIDUzCCAjugAwIBAgIUfRQUm6IDRUUG1oRt6qNXmysZ6gwDQYJKoZIhvcNAQEL\\nBQAwMTEdMBsGA1UEAwwUVHlwZUNBRCBIVFRQIFRlc3QgQ0ExEDAOBgNVBAoMB1R5\\ncGVDQUQwHhcNMjYwODAzMDYwNDIyWhcNMzYwNzMxMDYwNDIyWjAxMR0wGwYDVQQD\\n-----END CERTIFICATE-----\\n"';
+    const out = lowerMqtt({ operation: 'mqtt.set_ca_cert', pem } as any);
+    expect(out.code).toContain('static const uint8_t __tc_mqtt_ca_der[] = { 0x30, 0x82');
+    expect(out.code).toContain('__tc_mqtt_set_ca_cert_der(__tc_mqtt_ca_der, sizeof(__tc_mqtt_ca_der))');
+  });
+
+  it('set_ca_cert on an undecodable PEM emits the failure comment', () => {
+    expect(lowerMqtt({ operation: 'mqtt.set_ca_cert', pem: '"-----BEGIN CERTIFICATE-----\\nnot-base64!!\\n-----END CERTIFICATE-----"' } as any))
+      .toEqual({ code: '// tc-mqtt: caCert PEM failed to decode' });
   });
 
   it('on_message → __tc_mqtt_set_on_message(handler)', () => {
@@ -101,7 +131,7 @@ describe('mqtt lowering — each op', () => {
 });
 
 describe('mqtt lowering — unknown mqtt.* op throws', () => {
-  // All 6 mqtt.* ops are lowered; the default arm throws so coverage stays honest.
+  // All 7 mqtt.* ops are lowered; the default arm throws so coverage stays honest.
   it('throws on an unrecognized mqtt.* op', () => {
     expect(() => lowerMqtt({ operation: 'mqtt.bogus' } as any)).toThrow(/mqtt\.bogus/);
   });

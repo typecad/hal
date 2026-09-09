@@ -134,3 +134,13 @@ tmp-scaffold/
 # per machine on build. Tracked copies under packages/hal/.typecad-hal/ stay
 # tracked (ignore rules don't untrack).
 .typecad-hal/
+
+# hal network-test rig: transpiled/built diagnostic output (regenerated per
+# run) + self-signed test certs — never tracked (the standalone hal repo
+# matches this)
+packages/hal/tests/network/ble-diag/src/CMakeLists.txt
+packages/hal/tests/network/ble-diag/src/prj.conf
+packages/hal/tests/network/ble-diag/src/boards/
+packages/hal/tests/network/ble-diag/src/src/
+packages/hal/tests/network/ble-diag/src/build/
+packages/hal/tests/network/certs/

@@ -133,6 +133,8 @@ const pinnedLab = new Request(Request.GET, 'https://lab-server.local', { insecur
 
 Don't ship `insecure: true` in production firmware.
 
+**TLS compatibility**: the firmware links exactly one ciphersuite — TLS 1.2 with `ECDHE_RSA_WITH_AES_128_CBC_SHA256` (RSA key exchange). A server that only offers TLS 1.3, or only ECDSA/GCM suites, fails at connect; that is a link-time matrix choice (see the framework's Kconfig block), not a per-request option. IP-literal hosts verify chain-only (mbedTLS does not match IP literals against certificate SAN entries); name hosts get the full hostname check.
+
 ### Async send
 
 Inside an `async function`, `await req.send()` (statement position) splits into send-start + done-polling, so a slow request never stalls the rest of the program:
@@ -167,14 +169,22 @@ mqtt.connect();
 mqtt.subscribe('sensors/#');
 mqtt.publish('sensors/room/temp', '21.5');
 // …
-mqtt.close();
+mqtt.disconnect();
 ```
 
 - **URIs**: `mqtt://host:port` (plain TCP, default 1883) and `mqtts://host:port` (TLS, default 8883). Hostnames resolve through Zephyr's DNS resolver; numeric IPs resolve directly.
 - **`connect()` returns void** — the Zephyr client completes its session (CONNACK) in a background poll thread that also owns keepalives and QoS-1 acks. Poll `linked()` afterwards; on a flaky link, retry `connect()` in a loop until `linked()` flips.
 - **QoS**: subscriptions and publishes ride QoS 1 (at-least-once) — the shim acks incoming QoS-1 publishes so the broker doesn't resend.
 - **Payloads**: topic and payload arrive as NUL-terminated C strings valid until the next message — copy what you need inside the handler.
-- **`mqtts://`** is encrypted but currently **verification-free** (the HAL surface has no CA-pinning op for MQTT yet — the analogue of Request's `caCert`). A future CA fact will flip it to verified TLS like the HTTPS path.
+- **`mqtts://` TLS policy is a construction fact**, the analogue of `Request`'s: pin the broker's CA with `caCert` (a PEM literal or top-level string const, DER-decoded at build time) for verified TLS; without it the session is **encrypted-but-unverified** — the handshake completes but the broker's identity is not checked.
+
+```typescript
+import { Mqtt } from '@typecad/hal';
+
+// Verified TLS: the PEM literal is decoded to DER at BUILD time — no PEM
+// parser ships on the target (same mechanism as Request's caCert).
+const secure = new Mqtt('mqtts://broker.local:8883', { clientId: 'sensor-01', caCert: CA_PEM });
+```
 
 The compile-time validator treats MQTT like HTTP: using `Mqtt` in a program that never brings a WiFi link up is flagged before you flash.
 
@@ -214,7 +224,7 @@ The compile-time validator treats MQTT like HTTP: using `Mqtt` in a program that
 
 | Member | Returns | Description |
 | :--- | :--- | :--- |
-| `new Request(method, url, opts?)` | `Request` | `timeoutMs` (default 10 s), `body`, `json`, `insecure`, `caCert` (PEM literal, DER-decoded at build time). |
+| `new Request(method, url, opts?)` | `Request` | `timeoutMs` (default 10 s), `maxBody` (response cap, default 8 KB), `body`, `json`, `insecure`, `caCert` (PEM literal, DER-decoded at build time). |
 | `Request.GET/POST/PUT/DELETE/HEAD/PATCH` | `string` | Method tokens. |
 | `header(name, value)` | `this` | Attach a request header; chainable. |
 | `send()` | `boolean` | Perform the request (true when it completed). Awaitable (send-start + done poll). |
@@ -227,13 +237,13 @@ The compile-time validator treats MQTT like HTTP: using `Mqtt` in a program that
 
 | Member | Returns | Description |
 | :--- | :--- | :--- |
-| `new Mqtt(uri, opts)` | `Mqtt` | `mqtt://` / `mqtts://` broker URI; `clientId` (required). |
+| `new Mqtt(uri, opts)` | `Mqtt` | `mqtt://` / `mqtts://` broker URI; `clientId` (required); `caCert` (PEM, DER-decoded at build time — verified TLS for `mqtts://`). |
 | `connect()` | `void` | Open the session (CONNACK completes in the poll thread — poll `linked()`). |
 | `onMessage(fn)` | `void` | Handler for every received publish on subscribed topics. |
 | `subscribe(filter)` | `void` | Subscribe to a topic filter (`"sensors/#"`). |
 | `publish(topic, data)` | `void` | Publish (QoS 1). |
 | `linked()` | `boolean` | True while the broker session is up. |
-| `close()` | `void` | Disconnect and free the client. |
+| `disconnect()` | `void` | Disconnect and free the client. |
 
 ---
 

@@ -134,4 +134,22 @@ describe('HTTP client — HTTPS with insecure')
   .it('GET over HTTPS with insecure() returns 200')
     .expect((() => { const r = new Request(Request.GET, HTTPS_ECHO_URL, { timeoutMs: 15000, insecure: true }); r.send(); return r.status(); })()).toBe(200);
 
+// ── Response headers (captured by the parser hooks) ────────────────
+// The shim wires req.http_cb (on_header_field/on_header_value) so
+// responseHeader() scans the real header block the server sent.
+
+describe('HTTP client — response headers')
+  .it('responseHeader("Content-Type") returns the server value')
+    .expect((() => {
+      const r = new Request(Request.GET, ECHO_URL, { timeoutMs: 10000 });
+      r.send();
+      return r.responseHeader("Content-Type") === "application/json" ? 1 : 0;
+    })()).toBe(1)
+  .it('responseHeader of an absent header returns ""')
+    .expect((() => {
+      const r = new Request(Request.GET, ECHO_URL, { timeoutMs: 10000 });
+      r.send();
+      return r.responseHeader("X-Absent") === "" ? 1 : 0;
+    })()).toBe(1);
+
 done();

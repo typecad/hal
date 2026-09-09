@@ -42,7 +42,7 @@ import {
   isHALSingleton,
   HALInstance,
 } from "../hal-resolver.js";
-import { requestCtorFields, halClassRegistry } from "../hal/hal-parser.js";
+import { requestCtorFields, mqttCtorFields, halClassRegistry } from "../hal/hal-parser.js";
 import { resolveHALCallForVarInit } from "./hal-call-resolver.js";
 import { recordSignal } from "./ui-call-resolver.js";
 import { hasSafetyHook, requireSafetyHook } from "../../safety-hook.js";
@@ -657,21 +657,15 @@ export function variableStatementToIR(
           if (className === "Watchdog" && ctorArgs && ctorArgs.length >= 1 && ts.isNumericLiteral(ctorArgs[0])) {
             fieldValues.set("_timeoutMs", ctorArgs[0].text.replace(/_/g, ""));
           }
-          // Thin File/Mqtt: the path / broker-uri + client-id facts.
+          // Thin File: the path is the construction fact.
           if (className === "File" && ctorArgs && ctorArgs.length >= 1 && ts.isStringLiteral(ctorArgs[0])) {
             fieldValues.set("_path", ctorArgs[0].text);
           }
-          if (className === "Mqtt" && ctorArgs && ctorArgs.length >= 1 && ts.isStringLiteral(ctorArgs[0])) {
-            fieldValues.set("_uri", ctorArgs[0].text);
-            const mopts = ctorArgs[1];
-            if (mopts && ts.isObjectLiteralExpression(mopts)) {
-              for (const prop of mopts.properties) {
-                if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)
-                    && prop.name.text === "clientId" && ts.isStringLiteral(prop.initializer)) {
-                  fieldValues.set("_clientId", prop.initializer.text);
-                }
-              }
-            }
+          // new Mqtt(uri, opts?) — shared capture (also serves bare
+          // `new Mqtt(...).connect()` receivers via resolveHALReceiver).
+          if (className === "Mqtt") {
+            const mqttFields = mqttCtorFields(ctorArgs, ctorArgs?.[0]?.getSourceFile());
+            if (mqttFields) for (const [k, v] of mqttFields) fieldValues.set(k, v);
           }
           // Thin Store: the namespace is the construction fact (plain text —
           // the plugin case quotes it when composing the settings key).

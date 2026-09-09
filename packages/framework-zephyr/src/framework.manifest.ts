@@ -374,14 +374,17 @@ export default defineFrameworkManifest({
       supported: true,
       partialCoverage: false,
       // MQTT 3.1.1 client over Zephyr <zephyr/net/mqtt.h> (mqtts:// TLS via
-      // MQTT_TRANSPORT_SECURE + the shared mbedTLS matrix, encryption only — the
-      // HAL surface has no CA-pinning op, so peer verify is NONE). The __tc_mqtt
-      // shim resolves the broker, runs the mqtt_input/mqtt_live poll loop on a
-      // background k_thread, and dispatches incoming PUBLISHes to the user's
+      // MQTT_TRANSPORT_SECURE + the shared mbedTLS matrix). caCert pins the
+      // broker's CA (DER-decoded at emit, tls_credential_add sec tag,
+      // TLS_PEER_VERIFY_REQUIRED); mqtts:// without a CA stays
+      // encrypted-but-unverified (TLS_PEER_VERIFY_NONE). The __tc_mqtt
+      // shim resolves the broker, runs the mqtt_input/mqtt_live poll loop on
+      // a background k_thread, and dispatches incoming PUBLISHes to the user's
       // onMessage callback. Requires a networked target (ESP32 WiFi);
       // profileDiagnostics flags usage on a radioless chip.
       ops: {
-        'mqtt.connect': 'supported', 'mqtt.on_message': 'supported',
+        'mqtt.connect': 'supported', 'mqtt.set_ca_cert': 'supported',
+        'mqtt.on_message': 'supported',
         'mqtt.subscribe': 'supported', 'mqtt.publish': 'supported',
         'mqtt.connected': 'supported', 'mqtt.disconnect': 'supported',
       },

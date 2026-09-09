@@ -569,6 +569,10 @@ export interface HttpBeginOp {
   operation: "http.begin";
   method: string;
   url: string;
+  /** Header pairs recorded on the request instance via header() — the
+   * lowering re-stages them AFTER the shim reset that rides begin (the
+   * call-site emissions run before send() and would be wiped). */
+  headers?: string[][];
 }
 
 export interface HttpSetHeaderOp {
@@ -863,6 +867,13 @@ export interface MqttConnectOp {
   brokerUri: string;
   /** C string expression for the client id */
   clientId: string;
+}
+
+export interface MqttSetCaCertOp {
+  operation: "mqtt.set_ca_cert";
+  /** C string expression for the trusted-CA PEM ("" = no pinned CA —
+   * mqtts:// stays encrypted-but-unverified) */
+  pem: string;
 }
 
 export interface MqttOnMessageOp {
@@ -1263,6 +1274,7 @@ export type HALOpIR =
   | FsRemoveOp
   // MQTT
   | MqttConnectOp
+  | MqttSetCaCertOp
   | MqttOnMessageOp
   | MqttSubscribeOp
   | MqttPublishOp
@@ -1379,7 +1391,7 @@ export const HAL_OPERATION_KINDS = [
   // FS (filesystem)
   'fs.read_text', 'fs.write_text', 'fs.exists', 'fs.remove',
   // MQTT
-  'mqtt.connect', 'mqtt.on_message', 'mqtt.subscribe', 'mqtt.publish', 'mqtt.connected', 'mqtt.disconnect',
+  'mqtt.connect', 'mqtt.set_ca_cert', 'mqtt.on_message', 'mqtt.subscribe', 'mqtt.publish', 'mqtt.connected', 'mqtt.disconnect',
   'sensor.fetch',
   'sensor.get',
   // Hardware timer

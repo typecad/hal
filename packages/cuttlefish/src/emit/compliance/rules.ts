@@ -129,6 +129,11 @@ export const RULES: readonly RuleEntry[] = [
         justification: "UI runtime internal enums (UINodeKind, UIProperty) use unscoped form for C ABI compatibility; converting to enum class would require updating 58 references across the runtime header.",
         kind: "other",
       },
+      {
+        detect: /\benum\s+(?:http_method|http_final_call)\b/,
+        justification: "Zephyr <zephyr/net/http/client.h> declares http_method and http_final_call as unscoped enums (platform-mandated API); the HTTP shim passes them to Zephyr's own http_client_req / http_response_cb_t and cannot redeclare them scoped.",
+        kind: "other",
+      },
     ],
   },
 

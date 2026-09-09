@@ -62,6 +62,49 @@ describe('http init shim', () => {
     expect(shim).toContain('k_sem_take');
   });
 
+  it('guards the async single-slot: work init once, busy check, wait-idle before reset', () => {
+    // k_work_init on a queued/running item is undefined; reset must not clear
+    // state the workqueue is still writing.
+    expect(shim).toContain('work_inited');
+    expect(shim).toContain('k_work_is_pending(&__tc_http.perform_work)');
+    expect(shim).toContain('still in flight');
+    expect(shim).toContain('__tc_http_wait_async_idle');
+  });
+
+  it('captures response headers via the http_parser hooks (req.http_cb)', () => {
+    expect(shim).toContain('__tc_http_on_hdr_field');
+    expect(shim).toContain('__tc_http_on_hdr_value');
+    expect(shim).toContain('__tc_http_hdr_finish');
+    expect(shim).toContain('req.http_cb = &__tc_http_parse_settings;');
+    // The lookup scans the captured block — the old "(void)name;" stub is gone.
+    expect(shim).toContain('char resp_headers[768]');
+    expect(shim).not.toContain('(void)name;');
+  });
+
+  it('stages header fields with a guaranteed CRLF (truncation cannot swallow a line)', () => {
+    expect(shim).toContain('char hdr_field_buf[__TC_HTTP_MAX_HEADERS][128]');
+    expect(shim).toContain('sizeof(__tc_http.hdr_field_buf[i]) - 2U');
+  });
+
+  it('uses a strict IPv4 predicate for the TLS hostname skip', () => {
+    // A digit-and-dot scan would swallow numeric-only DNS names ("123").
+    expect(shim).toContain('__tc_http_host_is_ipv4');
+  });
+
+  it('reports credential-store conflicts instead of silently keeping the first CA', () => {
+    // Zephyr's tls_credential_add never replaces a tag: duplicates are skipped
+    // by pointer identity, a different CA at an occupied tag is printed.
+    expect(shim).toContain('ca_added_set');
+    expect(shim).toContain('already holds a CA');
+  });
+
+  it('refuses overlong urls/hosts/paths instead of silently truncating them', () => {
+    expect(shim).toContain('url longer than');
+    expect(shim).toContain('host longer than');
+    expect(shim).toContain('path longer than');
+    expect(shim).toContain('char path[384]');
+  });
+
   it('heap-allocates the body buffer with new (std::nothrow) (AUTOSAR: no malloc)', () => {
     expect(shim).toContain('new (std::nothrow) char[__tc_http.max_body');
     expect(shim).not.toContain('malloc(');
@@ -76,6 +119,13 @@ describe('http lowering — request/response ops', () => {
   it('reset is folded into begin (fresh shim state per request)', () => {
     expect(lowerHttp({ operation: 'http.begin', method: '"GET"', url: '"https://x"' } as any))
       .toEqual({ code: '__tc_http_reset(); __tc_http_begin(HTTP_GET, "https://x");' });
+  });
+
+  it('begin re-stages instance-recorded headers AFTER the reset', () => {
+    // header() call sites emit before send(); the reset inside begin wipes
+    // them, so the op carries the recorded pairs and replays them post-reset.
+    expect(lowerHttp({ operation: 'http.begin', method: '"GET"', url: '"https://x"', headers: [['"X-A"', '"1"'], ['"X-B"', '"2"']] } as any))
+      .toEqual({ code: '__tc_http_reset(); __tc_http_set_header("X-A", "1"); __tc_http_set_header("X-B", "2"); __tc_http_begin(HTTP_GET, "https://x");' });
   });
 
   it('begin GET → __tc_http_begin(HTTP_GET, url)', () => {
@@ -132,11 +182,14 @@ describe('http lowering — request/response ops', () => {
   });
 
   it('set_insecure / set_ca_cert → shim calls', () => {
-    // ca_cert PEM decodes to DER at emit time (this tree has no PEM parser).
+    // ca_cert PEM decodes to DER at emit time (this tree has no PEM parser);
+    // the DER must start with the ASN.1 SEQUENCE tag (0x30) to pass the
+    // sanity check.
     expect(lowerHttp({ operation: 'http.set_insecure', insecure: true } as any))
       .toEqual({ code: '__tc_http_set_insecure();' });
-    const out = lowerHttp({ operation: 'http.set_ca_cert', pem: '"-----BEGIN CERTIFICATE-----\nAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4v\nMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5\nfYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3\n-----END CERTIFICATE-----"' } as any);
-    expect(out?.code).toContain('static const uint8_t __tc_ca_der[] = { 0x00, 0x01');   // PEM decodes to DER
+    const derB64 = Buffer.concat([Buffer.from([0x30, 0x82, 0x01, 0x0a]), Buffer.alloc(120, 0x41)]).toString('base64');
+    const out = lowerHttp({ operation: 'http.set_ca_cert', pem: `"-----BEGIN CERTIFICATE-----\\n${derB64}\\n-----END CERTIFICATE-----\\n"` } as any);
+    expect(out?.code).toContain('static const uint8_t __tc_ca_der[] = { 0x30, 0x82');   // PEM decodes to DER
     expect(out?.code).toContain('__tc_http_set_ca_cert_der(__tc_ca_der, sizeof(__tc_ca_der));');
   });
 

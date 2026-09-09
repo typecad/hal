@@ -379,6 +379,7 @@ export function requestCtorFields(ctorArgs: readonly ts.Expression[] | undefined
   if (!urlText) return null;
   fieldValues.set("_url", urlText);
   fieldValues.set("_timeoutMs", "10000");
+  fieldValues.set("_maxBody", "8192");
   fieldValues.set("_body", '""');
   fieldValues.set("_json", "false");
   fieldValues.set("_insecure", "false");
@@ -388,8 +389,8 @@ export function requestCtorFields(ctorArgs: readonly ts.Expression[] | undefined
     for (const prop of opts.properties) {
       if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
       const name = prop.name.text;
-      if (name === "timeoutMs" && ts.isNumericLiteral(prop.initializer)) {
-        fieldValues.set("_timeoutMs", prop.initializer.text.replace(/_/g, ""));
+      if ((name === "timeoutMs" || name === "maxBody") && ts.isNumericLiteral(prop.initializer)) {
+        fieldValues.set("_" + name, prop.initializer.text.replace(/_/g, ""));
       } else if (name === "body" || name === "caCert") {
         // Literal, or an identifier resolving to a top-level string const
         // (the PEM-as-const pattern the hardware suite uses).
@@ -401,6 +402,42 @@ export function requestCtorFields(ctorArgs: readonly ts.Expression[] | undefined
         }
       } else if (name === "json" || name === "insecure") {
         fieldValues.set("_" + name, prop.initializer.kind === ts.SyntaxKind.TrueKeyword ? "true" : "false");
+      }
+    }
+  }
+  return fieldValues;
+}
+
+/** Capture `new Mqtt(uri, opts)` construction facts into fieldValues (broker
+ *  URI + client id stored as quoted literals — the capture only accepts
+ *  literals, so nothing identifier-like can leak through the plugin's
+ *  quote-passthrough — plus the CA-pinning PEM, same quoting as Request's
+ *  caCert). Class-default sentinels are always seeded so connect()'s setter
+ *  calls resolve. Returns null when the arg shapes don't resolve. */
+export function mqttCtorFields(ctorArgs: readonly ts.Expression[] | undefined, sourceFile?: ts.SourceFile): Map<string, string> | null {
+  if (!ctorArgs || ctorArgs.length < 1) return null;
+  const uriArg = ctorArgs[0];
+  if (!ts.isStringLiteral(uriArg) && !ts.isNoSubstitutionTemplateLiteral(uriArg)) return null;
+  const fieldValues = new Map<string, string>();
+  fieldValues.set("_uri", JSON.stringify(uriArg.text));
+  fieldValues.set("_clientId", '""');
+  fieldValues.set("_caCert", '""');
+  const opts = ctorArgs[1];
+  if (opts && ts.isObjectLiteralExpression(opts)) {
+    for (const prop of opts.properties) {
+      if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
+      const name = prop.name.text;
+      if (name === "clientId" && ts.isStringLiteral(prop.initializer)) {
+        fieldValues.set("_clientId", JSON.stringify(prop.initializer.text));
+      } else if (name === "caCert") {
+        // Literal, or an identifier resolving to a top-level string const
+        // (the PEM-as-const pattern the hardware suite uses).
+        if (ts.isStringLiteral(prop.initializer)) {
+          fieldValues.set("_caCert", JSON.stringify(prop.initializer.text));
+        } else if (ts.isIdentifier(prop.initializer) && sourceFile) {
+          const lit = topLevelStringConst(sourceFile, prop.initializer.text);
+          if (lit !== null) fieldValues.set("_caCert", JSON.stringify(lit));
+        }
       }
     }
   }
@@ -626,6 +663,10 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
       if (className === "Request") {
         const reqFields = requestCtorFields(receiver.arguments as readonly ts.Expression[] | undefined, receiver.getSourceFile());
         if (reqFields) return { className, fieldValues: reqFields };
+      }
+      if (className === "Mqtt") {
+        const mqttFields = mqttCtorFields(receiver.arguments as readonly ts.Expression[] | undefined, receiver.getSourceFile());
+        if (mqttFields) return { className, fieldValues: mqttFields };
       }
       const classEntry = halClassRegistry.get(className);
       if (!classEntry) return null;

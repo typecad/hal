@@ -341,12 +341,16 @@ export function resolveKconfigFragments(
     // pinned-CA handshake fails with EPERM at connect (the insecure path
     // skips verification, so it works either way).
     m.set('CONFIG_MBEDTLS_X509_CRT_PARSE_C', 'y');
-    // KNOWN LIMITATION on this Zephyr tree: pinned-CA (verified TLS) fails at
-    // connect — the tf-psa-crypto mbedTLS needs a wider symbol matrix
-    // (RSA public-key parse + PEM/DER glue) than the single-ciphersuite
-    // select pulls in, and forcing the extra symbols regresses the insecure
-    // path. insecure() HTTPS is fully verified; caCert() chain verification
-    // stays open until the upstream matrix is mapped.
+    // KNOWN LIMITATION on this Zephyr tree: pinned-CA (verified TLS) was
+    // observed failing at connect with EPERM — the tf-psa-crypto mbedTLS
+    // needs a wider symbol matrix (RSA public-key parse + PEM/DER glue)
+    // than the single-ciphersuite select pulls in, and forcing the extra
+    // symbols regressed the insecure path (two hardware cycles proved it
+    // upstream). CAVEAT: that diagnosis predates the 2026-09 fix of the
+    // request-fact reset ordering (every option — including caCert — was
+    // being wiped before each send, which alone reproduces connect
+    // failures); the matrix limitation needs a hardware re-run to confirm
+    // it still applies. insecure() HTTPS and no-CA https are unaffected.
     // Handshake/protocol buffers allocate from the mbedTLS heap; MBEDTLS_HEAP_SIZE
     // must hold ~2x MBEDTLS_SSL_MAX_CONTENT_LEN plus working state. 65000 fits on
     // the ESP32; mbedTLS requires the full libc and PEM (not DER) cert format.
@@ -400,12 +404,14 @@ export function resolveKconfigFragments(
     // pinned-CA handshake fails with EPERM at connect (the insecure path
     // skips verification, so it works either way).
     m.set('CONFIG_MBEDTLS_X509_CRT_PARSE_C', 'y');
-    // KNOWN LIMITATION on this Zephyr tree: pinned-CA (verified TLS) fails at
-    // connect — the tf-psa-crypto mbedTLS needs a wider symbol matrix
-    // (RSA public-key parse + PEM/DER glue) than the single-ciphersuite
-    // select pulls in, and forcing the extra symbols regresses the insecure
-    // path. insecure() HTTPS is fully verified; caCert() chain verification
-    // stays open until the upstream matrix is mapped.
+    // KNOWN LIMITATION on this Zephyr tree: pinned-CA (verified TLS) was
+    // observed failing at connect with EPERM — the tf-psa-crypto mbedTLS
+    // needs a wider symbol matrix (RSA public-key parse + PEM/DER glue)
+    // than the single-ciphersuite select pulls in. CAVEAT: that diagnosis
+    // was made on the HTTPS path and predates the 2026-09 request-fact
+    // reset-ordering fix (options were wiped before every send, which
+    // alone reproduces connect failures); it is shared here because mqtts
+    // pins its CA through the same matrix — re-verify on hardware.
     m.set('CONFIG_MBEDTLS_ENABLE_HEAP', 'y');
     // 2x SSL_MAX_CONTENT_LEN record buffers + CA-chain parse state +
     // handshake working memory. 65000 fit insecure-mode handshakes but the

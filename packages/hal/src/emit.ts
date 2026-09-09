@@ -189,6 +189,7 @@ export function fsReadText(path: string): string { return ""; }
 export function fsWriteText(path: string, content: string): void {}
 export function fsExists(path: string): boolean { return false; }
 export function fsRemove(path: string): boolean { return false; }
+export function mqttSetCaCert(pem: string): void {}
 export function mqttConnect(brokerUri: string, clientId: string): boolean { return false; }
 export function mqttOnMessage(handler: string): void {}
 export function mqttSubscribe(topic: string): void {}

@@ -71,7 +71,7 @@ export function printHelp(): void {
   console.log(`                            warn    emit AUTOSAR_* diagnostics + sidecar, build still succeeds`);
   console.log(`                            strict  abort emit on unrecorded required violations`);
   console.log(`                          A sidecar <name>.autosar-deviations.json is written next to the`);
-  console.log(`                          emitted artifact in warn/strict modes. See COMPLIANCE.md.`);
+  console.log(`                          emitted artifact in warn/strict modes.`);
   console.log();
   console.log(`  --autosar-arxml         Also write <name>.autosar-deviations.arxml (Artop/DaVinci).`);
   console.log(`                          No-op unless --autosar is warn or strict.`);

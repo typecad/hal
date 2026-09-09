@@ -13,28 +13,44 @@
 //   publish(t, s) → publish a message
 //   linked()      → the broker session is up
 //   disconnect()  → disconnect and free the client
+//
+// mqtts:// TLS policy is a construction fact like Request's: caCert (PEM)
+// pins the broker's CA for verified TLS; without it the session is
+// encrypted-but-unverified.
 // ----------------------------------------------------------------------------
 
 import { callback } from './callback.js';
 import {
-  mqttConnect, mqttOnMessage, mqttSubscribe, mqttPublish, mqttConnected, mqttDisconnect,
+  mqttConnect, mqttSetCaCert, mqttOnMessage, mqttSubscribe, mqttPublish, mqttConnected, mqttDisconnect,
 } from './emit.js';
+
+/** Mqtt construction facts beyond the broker URI. */
+export interface MqttOpts {
+  /** Client id the broker sees (required). */
+  clientId: string;
+  /** PEM of a trusted CA — enables verified TLS for mqtts:// brokers. */
+  caCert?: string;
+}
 
 export class Mqtt {
   private readonly _uri: string;
   private readonly _clientId: string;
+  private readonly _caCert: string;
 
   /** Construct the client for a broker ("mqtt://broker.local" or
-   *  "mqtts://..." for TLS). */
-  constructor(uri: string, opts: { clientId: string }) {
+   *  "mqtts://..." for TLS — pin its CA with opts.caCert for verified
+   *  TLS). */
+  constructor(uri: string, opts: MqttOpts) {
     this._uri = uri;
     this._clientId = opts.clientId;
+    this._caCert = opts.caCert ?? '';
   }
 
   /** Connect to the broker. Requires a network connection (WiFi) first.
    *  The Zephyr client completes the session in its poll thread — poll
    *  linked() afterwards. */
   connect(): void {
+    mqttSetCaCert(this._caCert);
     mqttConnect(this._uri, this._clientId);
   }
 

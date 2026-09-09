@@ -538,12 +538,13 @@ export class ZephyrStrategy implements PlatformStrategy {
     // HTTP/S client: Zephyr's http_client_req runs over a pre-connected socket,
     // so the shim pulls in the BSD socket + POSIX DNS surfaces alongside the
     // http client/parser headers. TLS sec tags need tls_credentials; <cstring>
-    // /<cstdlib> back the shim's memcpy/strlen/new-nothrow usage (the core
-    // shim only includes <cstdio>/<cstdint>).
+    // /<cstdlib>/<new> back the shim's memcpy/strlen/new-nothrow usage (the
+    // core shim only includes <cstdio>/<cstdint> — std::nothrow is not
+    // guaranteed to arrive transitively).
     if (uses('usesHttp')) inc.push(
       '<zephyr/net/socket.h>', '<zephyr/net/http/client.h>',
       '<zephyr/net/http/parser.h>', '<zephyr/net/tls_credentials.h>',
-      '<zephyr/posix/sys/socket.h>', '<cstring>', '<cstdlib>',
+      '<zephyr/posix/sys/socket.h>', '<cstring>', '<cstdlib>', '<new>',
     );
     // MQTT client: <zephyr/net/mqtt.h> for mqtt_connect/publish/subscribe, plus
     // <zephyr/net/socket.h> for the zsock_* poll/getaddrinfo API the shim's poll

@@ -13,7 +13,11 @@
 // shim getaddrinfo-resolves the broker host itself (like the HTTP shim).
 // URI scheme: mqtt:// → 1883 plain TCP, mqtts:// → 8883 TLS
 // (MQTT_TRANSPORT_SECURE + mqtt_sec_config, reusing the same mbedTLS matrix
-// the HTTP TLS path established).
+// the HTTP TLS path established). caCert pins the broker's CA — the PEM is
+// DER-decoded at emit time and registered via tls_credential_add as a
+// CA_CERTIFICATE sec tag with TLS_PEER_VERIFY_REQUIRED (verified TLS, the
+// MQTT analogue of Request's caCert); mqtts:// without a CA stays
+// encrypted-but-unverified (TLS_PEER_VERIFY_NONE).
 //
 // One client slot (HAL singleton). on_message callbacks are dispatched on the
 // poll thread.
@@ -49,6 +53,8 @@ export function mqttInitLines(): string[] {
     `// at connect time; host drives both DNS resolution and the TLS SNI/hostname.`,
     `// on_message is the user callback (set via mqtt.on_message); it fires on the`,
     `// poll thread for every incoming PUBLISH on a subscribed topic.`,
+    `// ca_der is the pinned CA (DER, user-owned from the caCert fact); nullptr`,
+    `// means mqtts:// runs encrypted-but-unverified.`,
     `typedef void (*__tc_mqtt_msg_cb_t)(const char* topic, const char* payload);`,
     `static struct {`,
     `    struct mqtt_client client;`,
@@ -59,6 +65,16 @@ export function mqttInitLines(): string[] {
     `    uint16_t port;             // 1883 / 8883 unless overridden in the URI`,
     `    char client_id[64];`,
     `    bool tls;                  // scheme == "mqtts"`,
+    `    const uint8_t* ca_der;     // pinned CA (DER), nullptr = no CA`,
+    `    size_t ca_der_len;`,
+    `    // What this shim last registered under __TC_MQTT_SEC_TAG (DER arrays`,
+    `    // are function-static, so pointer identity is stable). Zephyr's`,
+    `    // credential store never REPLACES a tag — repeats are skipped, a`,
+    `    // different CA at an occupied tag is reported, not silent.`,
+    `    const uint8_t* ca_added;`,
+    `    size_t ca_added_len;`,
+    `    bool ca_added_set;`,
+    `    sec_tag_t sec_tags[1];     // backs tls.config.sec_tag_list (static lifetime)`,
     `    volatile bool connected;`,
     `    volatile bool stop_poll;   // set by disconnect to terminate the poll thread`,
     `    __tc_mqtt_msg_cb_t on_message;`,
@@ -200,6 +216,35 @@ export function mqttInitLines(): string[] {
     `    return host_len > 0U;`,
     `}`,
     ``,
+    `// Strict IPv4 dotted-quad predicate: exactly four 0-255 groups. A`,
+    `// digit-and-dot scan would also swallow numeric-only DNS names ("123"),`,
+    `// silently skipping the TLS hostname check for them (same helper as the`,
+    `// HTTP shim).`,
+    `static bool __tc_mqtt_host_is_ipv4(const char* h) {`,
+    `    uint32_t quads = 0U;`,
+    `    uint32_t val = 0U;`,
+    `    uint32_t digits = 0U;`,
+    `    for (const char* p = h; ; p++) {`,
+    `        if (*p >= '0' && *p <= '9') {`,
+    `            val = (val * 10U) + static_cast<uint32_t>(*p - '0');`,
+    `            digits++;`,
+    `            if (digits > 3U || val > 255U) return false;`,
+    `        } else if (*p == '.') {`,
+    `            if (digits == 0U || quads >= 3U) return false;`,
+    `            quads++;`,
+    `            val = 0U;`,
+    `            digits = 0U;`,
+    `        } else if (*p == '\\0') {`,
+    `            if (digits == 0U) return false;`,
+    `            quads++;`,
+    `            break;`,
+    `        } else {`,
+    `            return false;`,
+    `        }`,
+    `    }`,
+    `    return quads == 4U;`,
+    `}`,
+    ``,
     `// ── connect ─────────────────────────────────────────────────────────────`,
     `// Parse URI → resolve broker → init client → mqtt_connect → spawn poll thread.`,
     `// Blocks until CONNACK (the poll thread isn't running yet, so we drive a few`,
@@ -248,14 +293,47 @@ export function mqttInitLines(): string[] {
     `        __tc_mqtt.client.transport.type = MQTT_TRANSPORT_SECURE;`,
     `        struct mqtt_sec_config* tls_cfg = &__tc_mqtt.client.transport.tls.config;`,
     `        (void)memset(tls_cfg, 0, sizeof(*tls_cfg));`,
-    `        // The HAL MQTT surface has no CA-pinning op (unlike HTTP's caCert), so`,
-    `        // there is no way to register a trusted CA here. Verify-NONE keeps the`,
-    `        // TLS session encrypted but skips identity verification — the strongest`,
-    `        // the current surface can express. A future mqtt.set_ca_cert op would`,
-    `        // flip this to REQUIRED + a registered sec_tag (like the HTTPS path).`,
-    `        tls_cfg->peer_verify = TLS_PEER_VERIFY_NONE;`,
+    `        if (__tc_mqtt.ca_der != nullptr) {`,
+    `            // Pinned CA (the caCert construction fact): register it as a`,
+    `            // CA_CERTIFICATE sec tag and REQUIRE peer verification — the MQTT`,
+    `            // analogue of the HTTPS caCert path. Zephyr's credential store`,
+    `            // never REPLACES a tag+type pair: re-registering the same DER`,
+    `            // (pointer identity — the arrays are function-static) is skipped`,
+    `            // silently; a DIFFERENT CA hitting an occupied tag is reported so`,
+    `            // a wrong-CA verify is never silent; any other failure keeps the`,
+    `            // tag list empty and verification required — fail closed.`,
+    `            if (!__tc_mqtt.ca_added_set || __tc_mqtt.ca_added != __tc_mqtt.ca_der`,
+    `                || __tc_mqtt.ca_added_len != __tc_mqtt.ca_der_len) {`,
+    `                int cred_rc = tls_credential_add(__TC_MQTT_SEC_TAG,`,
+    `                                                 TLS_CREDENTIAL_CA_CERTIFICATE,`,
+    `                                                 __tc_mqtt.ca_der, __tc_mqtt.ca_der_len);`,
+    `                __tc_mqtt.ca_added = __tc_mqtt.ca_der;`,
+    `                __tc_mqtt.ca_added_len = __tc_mqtt.ca_der_len;`,
+    `                __tc_mqtt.ca_added_set = true;`,
+    `                if (cred_rc == -17 /* -EEXIST */) {`,
+    `                    printk("tc-mqtt: sec tag %d already holds a CA; the first one stays active (rc=%d)\\n", __TC_MQTT_SEC_TAG, cred_rc);`,
+    `                } else if (cred_rc != 0) {`,
+    `                    printk("tc-mqtt: CA registration failed (rc=%d) - verifying against no credentials\\n", cred_rc);`,
+    `                }`,
+    `            }`,
+    `            if (__tc_mqtt.ca_added_set) {`,
+    `                __tc_mqtt.sec_tags[0] = __TC_MQTT_SEC_TAG;`,
+    `                tls_cfg->sec_tag_list = __tc_mqtt.sec_tags;`,
+    `                tls_cfg->sec_tag_count = 1U;`,
+    `            }`,
+    `            tls_cfg->peer_verify = TLS_PEER_VERIFY_REQUIRED;`,
+    `        } else {`,
+    `            // No CA pinned: the session is encrypted but the broker's identity`,
+    `            // is not verified — the strongest the no-caCert form can express.`,
+    `            tls_cfg->peer_verify = TLS_PEER_VERIFY_NONE;`,
+    `        }`,
     `        tls_cfg->cipher_list = nullptr;`,
-    `        tls_cfg->hostname = __tc_mqtt.host;`,
+    `        // mbedtls does not match IP literals against SAN entries — set the`,
+    `        // hostname (SNI + identity check) only for name hosts; IP brokers`,
+    `        // verify chain-only (same policy as the HTTPS path).`,
+    `        if (!__tc_mqtt_host_is_ipv4(__tc_mqtt.host)) {`,
+    `            tls_cfg->hostname = __tc_mqtt.host;`,
+    `        }`,
     `#else`,
     `        printk("tc-mqtt: mqtts:// requested but CONFIG_MQTT_LIB_TLS is off\\n");`,
     `        return;`,
@@ -306,6 +384,10 @@ export function mqttInitLines(): string[] {
     `static inline void __tc_mqtt_set_on_message(__tc_mqtt_msg_cb_t fn) {`,
     `    __tc_mqtt.on_message = fn;`,
     `}`,
+    ``,
+    `// ca_cert is the DER-decoded PEM from the caCert construction fact`,
+    `// (user-owned static array; nullptr = no pinned CA).`,
+    `static inline void __tc_mqtt_set_ca_cert_der(const uint8_t* der, size_t len) { __tc_mqtt.ca_der = der; __tc_mqtt.ca_der_len = len; }`,
     ``,
     `static inline void __tc_mqtt_subscribe(const char* topic) {`,
     `    static struct mqtt_topic topics[4];`,
@@ -361,6 +443,25 @@ export function lowerMqtt(op: HALOpIR): { code?: string; expression?: string } {
   switch (op.operation) {
     case 'mqtt.connect':
       return { code: `__tc_mqtt_connect(${s(o.brokerUri)}, ${s(o.clientId)});` };
+    case 'mqtt.set_ca_cert': {
+      // PEM → DER at emit time (this tree's tf-psa-crypto mbedTLS has no PEM
+      // parser — same decode as http.set_ca_cert; tls_credential_add takes
+      // the DER directly).
+      const pem = String(o.pem ?? '').replace(/^"|"$/g, '').replace(/\\n/g, '\n');
+      if (pem.replace(/\s+/g, '') === '') {
+        // No-CA sentinel (Mqtt always emits the op from connect(); opts.caCert
+        // defaults to '') — elide silently so plain-mqtt:// carries no comment.
+        return { code: '' };
+      }
+      const b64 = pem.replace(/-----[A-Z ]+-----/g, '').replace(/\s+/g, '');
+      const der = Buffer.from(b64, 'base64');
+      // Every X.509 DER starts with the ASN.1 SEQUENCE tag (0x30); a long
+      // but non-cert payload fails here instead of at a confusing handshake
+      // error on the target (same check as http.set_ca_cert).
+      if (der.length < 100 || der[0] !== 0x30) return { code: `// tc-mqtt: caCert PEM failed to decode` };
+      const hex = [...der].map((b) => `0x${b.toString(16).padStart(2, '0')}`).join(', ');
+      return { code: `{ static const uint8_t __tc_mqtt_ca_der[] = { ${hex} }; __tc_mqtt_set_ca_cert_der(__tc_mqtt_ca_der, sizeof(__tc_mqtt_ca_der)); }` };
+    }
     case 'mqtt.on_message':
       return { code: `__tc_mqtt_set_on_message(${s(o.handler)});` };
     case 'mqtt.subscribe':

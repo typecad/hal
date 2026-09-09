@@ -45,6 +45,7 @@ export { register, bits } from './register.js';
 export { Store } from './preferences.js';
 export { File } from './fs.js';
 export { Mqtt } from './mqtt.js';
+export type { MqttOpts } from './mqtt.js';
 
 export { AsyncClass, Async } from './async.js';
 export { WiFi, Scan, WiFiAP } from './wifi.js';

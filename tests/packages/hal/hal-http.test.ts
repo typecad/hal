@@ -144,14 +144,89 @@ describe('HTTP HAL — Zephyr transpilation', () => {
     });
 
     it('caCert PEM decodes to a DER byte array', () => {
-      const pem = '-----BEGIN CERTIFICATE-----\nAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4v\nMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5\nfYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3\n-----END CERTIFICATE-----';
+      // Synthetic but well-formed DER head (ASN.1 SEQUENCE, 0x30 0x82) with
+      // enough payload to clear the decoder's sanity floor.
+      const derB64 = Buffer.concat([Buffer.from([0x30, 0x82, 0x01, 0x0a]), Buffer.alloc(120, 0x41)]).toString('base64');
+      const pem = `-----BEGIN CERTIFICATE-----\n${derB64}\n-----END CERTIFICATE-----`;
       const result = transpileZephyrStrategy(`
         import { Request } from '@typecad/hal';
-        const PEM = "${pem.replace(/\n/g, '\\n')}"; 
+        const PEM = "${pem.replace(/\n/g, '\\n')}";
         new Request(Request.GET, "https://example.com", { caCert: PEM }).send();
       `);
-      expect(result.cpp).toContain('static const uint8_t __tc_ca_der[]');
+      expect(result.cpp).toContain('static const uint8_t __tc_ca_der[] = { 0x30, 0x82');
       expect(result.cpp).toContain('__tc_http_set_ca_cert_der(__tc_ca_der, sizeof(__tc_ca_der));');
+    });
+
+    it('caCert payload that is not DER (no 0x30 head) is rejected at emit', () => {
+      const derB64 = Buffer.concat([Buffer.from([0x00, 0x01, 0x02]), Buffer.alloc(120, 0x41)]).toString('base64');
+      const pem = `-----BEGIN CERTIFICATE-----\n${derB64}\n-----END CERTIFICATE-----`;
+      const result = transpileZephyrStrategy(`
+        import { Request } from '@typecad/hal';
+        new Request(Request.GET, "https://example.com", { caCert: "${pem.replace(/\n/g, '\\n')}" }).send();
+      `);
+      const withoutShim = result.cpp.replace(
+        /\/\/ CUTTLEFISH_HTTP_BEGIN[\s\S]*?\/\/ CUTTLEFISH_HTTP_END/g, '',
+      );
+      expect(withoutShim).toContain('// tc-http: caCert PEM failed to decode');
+    });
+
+    it('maxBody opt → __tc_http_set_max_body staged after the reset', () => {
+      const result = transpileZephyrStrategy(`
+        import { Request } from '@typecad/hal';
+        new Request(Request.GET, "https://example.com", { maxBody: 16384 }).send();
+      `);
+      expectCppContains(result, ['__tc_http_set_max_body(16384);']);
+      expect(result.cpp.indexOf('__tc_http_set_max_body(16384);'))
+        .toBeGreaterThan(result.cpp.indexOf('__tc_http_reset(); __tc_http_begin(HTTP_GET'));
+    });
+  });
+
+  describe('send() fact ordering (regression: the reset rides begin and must run FIRST)', () => {
+    // Until 2026-09 the setters emitted before begin, and the reset inside
+    // begin wiped every one of them — timeout/body/insecure/caCert never
+    // reached a request. send() now leads with begin (reset+stage), and the
+    // fact setters follow.
+    it('emits reset+begin BEFORE the fact setters so nothing is wiped', () => {
+      const result = transpileZephyrStrategy(`
+        import { Request } from '@typecad/hal';
+        const r = new Request(Request.POST, "https://example.com", { timeoutMs: 12000, body: 'x=1', insecure: true });
+        r.send();
+      `);
+      // Strip the shim block so indexOf matches user code, not helper
+      // definitions (the shim defines __tc_http_set_body etc.).
+      const user = result.cpp.replace(
+        /\/\/ CUTTLEFISH_HTTP_BEGIN[\s\S]*?\/\/ CUTTLEFISH_HTTP_END/g, '',
+      );
+      const begin = user.indexOf('__tc_http_reset(); __tc_http_begin(HTTP_POST');
+      expect(begin).toBeGreaterThanOrEqual(0);
+      expect(user.indexOf('__tc_http_set_timeout(12000);')).toBeGreaterThan(begin);
+      expect(user.indexOf('__tc_http_set_max_body(8192);')).toBeGreaterThan(begin);
+      expect(user.indexOf('__tc_http_set_body("x=1"')).toBeGreaterThan(begin);
+      expect(user.indexOf('__tc_http_set_insecure();')).toBeGreaterThan(begin);
+    });
+
+    it('header() pairs are re-staged by begin AFTER the reset (call-site emissions precede it)', () => {
+      const result = transpileZephyrStrategy(`
+        import { Request } from '@typecad/hal';
+        const r = new Request(Request.GET, "https://example.com");
+        r.header("X-Device", "typecad-hal");
+        r.send();
+      `);
+      const restage = result.cpp.indexOf('__tc_http_set_header("X-Device", "typecad-hal"); __tc_http_begin(HTTP_GET');
+      expect(restage).toBeGreaterThanOrEqual(0);
+      expect(restage).toBeGreaterThan(result.cpp.indexOf('__tc_http_reset();'));
+    });
+
+    it('header pairs re-stage inside a send loop too (per-iteration survival)', () => {
+      const result = transpileZephyrStrategy(`
+        import { Request } from '@typecad/hal';
+        function poll() {
+          const r = new Request(Request.GET, "https://example.com");
+          r.header("X-Device", "typecad-hal");
+          for (let i = 0; i < 3; i = i + 1) { r.send(); }
+        }
+      `);
+      expect(result.cpp).toContain('__tc_http_set_header("X-Device", "typecad-hal"); __tc_http_begin(HTTP_GET');
     });
   });
 
@@ -166,6 +241,19 @@ describe('HTTP HAL — Zephyr transpilation', () => {
       `);
       expect(result.cpp).toMatch(/__tc_http_status\(\)/);
       expect(result.cpp).toMatch(/__tc_http_body\(\)/);
+    });
+
+    it('responseHeader(name) lowers to the header lookup (captured by the parser hooks)', () => {
+      const result = transpileZephyrStrategy(`
+        import { Request } from '@typecad/hal';
+        const req = new Request(Request.GET, "https://example.com");
+        req.send();
+        const ct = req.responseHeader("Content-Type");
+      `);
+      expect(result.cpp).toMatch(/__tc_http_response_header\("Content-Type"\)/);
+      // The capture path ships in the shim: parser hooks wired via req.http_cb.
+      expect(result.cpp).toContain('__tc_http_on_hdr_field');
+      expect(result.cpp).toContain('req.http_cb = &__tc_http_parse_settings;');
     });
   });
 

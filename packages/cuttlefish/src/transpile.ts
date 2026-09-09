@@ -1,5 +1,4 @@
-﻿// See TRANSPILER_GUIDE.md for architecture details.
-
+﻿
 import path from "node:path";
 import fs from "node:fs";
 import { createRequire } from "node:module";
