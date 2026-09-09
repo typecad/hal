@@ -70,5 +70,5 @@ manifest with the framework id and artifacts it needs.
 ## Shim compliance
 
 The shim sources are AUTOSAR C++14 by construction (fixed-width integers,
-`static_cast` only, no heap, `final` class) and must keep passing
-`--autosar=strict` — the repo's compliance test covers them.
+`static_cast` only, no heap, `final` class) and keep passing
+`--autosar=strict`.

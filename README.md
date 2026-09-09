@@ -1,4 +1,4 @@
-# TypeCAD
+# [TypeCAD](https://typecad.dev)
 
 > **⚠️ Framework notice (alpha breaking change):** Arduino support has been
 > **removed**. TypeCAD now targets **Zephyr RTOS** through a thin,
@@ -570,3 +570,9 @@ All packages share a fixed version via [Changesets](https://github.com/changeset
 - [Framework manifest error codes](docs/framework-manifest-error-codes.md)
 - [HAL design notes](docs/hal/) — per-peripheral API references
 - [Ownership model](docs/ownership/) — `owned` / `shared` / `mut` semantics
+
+## License
+
+Apache-2.0 — see [LICENSE](./LICENSE). Generated output carries the
+[TypeCAD Runtime Exception](./RUNTIME_EXCEPTION.md); bundled third-party
+attributions are in [NOTICE](./NOTICE).

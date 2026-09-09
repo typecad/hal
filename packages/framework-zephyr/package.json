@@ -44,7 +44,7 @@
     "@typecad/hal": "1.0.0-alpha.17",
     "typescript": "^5.7.3"
   },
-  "license": "MIT",
+  "license": "Apache-2.0",
   "publishConfig": {
     "access": "public"
   },

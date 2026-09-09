@@ -130,7 +130,7 @@
   "devDependencies": {
     "@types/node": "^22.10.7"
   },
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/justind000/typecode.git",

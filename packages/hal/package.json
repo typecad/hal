@@ -21,7 +21,7 @@
     "test:hw:wired": "npm exec -- typecad-hal test --config boards/blackpill/typecad-hal.config.ts --include \"tests/wired/*.test.ts\"",
     "test:hw:esp32s3": "npm exec -- typecad-hal test --config boards/esp32s3/typecad-hal.config.ts"
   },
-  "license": "MIT",
+  "license": "Apache-2.0",
   "publishConfig": {
     "access": "public"
   },

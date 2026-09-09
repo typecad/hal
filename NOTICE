@@ -1,25 +1,22 @@
 TypeCAD
 Copyright (c) 2026 typecad0
 
-Licensed under the MIT License (see LICENSE).
+Licensed under the Apache License, Version 2.0 (see LICENSE).
 
-This NOTICE file documents third-party code that is bundled into or emitted
-by this project, beyond what is linked at compile time by end-user projects.
+This NOTICE file documents third-party code that is emitted into the C++
+output this toolchain generates for your projects. Linked libraries (the
+Zephyr kernel, vendor HALs, and Zephyr's in-tree display drivers) are not
+bundled or emitted by this project — their obligations travel with the
+Zephyr project and apply to end users directly.
 
 ================================================================================
-Third-party attributions — code emitted into generated sketches
+Third-party attributions — code emitted into generated firmware
 ================================================================================
 
-The native display and touch paths (framework-avr, framework-esp32) emit C++
-adapter code into the sketches this project transpiles. Some of that code is
-ported or transcribed from third-party BSD-3-Clause and MIT sources. End users
-distributing firmware built from those sketches should retain the attributions
-below.
-
-The Adafruit (arduino-cli) path does NOT bundle or emit Adafruit-derived
-code — it links the Adafruit libraries directly, and end users retain the
-Adafruit library LICENSE/attribution files through normal Arduino library
-distribution.
+The display runtime that the toolchain writes into generated projects is
+based in part on BSD-3-Clause licensed third-party code. End users
+distributing firmware built from those projects should retain the
+attributions below.
 
 --------------------------------------------------------------------------------
 1. Adafruit_GFX geometry algorithms  (BSD-3-Clause)
@@ -32,7 +29,7 @@ distribution.
 
   Used by:    packages/ui/src/ui-engine/runtime-header/cuttlefish-gfx.ts
               (the CuttlefishGFX class — geometry/canvas/text base emitted
-              only when a native display adapter is active)
+              whenever a display adapter is active)
 
   Scope:      The following method implementations are ported from
               Adafruit_GFX.cpp: drawLine (Bresenham), drawCircle
@@ -53,9 +50,9 @@ distribution.
   Used by:    packages/cuttlefish/src/api/shared/glcdfont.ts
                 (shared byte table)
               packages/cuttlefish/src/api/shared/display-adapters/sdl.ts
-                (emits __sdl_glcdfont[] for the SDL preview host adapter)
+                (emits __sdl_glcdfont[] for the desktop SDL adapter)
               packages/ui/src/ui-engine/runtime-header/cuttlefish-gfx.ts
-                (emits cuttlefish_glcdfont[] for native display adapters)
+                (emits cuttlefish_glcdfont[] for device display adapters)
 
   Scope:      The full 256-glyph × 5-byte font table.
 
@@ -66,129 +63,28 @@ distribution.
               conservative treatment is BSD-3-Clause.
 
 --------------------------------------------------------------------------------
-3. Adafruit_ILI9341 panel init sequence  (BSD-3-Clause)
+3. Touch controllers — datasheet-sourced interfaces
 --------------------------------------------------------------------------------
 
-  Source:     Adafruit_ILI9341.cpp initcmd[]
-  Copyright:  (c) 2013 Adafruit Industries. All rights reserved.
-  License:    BSD-3-Clause
-  Upstream:   https://github.com/adafruit/Adafruit_ILI9341
+  The Zephyr touch adapters (XPT2046 resistive over SPI, FT6336U capacitive
+  over I2C) in packages/framework-zephyr/src/display/touch-adapter.ts are
+  independently written against Zephyr driver APIs. The register addresses,
+  command bytes, and coordinate layouts they use are factual hardware
+  interface descriptions taken directly from the XPT2046/ADS7843 and
+  FT6336U datasheets; no third-party library was transcribed.
 
-  Used by:    packages/framework-esp32/src/displays/ili9341-esp32.ts
-                (the ILI9341 init command table)
+  One convention is borrowed from prior art and noted here for honesty:
+  the XPT2046 pen-detect threshold default (raw Z1 threshold of 400) comes
+  from the MIT-licensed Arduino XPT2046_Touchscreen library's Z_THRESHOLD
+  (Copyright (c) 2015 Paul Stoffregen); it is a tuning constant, not
+  creative expression.
 
-  Scope:      The manufacturer power-on sequence + power control + gamma +
-              sleep-out + display-on command bytes. The bytes themselves
-              are Ilitek reference code from the ILI9341 datasheet; the
-              transcription here is from Adafruit's published source.
-
---------------------------------------------------------------------------------
-4. Adafruit_SSD1306 panel init sequence  (BSD-3-Clause)
---------------------------------------------------------------------------------
-
-  Source:     Adafruit_SSD1306.cpp ssd1306_128x64_i2c_init[]
-  Copyright:  (c) 2013 Adafruit Industries. All rights reserved.
-  License:    BSD-3-Clause
-  Upstream:   https://github.com/adafruit/Adafruit_SSD1306
-
-  Used by:    packages/framework-avr/src/displays/ssd1309-avr.ts
-              packages/framework-esp32/src/displays/ssd1309-esp32.ts
-                (the SSD1306/SSD1309 init command table)
-
-  Scope:      The 128×64 I2C panel init sequence. The bytes themselves are
-              Solomon Systech reference code from the SSD1306/SSD1309
-              datasheet; the transcription here is from Adafruit's source.
-
---------------------------------------------------------------------------------
-5. Adafruit_ST7796S_kbv panel init sequence  (BSD-3-Clause, third-party)
---------------------------------------------------------------------------------
-
-  Source:     Adafruit_ST7796S_kbv.cpp initcmd[]
-  Copyright:  (c) David Prentice
-  License:    BSD-3-Clause
-  Upstream:   https://github.com/prenticedavid/Adafruit_ST7796S_kbv
-
-  Used by:    packages/framework-esp32/src/displays/st7796-esp32.ts
-                (the ST7796S init command table, including the
-                manufacturer-unlock sequence 0xF0,0xC3 / 0xF0,0x96)
-
-  Scope:      The ST7796S init command table.
-
-  Note:       This is a community-maintained Adafruit-style fork by David
-              Prentice, NOT a canonical Adafruit Industries release. The
-              init bytes are SITROX/ST reference code from the ST7796S
-              datasheet; equivalent sequences appear in TFT_eSPI, LovyanGFX,
-              and other libraries under various licenses.
-
---------------------------------------------------------------------------------
-6. RAK14014_FT6336U touch register protocol  (BSD-3-Clause)
---------------------------------------------------------------------------------
-
-  Source:     RAK14014_FT6336U.cpp / RAK14014_FT6336U.h
-  Copyright:  (c) RAK Wireless
-  License:    BSD-3-Clause
-
-  Used by:    packages/framework-esp32/src/touch/ft6336u-esp32.ts
-                (the FT6336U register read protocol: register 0x02 for
-                touch status, 0x03-0x06 for coordinate parsing)
-
-  Scope:      The register addresses and byte-layout parsing are factual
-              hardware interface descriptions from the FT6336U datasheet.
-              The ESP-IDF i2c_master implementation is independently written.
-
---------------------------------------------------------------------------------
-7. XPT2046_Touchscreen touch read sequence  (MIT)
---------------------------------------------------------------------------------
-
-  Source:     XPT2046_Touchscreen.cpp / XPT2046_Touchscreen.h
-  Copyright:  (c) 2015, Paul Stoffregen, paul@pjrc.com
-  License:    MIT
-  Upstream:   https://github.com/PaulStoffregen/XPT2046_Touchscreen
-
-  Used by:    packages/framework-esp32/src/touch/xpt2046-esp32.ts
-                (the XPT2046 read sequence: Z1/Z2 pressure computation,
-                3x oversample, best-two-average filter, channel command
-                bytes 0xB1/0xC1/0x91/0xD1)
-
-  Scope:      The command bytes and pressure formula are from the
-              XPT2046/ADS7843 datasheet. The best-two-average filter is a
-              generic signal-processing technique. The ESP-IDF full-duplex
-              SPI implementation is independently written.
-
---------------------------------------------------------------------------------
-8. Adafruit_STMPE610 touch register protocol  (MIT)
---------------------------------------------------------------------------------
-
-  Source:     Adafruit_STMPE610.cpp / Adafruit_STMPE610.h
-  Copyright:  (c) Adafruit Industries
-  License:    MIT
-  Upstream:   https://github.com/adafruit/Adafruit_STMPE610
-
-  Used by:    packages/framework-esp32/src/touch/stmpe610-esp32.ts
-                (the STMPE610 register map, init sequence, and FIFO
-                data-parsing logic)
-
-  Scope:      The register addresses and data byte layout are from the
-              STMPE611/STMPE811 datasheet (STMicroelectronics). The ESP-IDF
-              half-duplex SPI implementation is independently written.
-
---------------------------------------------------------------------------------
-9. GT911 and CST816S touch register protocols  (datasheet-sourced)
---------------------------------------------------------------------------------
-
-  Source:     GT911 Programming Guide (Goodix Technology)
-              CST816S Datasheet (Hynitron Semiconductor)
-
-  Used by:    packages/framework-esp32/src/touch/gt911-esp32.ts
-              packages/framework-esp32/src/touch/cst816s-esp32.ts
-
-  Scope:      Register maps sourced directly from manufacturer datasheets.
-              No third-party library was studied for these implementations.
-              The ESP-IDF i2c_master implementations are independently
-              written.
+  Other touch controllers (STMPE610, GT911, CST816S) have no emitted
+  implementation in this toolchain — the framework declines them with a
+  clear error.
 
 ================================================================================
-BSD-3-Clause text (applies to attributions 1-6)
+BSD-3-Clause text (applies to attributions 1-2)
 ================================================================================
 
 Redistribution and use in source and binary forms, with or without
@@ -216,25 +112,3 @@ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
 CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
-
-================================================================================
-MIT License text (applies to attributions 7-8)
-================================================================================
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.

@@ -2,7 +2,7 @@
 
 These are the unmodified TrueType files from the [DejaVu fonts] project,
 release **2.37** (the final upstream release). They are bundled here so every
-cuttlefish UI project gets an antialiased, continuously-sized font out of the
+typeCAD UI project gets an antialiased, continuously-sized font out of the
 box (see `@font-face` injection in `packages/ui/src/ui-engine/default-font.ts`).
 
 Do **not** rename or modify these files: the license terms (Bitstream Vera

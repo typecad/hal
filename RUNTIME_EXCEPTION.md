@@ -75,11 +75,10 @@ What this exception does NOT change
 
 1. Third-party code emitted into output files keeps its upstream license.
    Some emit-boundary code is ported or transcribed from third-party sources
-   (Adafruit_GFX geometry, the glcdfont table, panel init sequences, touch
-   register protocols). This exception grants no rights you do not already have
+   (Adafruit_GFX geometry, the glcdfont table, touch register protocols). This exception grants no rights you do not already have
    under those upstream licenses; their obligations travel with the emitted
    bytes. See NOTICE for the itemized third-party attributions and their
-   BSD-3-Clause / MIT terms.
+   BSD-3-Clause terms.
 
 2. Linked libraries are unaffected. The Zephyr framework links the Zephyr
    kernel and vendor HAL libraries at compile time rather than emitting their
