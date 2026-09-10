@@ -13,7 +13,7 @@ import { analyzeResources } from "./resource-analysis.js";
 import { watchPinSpecs, clickHandlers } from "./transformers/ui-call-resolver.js";
 import { canvasBindings } from "./transformers/canvas-lowering.js";
 import { getInputBindings, getListBindings } from "./transformers/ui-reactive.js";
-import { getTranspileResolvedHalOps } from "./build-ir-state.js";
+import { getTranspileResolvedOpNodes } from "./build-ir-state.js";
 
 /**
  * Map one HAL op name onto the peripheral usage flags its lowering requires.
@@ -1000,8 +1000,8 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
   // never appear as hal-op/hal-expr IR nodes, so the walks above can't see
   // them. The lowering seams record every op they resolve; merge their
   // peripheral flags here.
-  for (const opName of getTranspileResolvedHalOps()) {
-    applyHalOpUsageFlags(opName, result);
+  for (const op of getTranspileResolvedOpNodes()) {
+    applyHalOpUsageFlags(op.operation, result);
   }
 
   // Derive the comprehensive native-timing gate for the AVR millis() Timer0

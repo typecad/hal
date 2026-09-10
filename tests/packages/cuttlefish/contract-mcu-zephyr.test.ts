@@ -53,7 +53,7 @@ describe('contract MCU-only config with a generated Zephyr board', () => {
         "import type { TypecadConfig } from '@typecad/cuttlefish/api';",
         'const config: TypecadConfig = {',
         "  entry: './src/main.ts',",
-        "  target: 'stm32f411',",
+        "  ",
         "  soc: 'stm32f411xe',",
         "  contract: './board.contract.json',",
         "  framework: '@typecad/framework-zephyr',",

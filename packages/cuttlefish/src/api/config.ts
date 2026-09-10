@@ -5,7 +5,6 @@
 // the transpiler which board, architecture, and build options to use.
 // ---------------------------------------------------------------------------
 
-import type { ArchitectureIdentifier } from './board-types.js';
 import type { DisplayConfig } from './shared/display-profile.js';
 
 // ---------------------------------------------------------------------------
@@ -75,9 +74,6 @@ export interface CuttlefishZephyrConfig {
 export interface TypecadConfig {
   /** Entry point TypeScript file (relative to config file directory). */
   entry?: string;
-
-  /** Target architecture identifier (e.g. 'avr', 'esp32', 'rp2040'). */
-  target: ArchitectureIdentifier;
 
   /**
    * Zephyr board target — the qualified `west build -b` argument (e.g.

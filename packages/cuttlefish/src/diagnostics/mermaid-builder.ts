@@ -528,12 +528,19 @@ export function buildPeripheralTable(peripherals: PeripheralAllocation[]): strin
   if (peripherals.length === 0) return "_No peripherals in use._";
 
   const lines: string[] = [];
-  lines.push("| Peripheral | Instance | Pins |");
-  lines.push("|------------|----------|------|");
+  lines.push("| Peripheral | Instance | Devicetree Node | Pins |");
+  lines.push("|------------|----------|-----------------|------|");
 
   for (const p of peripherals) {
     const pinList = p.pins.map((n) => `\`${esc(n)}\``).join(", ") || "—";
-    lines.push(`| ${p.displayName} | ${p.instance} | ${pinList} |`);
+    const dt = p.dtLabel ? `\`${esc(p.dtLabel)}\`` : "—";
+    lines.push(`| ${esc(p.displayName)} | ${p.instance} | ${dt} | ${pinList} |`);
+  }
+
+  const details = peripherals.filter((p) => p.detail);
+  if (details.length > 0) {
+    lines.push("");
+    for (const p of details) lines.push(`> **${esc(p.displayName)}:** ${esc(p.detail!)}`);
   }
 
   return lines.join("\n");

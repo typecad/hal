@@ -12,9 +12,9 @@ import { findPackBoard } from "./pack-targets.js";
 
 /** A framework family that ships as an installable @typecad/framework-* package. */
 export interface FrameworkCatalogEntry {
-  /** Short id, e.g. "arduino". Matches the suffix of @typecad/framework-<id>. */
+  /** Short id, e.g. "zephyr". Matches the suffix of @typecad/framework-<id>. */
   id: string;
-  /** Full npm package name, e.g. "@typecad/framework-arduino". */
+  /** Full npm package name, e.g. "@typecad/framework-zephyr". */
   packageName: string;
   /** Human-readable label shown in the create prompt. */
   label: string;
@@ -81,7 +81,7 @@ const ARCHITECTURE_FRAMEWORKS: Record<string, string[]> = {
 
 const FALLBACK_FRAMEWORKS: readonly string[] = ["zephyr"];
 
-/** Look up a catalog entry by framework id (e.g. "arduino"). */
+/** Look up a catalog entry by framework id (e.g. "zephyr"). */
 export function frameworkCatalogEntry(id: string): FrameworkCatalogEntry | undefined {
   return FRAMEWORK_CATALOG.find((f) => f.id === id);
 }
@@ -159,7 +159,7 @@ export function probeRunnerQuirks(
 }
 
 export interface FrameworkTargetProfile {
-  /** Framework-specific build target (FQBN for Arduino, board id for Zephyr). */
+  /** Framework-specific build target (a qualified board id for Zephyr). */
   buildTarget?: string;
   /** Toolchain backend the framework's compile/upload expects. */
   toolchainType?: string;

@@ -111,11 +111,17 @@ export function generateProjectPackageJson(options: CreateProjectOptions): strin
     '"dev": "typecad-hal build --watch"',
   ];
 
+  // Both package shapes declare "type": "module": the project tsconfig is
+  // module ES2022 and vitest.config.ts is ESM, and the field lets Vite's
+  // native config loader read that config warning-free. The bundled VS Code
+  // extension stays CJS — it ships its own manifest, which shields it.
+
   if (options.isNative) {
     const devDepsJson = baseDevDeps.join(',\n');
     return `{
   "name": "${projectName}",
   "version": "1.0.0",
+  "type": "module",
   "private": true,
   "scripts": {
     "build": "typecad-hal build",
@@ -149,6 +155,7 @@ ${devDepsJson}
   return `{
   "name": "${projectName}",
   "version": "1.0.0",
+  "type": "module",
   "private": true,
   "scripts": {
     "build": "typecad-hal build",
@@ -577,24 +584,26 @@ done();
 `;
 }
 
-export function generateStarterSim(options: CreateProjectOptions): string {
-  const boardType = options.targetId;
+export function generateStarterSim(_options: CreateProjectOptions): string {
   return `// ---------------------------------------------------------------------------
 // Hardware simulation — Button + LED
 //
 // Runs entirely on your computer with \`npm run simulate\` (vitest + the
 // simulator built into @typecad/hal — its '@typecad/hal/sim' subpath). No
 // board, serial port, or west build required.
-// The simulator mirrors the pins/peripherals of your ${options.targetDisplayName}
-// (${boardType}); you inject fake inputs and assert on the outputs in Node.
+// The simulator is derived from your project's generated board manifest
+// (.typecad-hal/board.json), so its pin layout and capabilities are YOUR
+// board's — you inject fake inputs and assert on the outputs in Node.
 //
 // This is the fast tier — iterate on logic here, then confirm on real hardware
 // with \`npm run test:hw\` (which flashes tests/ to the board).
 // ---------------------------------------------------------------------------
 
+import { readFileSync } from "node:fs";
 import { describe, it, expect, beforeEach } from "vitest";
 import {
-  createSimBoard,
+  createBoardFromManifest,
+  manifestPinNumberByName,
   type SimBoard,
   type SimDigitalPin,
 } from "@typecad/hal/sim";
@@ -626,18 +635,27 @@ function reflectButtonOnLed(button: SimDigitalPin, led: SimDigitalPin): void {
 // ===========================================================================
 // TEST BENCH
 // ---------------------------------------------------------------------------
-// \`createSimBoard\` builds an in-memory version of your board. The pin numbers
-// below match the physical pinout. Add the pins/peripherals your firmware uses:
-// board.digital(n), board.analog(n), board.pwm(n), board.serial(n),
-// board.i2c(n), board.spi(n), board.interrupt(n).
+// The sim board is built from .typecad-hal/board.json — the same manifest the
+// transpiler and the board module use — so pin numbers and PWM/interrupt
+// capabilities match your board. Address pins by datasheet name or silkscreen
+// alias (manifestPinNumberByName(manifest, "PC13") / ("LED")), then:
+// board.digital(n), board.pwm(n), board.serial(n), board.i2c(n), board.spi(n).
 // ===========================================================================
 
 function setupSim(): { board: SimBoard; button: SimDigitalPin; led: SimDigitalPin } {
-  // boardType mirrors the target chosen with \`typecad-hal create\`.
-  const board = createSimBoard({ boardType: "${boardType}" });
+  const manifest = JSON.parse(
+    readFileSync(new URL("../.typecad-hal/board.json", import.meta.url), "utf-8"),
+  );
+  const board = createBoardFromManifest(manifest);
 
-  const button = board.digital(2).asInputPullUp();  // button on pin 2 (INPUT_PULLUP)
-  const led = board.digital(13).asOutput(false);    // LED on pin 13
+  // The board's own LED and BUTTON aliases when it declares them; otherwise
+  // two distinct pins on the header sweep.
+  const ledPin = manifestPinNumberByName(manifest, "LED") ?? 0;
+  const buttonPin = manifestPinNumberByName(manifest, "BUTTON")
+    ?? ((ledPin + 1) % board.digitalPins.size);
+
+  const button = board.digital(buttonPin).asInputPullUp();
+  const led = board.digital(ledPin).asOutput(false);
 
   return { board, button, led };
 }
@@ -684,6 +702,26 @@ dist/
 `;
 }
 
+export function generateVitestConfig(_options: CreateProjectOptions): string {
+  return `import { defineConfig } from "vitest/config";
+
+// The simulator suite (sim/). The hardware tests in tests/ are NOT vitest
+// tests — they are transpiled, flashed, and run on the board via
+// \`npm run test:hw\` (typecad-hal test).
+//
+// This config lives in the project so \`npm run simulate\` cannot inherit a
+// parent directory's vitest include pattern (monorepo roots) and silently
+// match nothing. The generated package.json declares "type": "module", so
+// this .ts file loads as ESM under Vite's native config loader.
+export default defineConfig({
+  test: {
+    environment: "node",
+    include: ["sim/**/*.test.ts"],
+  },
+});
+`;
+}
+
 export function generateEditorconfig(_options: CreateProjectOptions): string {
   return `# Auto-generated by 'typecad-hal create'. Edit to customise your build.
 root = true
@@ -700,7 +738,7 @@ indent_size = 2
 `;
 }
 
-export function generateEslintConfig(_options: CreateProjectOptions): string {
+export function generateEslintConfig(_options?: CreateProjectOptions): string {
   // `no-restricted-syntax` selectors are generated from LINT_RULES
   // (packages/cuttlefish/src/ir/feature-registry.ts), the single source of
   // truth shared with build-time prescan diagnostics. Do not hand-edit the

@@ -68,6 +68,15 @@ export interface BoardDataEntry {
     readonly spi: readonly string[];
     readonly uart: readonly string[];
   };
+  /** Serial-bus pinctrl routes from the board's own bus overrides — the
+   *  `pinctrl-0` phandle names with the pad parsed where the family's name
+   *  grammar carries it. Feeds the peripheral-usage diagnostics and the
+   *  `pins.i2c`/`pins.spi`/`pins.uart` conflict-map constants. */
+  readonly busPins?: readonly {
+    readonly bus: 'i2c' | 'spi' | 'uart';
+    readonly nodelabel: string;
+    readonly routes: readonly { readonly name: string; readonly role?: string; readonly pad?: string }[];
+  }[];
   /** Silicon PWM routes from the SoC pinctrl files (STM32 vendor HAL's
    *  per-soc *-pinctrl.dtsi, harvested through the board's include chain).
    *  RAW port/bit form — the manifest generator resolves global pin numbers

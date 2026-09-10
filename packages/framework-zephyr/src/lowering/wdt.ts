@@ -6,35 +6,12 @@
 // wdt_install_timeout in a static var so wdt.reset can feed it.
 //
 // enable(timeout): wdt_install_timeout + wdt_setup. Zephyr expects the timeout
-// in milliseconds (wdt_window.max). The HAL passes a "250ms" string or WDTO_*
-// constant or a number; we parse to ms in the lowering.
+// in milliseconds (wdt_window.max); the thin Watchdog (hal/watchdog.ts)
+// construction already carries a plain timeoutMs number.
 // ---------------------------------------------------------------------------
 
 import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 import type { ZephyrChipDescriptor } from '../chips/types.js';
-
-/** Parse a HAL wdt timeout ("250ms", WDTO_2S, or a bare number) to ms.
- *  Tolerates undefined (the manifest validator's probe sends a minimal op)
- *  and quote-wrapped strings (resolveSemanticArg can hand the literal's
- *  quoted source text through). */
-function timeoutToMs(timeout: string | number | undefined): number {
-  if (typeof timeout === 'number') return timeout;
-  if (!timeout) return 1000; // default 1s when absent (e.g. the validator probe)
-  timeout = timeout.replace(/^['"]|['"]$/g, '');
-  // Arduino WDTO_* constants.
-  const wdto: Record<string, number> = {
-    WDTO_15MS: 15, WDTO_30MS: 30, WDTO_60MS: 60, WDTO_120MS: 120,
-    WDTO_250MS: 250, WDTO_500MS: 500, WDTO_1S: 1000, WDTO_2S: 2000,
-    WDTO_4S: 4000, WDTO_8S: 8000,
-  };
-  if (wdto[timeout]) return wdto[timeout];
-  const m = timeout.match(/^(\d+)\s*ms$/i);
-  if (m) return parseInt(m[1], 10);
-  const s = timeout.match(/^(\d+)\s*s$/i);
-  if (s) return parseInt(s[1], 10) * 1000;
-  const n = parseInt(timeout, 10);
-  return isNaN(n) ? 1000 : n;
-}
 
 /**
  * Emit the WDT device + channel state. Called from shimLines when the program

@@ -43,15 +43,6 @@ function speedForHz(hz: number): string {
   return 'I2C_SPEED_HIGH';
 }
 
-/**
- * The (void) comma expression begin/end lower to — a no-op that references
- * the controller's whole state block (device + transaction buffers) so a
- * program calling only begin() stays -Werror clean (-Wunused-variable).
- */
-function i2cKeepAlive(p: string): string {
-  return `(void)${p}_dev;`;
-}
-
 /** The thin-device bus-speed preamble: apply the construction hz once
  *  (i2c_configure with Zephyr's I2C_SPEED_SET tier mapping), or '' when the
  *  target constructed without hz. Guarded per controller, so the cost after

@@ -15,7 +15,6 @@ describe('expect config', () => {
       path.join(dir, 'typecad-hal.config.ts'),
       [
         'export default {',
-        "  target: 'esp32',",
         "  board: 'esp32_devkitc/esp32/procpu',",
         "  frameworkData: { buildTarget: 'esp32:esp32:esp32' },",
         '  test: {',
@@ -44,7 +43,6 @@ describe('expect config', () => {
       path.join(dir, 'typecad-hal.config.ts'),
       [
         'export default {',
-        "  target: 'zephyr',",
         "  board: 'blackpill_f411ce/stm32f411xe',",
         '};',
         '',
@@ -62,7 +60,6 @@ describe('expect config', () => {
       path.join(dir, 'typecad-hal.config.ts'),
       [
         'export default {',
-        "  target: 'stm32f411',",
         "  board: 'blackpill_f411ce/stm32f411xe',",
         "  frameworkData: { buildTarget: 'blackpill_f411ce/stm32f411xe' },",
         '  test: {',
@@ -84,7 +81,6 @@ describe('expect config', () => {
       path.join(dir, 'typecad-hal.config.ts'),
       [
         'export default {',
-        "  target: 'stm32f411',",
         "  board: 'blackpill_f411ce/stm32f411xe',",
         '  test: {',
         "    usb: { vid: '2FE3', pid: '0002' },",

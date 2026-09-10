@@ -385,9 +385,7 @@ function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: 
       'const config: TypecadConfig = {',
       `  entry: './${entryFileName}',`,
     ];
-    if (baseValues.target) lines.push(`  target: '${baseValues.target}',`);
     if (baseValues.board) lines.push(`  board: '${baseValues.board}',`);
-    if (baseValues.mcu) lines.push(`  mcu: '${baseValues.mcu}',`);
     if (baseValues.framework) lines.push(`  framework: '${baseValues.framework}',`);
     if (baseValues.frameworkData?.buildTarget) lines.push(`  frameworkData: { buildTarget: '${baseValues.frameworkData.buildTarget}' },`);
     if (baseValues.toolchain?.type) lines.push(`  toolchain: { type: '${baseValues.toolchain.type}' },`);

@@ -17,10 +17,16 @@ export interface GpioPinEntry {
 }
 
 export interface PeripheralAllocation {
-  type: "i2c" | "spi" | "uart" | "adc" | "pwm" | "interrupt";
+  type: "i2c" | "spi" | "uart" | "adc" | "pwm" | "interrupt" | "usb" | "wdt" | "counter" | "sensor";
   instance: number;
   displayName: string;
   pins: string[];
+  /** The devicetree controller backing the instance ('usart1', 'adc1') —
+   *  the identity `DEVICE_DT_GET(DT_NODELABEL(...))` resolves to. */
+  dtLabel?: string;
+  /** Extra per-instance facts rendered under the table (route names,
+   *  addresses, construction options). */
+  detail?: string;
 }
 
 // ── Execution Flow ─────────────────────────────────────────────────────────

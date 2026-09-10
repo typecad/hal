@@ -16,8 +16,8 @@ export { include } from './include.js';
 export { board } from './board.js';
 export { callback } from './callback.js';
 export { rawCpp, rawCppExpr, boardResolve } from './emit.js';
-export { TimeClass, Time } from './time.js';
-export { abs, min, max, NumClass, Num } from './math.js';
+export { Time } from './time.js';
+export { abs, min, max, Num } from './math.js';
 
 export { Random } from './random.js';
 export { Pin } from './gpio.js';

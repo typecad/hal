@@ -1,15 +1,9 @@
-﻿import fs from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
-import { LibraryDefinition, LibraryDefinitionCondition, PlatformContext, TargetProfile } from "../types.js";
-import { listFilesRecursive, readText } from "../utils/fs.js";
+import type { LibraryDefinition } from "../types.js";
 import { toModuleKey, toPascalCase } from "../utils/strings.js";
 import type { ImportIR } from "../api/index.js";
 import { getLoadedFramework, hasLoadedFramework } from "../framework-registry.js";
-
-function toArchitectureFromFqbn(fqbn?: string): string | undefined {
-  if (!fqbn) return undefined;
-  return fqbn.split(":")[1];
-}
 
 function getLibraryResolver() {
   if (hasLoadedFramework()) {
@@ -25,28 +19,6 @@ function getLibraryResolver() {
 interface ResolvedImport {
   include: string;
   symbolMap: Record<string, string>;
-}
-
-export function loadLibraryDefinitions(definitionsDir: string): Map<string, LibraryDefinition> {
-  const registry = new Map<string, LibraryDefinition>();
-  // Recursive scan: libdefs may live at the entry dir (single-level convention)
-  // or nested in project subdirectories (per-module overrides).
-  const files = listFilesRecursive(definitionsDir, ".libdef.json");
-
-  for (const filePath of files) {
-    let def: LibraryDefinition;
-    try {
-      def = JSON.parse(readText(filePath)) as LibraryDefinition;
-    } catch (e) {
-      throw new Error(`Failed to parse library definition ${filePath}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-    if (!def.module || !def.include) {
-      continue;
-    }
-    registry.set(toModuleKey(def.module), def);
-  }
-
-  return registry;
 }
 
 function fallbackInclude(moduleSpecifier: string): string {
@@ -95,32 +67,9 @@ function resolveLocalModuleHeader(moduleSpecifier: string, importerFilePath: str
   return undefined;
 }
 
-function conditionMatches(condition: LibraryDefinitionCondition, target: TargetProfile, context?: PlatformContext): boolean {
-  const architecture = context?.architecture ?? toArchitectureFromFqbn(
-    (context?.frameworkData as { fqbn?: string } | undefined)?.fqbn
-  );
-  const fqbn = (context?.frameworkData as { fqbn?: string } | undefined)?.fqbn;
-
-  if (condition.target && condition.target !== target) {
-    return false;
-  }
-
-  if (condition.architecture && architecture !== condition.architecture.toLowerCase()) {
-    return false;
-  }
-
-  if (condition.fqbnIncludes && !(fqbn ?? "").toLowerCase().includes(condition.fqbnIncludes.toLowerCase())) {
-    return false;
-  }
-
-  return true;
-}
-
 export function resolveImport(
   importNode: ImportIR,
   definitions: Map<string, LibraryDefinition>,
-  target: TargetProfile,
-  platformContext?: PlatformContext,
   importerFilePath?: string,
 ): ResolvedImport {
   if (importerFilePath) {
@@ -143,15 +92,11 @@ export function resolveImport(
     };
   }
 
-  const selectedVariant = definition.variants?.find((variant) => conditionMatches(variant.when, target, platformContext));
-  const include = selectedVariant?.include ?? definition.include;
-  const mappedSymbols = selectedVariant?.symbols ?? definition.symbols ?? {};
-
   return {
-    include,
+    include: definition.include,
     symbolMap: {
       ...Object.fromEntries(importNode.namedImports.map((symbol) => [symbol, symbol])),
-      ...mappedSymbols,
+      ...definition.symbols,
     },
   };
 }

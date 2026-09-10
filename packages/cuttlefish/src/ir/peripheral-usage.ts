@@ -6,6 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import type { ProgramIR, StatementIR, ExpressionIR, HALOpIR } from '../api/index.js';
+import { getTranspileResolvedOpNodes } from './build-ir-state.js';
 
 /**
  * Tracks which hardware peripherals are used in the program.
@@ -23,9 +24,17 @@ export interface PeripheralUsage {
   spi: boolean;
   /** UART/Serial is used */
   uart: boolean;
+  /** USB CDC serial (USBConsole) is used */
+  usb: boolean;
+  /** Watchdog is used */
+  wdt: boolean;
+  /** Hardware counters are used */
+  counter: boolean;
   /** Specific PWM pins used (for targeted timer initialization) */
   pwmPinsUsed: Set<number>;
-  /** Specific ADC channels used */
+  /** Specific ADC channels used. Structured adc ops carry BOARD PIN NUMBERS
+   *  (the op's `pin` field); the arduino-era emit-string paths (analogRead)
+   *  still add arduino channel numbers on those boards only. */
   adcChannelsUsed: Set<number>;
   /** Pins configured as output (for batch DDR initialization) */
   outputPins: Set<number>;
@@ -49,6 +58,12 @@ export interface PeripheralUsage {
   spiInstancesUsed: Set<number>;
   /** Specific UART instances used (0 for UART0/Serial, 1 for UART1/Serial1, etc.) */
   uartInstancesUsed: Set<number>;
+  /** Specific USB CDC instances used (0 for USB0) */
+  usbInstancesUsed: Set<number>;
+  /** Hardware counter instances used */
+  counterInstancesUsed: Set<number>;
+  /** Thread instances started (the async-task rows of the diagnostics) */
+  threadInstancesUsed: Set<number>;
   /** All pin names used (for unsafe pin validation) */
   pinsUsed: Set<string>;
   /** Specific pins used for external interrupts */
@@ -66,6 +81,9 @@ export function createEmptyPeripheralUsage(): PeripheralUsage {
     i2c: false,
     spi: false,
     uart: false,
+    usb: false,
+    wdt: false,
+    counter: false,
     pwmPinsUsed: new Set(),
     adcChannelsUsed: new Set(),
     outputPins: new Set(),
@@ -78,6 +96,9 @@ export function createEmptyPeripheralUsage(): PeripheralUsage {
     spiTargetsUsed: new Set(),
     spiInstancesUsed: new Set(),
     uartInstancesUsed: new Set(),
+    usbInstancesUsed: new Set(),
+    counterInstancesUsed: new Set(),
+    threadInstancesUsed: new Set(),
     pinsUsed: new Set(),
     interruptPinsUsed: new Set(),
   };
@@ -92,6 +113,11 @@ export function analyzePeripheralUsage(program: ProgramIR): PeripheralUsage {
   if (!program || typeof program !== 'object') {
     return usage;
   }
+
+  // Ops carry the pin as a board pin NUMBER (the pins.all.N space); the
+  // report and the pin validators key off board pin NAMES. Build the number
+  // → name map once from the board constants.
+  currentPinNameByNumber = buildPinNameMap(program.boardConstants);
 
   try {
     if (program.topLevelStatements && Array.isArray(program.topLevelStatements)) {
@@ -120,11 +146,64 @@ export function analyzePeripheralUsage(program: ProgramIR): PeripheralUsage {
         }
       }
     }
+
+    // Callback bodies registered with HAL classes (Thread.start, GPIO
+    // onInterrupt, timer onAlarm, …) are not reachable from the statement
+    // walks above — they live on program.registeredCallbacks. After HAL
+    // resolution their bodies hold the same hal-op statements a function
+    // body does, so hardware driven ONLY inside a callback (a thread
+    // toggling the LED) reaches the report's pin and peripheral tables.
+    for (const rc of program.registeredCallbacks ?? []) {
+      const cb = rc.callbackIR as { statements?: StatementIR[] };
+      if (cb && Array.isArray(cb.statements)) {
+        analyzeStatements(cb.statements, usage);
+      }
+    }
+
+    // Ops the transpiler resolved to C++ text while inlining one HAL method
+    // inside another (e.g. an adc.read_mv inside a USB0.writeLine template)
+    // never appear as hal-op/hal-expr IR nodes — the lowering seams recorded
+    // their op nodes instead. Analyze them here so an inlined read counts
+    // exactly like a statement-position one.
+    for (const op of getTranspileResolvedOpNodes()) {
+      analyzeHALOp(op, usage);
+    }
   } catch (_e) {
     // If analysis fails, return empty usage (safe fallback)
+  } finally {
+    currentPinNameByNumber = undefined;
   }
 
   return usage;
+}
+
+/** Board pin numbers → names from the `pins.all.N` constants. */
+function buildPinNameMap(boardConstants: ProgramIR['boardConstants']): Map<number, string> {
+  const byNumber = new Map<number, string>();
+  if (!boardConstants) return byNumber;
+  for (const [key, value] of boardConstants) {
+    if (!key.startsWith('pins.all.') || !key.endsWith('.name') || typeof value !== 'string') continue;
+    const num = boardConstants.get(`${key.slice(0, -'.name'.length)}.number`);
+    if (typeof num === 'number') byNumber.set(num, value);
+  }
+  return byNumber;
+}
+
+/** Set for the duration of one analyzePeripheralUsage call (the analysis is
+ *  synchronous). Undefined outside it — trackPin falls back to the legacy
+ *  D-form then, matching arduino-era boards whose constants carry the D-names. */
+let currentPinNameByNumber: Map<number, string> | undefined;
+
+/** Record a used pin by its BOARD name (PA0/PC13/D13 — whatever the board
+ *  module exports). Ops carry a number; ops that carry an explicit port name
+ *  use it directly. */
+function trackPin(pin: number | string | undefined, usage: PeripheralUsage): void {
+  if (pin === undefined || pin === null) return;
+  if (typeof pin === 'string') {
+    usage.pinsUsed.add(pin);
+    return;
+  }
+  usage.pinsUsed.add(currentPinNameByNumber?.get(pin) ?? `D${pin}`);
 }
 
 function analyzeStatements(statements: StatementIR[] | undefined, usage: PeripheralUsage): void {
@@ -134,17 +213,13 @@ function analyzeStatements(statements: StatementIR[] | undefined, usage: Periphe
   }
 }
 
-function trackPinNumberAsName(pinNum: number, usage: PeripheralUsage): void {
-  usage.pinsUsed.add(`D${pinNum}`);
-}
-
 function analyzeEmitString(cpp: string, usage: PeripheralUsage): void {
   // pinMode(N, MODE) — track pin mode configuration and pin usage
   const pinModeMatch = cpp.match(/^pinMode\((\d+),\s*(\w+)\)/);
   if (pinModeMatch) {
     const pin = parseInt(pinModeMatch[1], 10);
     const mode = pinModeMatch[2];
-    trackPinNumberAsName(pin, usage);
+    trackPin(pin, usage);
     if (mode === 'OUTPUT') {
       usage.outputPins.add(pin);
     } else if (mode === 'INPUT_PULLUP') {
@@ -160,7 +235,7 @@ function analyzeEmitString(cpp: string, usage: PeripheralUsage): void {
   const analogWriteMatch = cpp.match(/^analogWrite\((\d+)/);
   if (analogWriteMatch) {
     const pin = parseInt(analogWriteMatch[1], 10);
-    trackPinNumberAsName(pin, usage);
+    trackPin(pin, usage);
     usage.pwm = true;
     usage.pwmPinsUsed.add(pin);
   }
@@ -178,13 +253,13 @@ function analyzeEmitString(cpp: string, usage: PeripheralUsage): void {
   // digitalRead(N) — pin usage (extract pin number)
   const digitalReadMatch = cpp.match(/digitalRead\((\d+)\)/);
   if (digitalReadMatch) {
-    trackPinNumberAsName(parseInt(digitalReadMatch[1], 10), usage);
+    trackPin(parseInt(digitalReadMatch[1], 10), usage);
   }
 
   // digitalWrite(N, ...) — pin usage
   const digitalWriteMatch = cpp.match(/digitalWrite\((\d+)/);
   if (digitalWriteMatch) {
-    trackPinNumberAsName(parseInt(digitalWriteMatch[1], 10), usage);
+    trackPin(parseInt(digitalWriteMatch[1], 10), usage);
   }
 
     // attachInterrupt(digitalPinToInterrupt(N), ...) — external interrupt
@@ -279,10 +354,18 @@ function analyzeCalleeForPeripheralUsage(callee: string, usage: PeripheralUsage)
 
 /**
  * Extract the bus/UART instance number from a name like "Wire" → 0, "Wire1" → 1, "SPI" → 0, "Serial" → 0, "Serial1" → 1.
+ * The HAL surface aliases bus names (I2C0/Wire, UART0/Serial) — every prefix
+ * a bus instance string can carry is tried; undefined/foreign strings give 0.
  */
-function extractBusInstance(busOrPort: string, prefix: string): number {
-  const rest = busOrPort.slice(prefix.length);
-  return rest ? parseInt(rest, 10) : 0;
+function extractBusInstance(busOrPort: string | undefined, ...prefixes: string[]): number {
+  if (!busOrPort || typeof busOrPort !== 'string') return 0;
+  for (const prefix of prefixes) {
+    if (!busOrPort.startsWith(prefix)) continue;
+    const rest = busOrPort.slice(prefix.length);
+    const n = rest ? parseInt(rest, 10) : 0;
+    if (!isNaN(n)) return n;
+  }
+  return 0;
 }
 
 /**
@@ -295,23 +378,24 @@ function analyzeHALOp(op: HALOpIR, usage: PeripheralUsage): void {
     case 'gpio.read':
     case 'gpio.read_cfg':
     case 'gpio.toggle': {
-      trackPinNumberAsName(op.pin, usage);
+      trackPin(op.pin, usage);
       break;
     }
 
     case 'gpio.shift_out':
     case 'gpio.shift_in': {
-      trackPinNumberAsName(op.dataPin, usage);
-      trackPinNumberAsName(op.clockPin, usage);
-      usage.outputPins.add(op.clockPin);
-      usage.outputPins.add(op.dataPin);
+      trackPin(op.dataPin, usage);
+      trackPin(op.clockPin, usage);
+      if (typeof op.dataPin === 'number') usage.outputPins.add(op.dataPin);
+      if (typeof op.clockPin === 'number') usage.outputPins.add(op.clockPin);
       break;
     }
 
     // Thin GPIO configure — flag-token text feeds the same mode sets the
     // legacy mode-set ops do (diagnostics + conflict checks).
     case 'gpio.configure': {
-      trackPinNumberAsName(op.pin, usage);
+      trackPin(op.pin, usage);
+      if (typeof op.pin !== 'number') break;
       const flags = String(op.flags ?? '');
       if (flags.includes('GPIO.OUTPUT')) {
         usage.outputPins.add(op.pin);
@@ -327,42 +411,41 @@ function analyzeHALOp(op: HALOpIR, usage: PeripheralUsage): void {
     case 'pwm.set_pulse':
     case 'pwm.set_duty':
     case 'pwm.set_period': {
-      trackPinNumberAsName(op.pin, usage);
+      trackPin(op.pin, usage);
       usage.pwm = true;
-      usage.pwmPinsUsed.add(op.pin);
+      if (typeof op.pin === 'number') usage.pwmPinsUsed.add(op.pin);
       break;
     }
 
-    // ADC
-        case 'adc.read_raw':
+    // ADC — adcChannelsUsed carries the PIN NUMBER (the op's `pin` field);
+    // the diagnostics report maps it to the silicon channel via the board's
+    // zephyr.adc.channels facts.
+    case 'adc.read_raw':
     case 'adc.read_mv': {
       usage.adc = true;
-      usage.adcChannelsUsed.add(op.pin);
+      trackPin(op.pin, usage);
+      if (typeof op.pin === 'number') usage.adcChannelsUsed.add(op.pin);
       break;
     }
-
-            break;
 
     // DAC
     case 'dac.write_value': {
-      trackPinNumberAsName(op.pin, usage);
+      trackPin(op.pin, usage);
       break;
     }
 
     // Interrupts
-        case 'interrupt.attach_flags': {
-      trackPinNumberAsName(op.pin, usage);
+    case 'interrupt.attach_flags': {
+      trackPin(op.pin, usage);
       usage.externalInterrupts = true;
-      usage.interruptPinsUsed.add(op.pin);
+      if (typeof op.pin === 'number') usage.interruptPinsUsed.add(op.pin);
       break;
     }
 
     case 'interrupt.detach': {
-      trackPinNumberAsName(op.pin, usage);
+      trackPin(op.pin, usage);
       break;
     }
-
-    // Tone
 
     // Tier-2 thin SPI (hal/spi-target.ts) — instances used, plus the distinct
     // constructed targets (bus|cs|hz|mode) that feed the DT child nodes and
@@ -373,10 +456,22 @@ function analyzeHALOp(op: HALOpIR, usage: PeripheralUsage): void {
       usage.spi = true;
       usage.spiInstancesUsed.add(extractBusInstance(op.bus, 'SPI'));
       usage.spiTargetsUsed.add(`${String(op.bus)}|${op.cs}|${op.hz ?? 0}|${op.mode ?? 0}`);
+      trackPin(op.cs, usage);
       break;
     }
 
-                                    
+    // Tier-2 thin I2C (hal/i2c-target.ts) + the legacy master ops.
+    case 'i2c.reg_write':
+    case 'i2c.reg_read':
+    case 'i2c.reg_update':
+    case 'i2c.dev_write':
+    case 'i2c.read':
+    case 'i2c.recover': {
+      usage.i2c = true;
+      usage.i2cInstancesUsed.add(extractBusInstance(op.bus, 'I2C', 'Wire'));
+      break;
+    }
+
     // DT-bound sensor parts (generic catalog). A sensor rides the I2C bus, so
     // each use marks the bus instance used too — the overlay enables exactly
     // the controllers that carry constructed sensors.
@@ -385,7 +480,9 @@ function analyzeHALOp(op: HALOpIR, usage: PeripheralUsage): void {
       usage.sensor = true;
       const kind = String(op.busKind ?? 'i2c');
       const part = String(op.part ?? '');
-      const busInstance = kind === 'spi' ? extractBusInstance(op.bus, 'SPI') : extractBusInstance(op.bus, 'Wire');
+      const busInstance = kind === 'spi'
+        ? extractBusInstance(op.bus, 'SPI')
+        : extractBusInstance(op.bus, 'I2C', 'Wire');
       // Instance-level claims only: the category booleans mean EVERY
       // declared controller is in play to the resource-conflict checker
       // (resource-analysis.ts), which would raise phantom pin conflicts
@@ -399,10 +496,6 @@ function analyzeHALOp(op: HALOpIR, usage: PeripheralUsage): void {
       break;
     }
 
-    // SPI
-    
-                        
-        
     // Tier-2 thin UART (hal/uart-port.ts).
     case 'uart.poll_write':
     case 'uart.rx_arm':
@@ -410,11 +503,51 @@ function analyzeHALOp(op: HALOpIR, usage: PeripheralUsage): void {
     case 'uart.rx_peek':
     case 'uart.rx_read': {
       usage.uart = true;
-      usage.uartInstancesUsed.add(extractBusInstance(op.port, 'UART'));
+      usage.uartInstancesUsed.add(extractBusInstance(op.port, 'UART', 'Serial'));
       break;
     }
 
-    // Board resolve, snprintf, raw — no peripheral tracking needed
+    // USB CDC serial (USBConsole) — the instance rides the port ("USB0" → 0).
+    case 'usb.begin':
+    case 'usb.wait_ready':
+    case 'usb.end':
+    case 'usb.print':
+    case 'usb.println':
+    case 'usb.read':
+    case 'usb.available':
+    case 'usb.connected': {
+      usage.usb = true;
+      usage.usbInstancesUsed.add(extractBusInstance(op.port, 'USB'));
+      break;
+    }
+
+    // Watchdog
+    case 'wdt.setup':
+    case 'wdt.feed':
+    case 'wdt.disable': {
+      usage.wdt = true;
+      break;
+    }
+
+    // Hardware counters
+    case 'counter.on_alarm':
+    case 'counter.start':
+    case 'counter.stop': {
+      usage.counter = true;
+      usage.counterInstancesUsed.add(op.instance);
+      break;
+    }
+
+    // Threads — not a board peripheral, but the instance count feeds the
+    // async-task rows of the diagnostics report.
+    case 'thread.start':
+    case 'thread.join': {
+      usage.threadInstancesUsed.add(op.instance);
+      break;
+    }
+
+    // Board resolve, snprintf, timing, random, network/storage stacks, raw —
+    // no board-pin or controller tracking needed
     case 'board.resolve':
     case 'snprintf.emit':
     case 'raw':

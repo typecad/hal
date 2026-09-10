@@ -2,17 +2,20 @@
 // Hardware simulation — Button + LED
 //
 // Runs entirely on your computer with `npm run simulate` (vitest + the
-// @typecad/hal/sim subpath). No board, serial port, or arduino-cli required.
-// The simulator mirrors the pins/peripherals of your Black Pill (STM32F411)
-// (blackpill-f411ce); you inject fake inputs and assert on the outputs in Node.
+// @typecad/hal/sim subpath). No board, serial port, or west build required.
+// The simulator is derived from the project's generated board manifest
+// (.typecad-hal/board.json), so pin layout and capabilities are the Black
+// Pill's own; you inject fake inputs and assert on the outputs in Node.
 //
 // This is the fast tier — iterate on logic here, then confirm on real hardware
 // with `npm run test:hw` (which flashes tests/ to the board).
 // ---------------------------------------------------------------------------
 
+import { readFileSync } from "node:fs";
 import { describe, it, expect, beforeEach } from "vitest";
 import {
-  createSimBoard,
+  createBoardFromManifest,
+  manifestPinNumberByName,
   type SimBoard,
   type SimDigitalPin,
 } from "@typecad/hal/sim";
@@ -44,17 +47,21 @@ function reflectButtonOnLed(button: SimDigitalPin, led: SimDigitalPin): void {
 // ===========================================================================
 // TEST BENCH
 // ---------------------------------------------------------------------------
-// `createSimBoard` builds an in-memory version of your board. The pin numbers
-// below match the physical pinout. Add the pins/peripherals your firmware uses:
-// board.digital(n), board.analog(n), board.pwm(n), board.serial(n),
-// board.i2c(n), board.spi(n), board.interrupt(n).
+// The sim board is built from .typecad-hal/board.json — the same manifest the
+// transpiler and the board module use — so pin numbers and capabilities match
+// the board. Address pins by name or silkscreen alias, then use board.digital(n),
+// board.pwm(n), board.serial(n), board.i2c(n), board.spi(n).
 // ===========================================================================
 
 function setupSim(): { board: SimBoard; button: SimDigitalPin; led: SimDigitalPin } {
-  const board = createSimBoard({});
+  const manifest = JSON.parse(
+    readFileSync(new URL("../.typecad-hal/board.json", import.meta.url), "utf-8"),
+  );
+  const board = createBoardFromManifest(manifest);
 
-  const button = board.digital(2).asInputPullUp();  // button on pin 2 (INPUT_PULLUP)
-  const led = board.digital(13).asOutput(false);    // LED on pin 13
+  // The board's own aliases: LED = PC13, BUTTON = PA0.
+  const button = board.digital(manifestPinNumberByName(manifest, "BUTTON")!).asInputPullUp();
+  const led = board.digital(manifestPinNumberByName(manifest, "LED")!).asOutput(false);
 
   return { board, button, led };
 }

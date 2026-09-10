@@ -738,6 +738,7 @@ function composeRecord(base: BoardDataEntry, facts: ReturnType<typeof readBoardD
     ...(facts.buses.i2c.length > 0 || facts.buses.spi.length > 0 || facts.buses.uart.length > 0
       ? { buses: facts.buses }
       : {}),
+    ...(facts.busPins.length > 0 ? { busPins: facts.busPins } : {}),
     ...(facts.pwmLeds.length > 0
       ? { pwmLeds: facts.pwmLeds.map((p) => ({
           ...(p.alias ? { alias: p.alias } : {}),

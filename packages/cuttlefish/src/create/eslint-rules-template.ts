@@ -1,6 +1,6 @@
 import type { CreateProjectOptions } from "./templates.js";
 
-export function generateEslintRules(_options: CreateProjectOptions): string {
+export function generateEslintRules(_options?: CreateProjectOptions): string {
   return `// ---------------------------------------------------------------------------
 // ESLint Custom Rules - Cuttlefish transpiler compatibility
 //

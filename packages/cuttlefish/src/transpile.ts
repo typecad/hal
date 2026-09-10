@@ -31,11 +31,10 @@ import { isSafetyImportSpecifier } from "./safety/specifiers.js";
 import { setDisplayProfile, resetDisplayProfile, getDisplayProfile } from "./stores/display-profile-store.js";
 import { setThemeCss, resetThemeCss, setThemeClass } from "./stores/theme-store.js";
 import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter.js";
-import { Diagnostic, GeneratedOutputs, TranspileOptions, TreeShakingOptions } from "./types.js";
+import { Diagnostic, GeneratedOutputs, LibraryDefinition, TranspileOptions, TreeShakingOptions } from "./types.js";
 import { readText, writeText, resetWrittenFiles, wasWrittenThisRun } from "./utils/fs.js";
 import { debug as logDebug, info } from "./utils/logger.js";
 import { printDebugStrategy } from "./utils/ui.js";
-import { loadLibraryDefinitions } from "./libdef/registry.js";
 import {
   resetCuttlefishLibraries,
   validateCuttlefishLibraries,
@@ -562,16 +561,11 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   }
   const npmPackages = graphResult.npmPackages;
 
-  const definitions = loadLibraryDefinitions(sourceDir);
-
-  // Cuttlefish library packages: the import resolves to the library's shim
-  // include (e.g. '"__tc_rgbled.h"') instead of a transpiled module header.
-  // Project-local .libdef.json files keep precedence.
+  // Library packages: the import resolves to the library's shim include
+  // (e.g. '"__tc_rgbled.h"') instead of a transpiled module header.
+  const definitions: Map<string, LibraryDefinition> = new Map();
   for (const libdef of cuttlefishLibraryLibdefs()) {
-    const key = libraryDefinitionKey(libdef.module);
-    if (!definitions.has(key)) {
-      definitions.set(key, libdef);
-    }
+    definitions.set(libraryDefinitionKey(libdef.module), libdef);
   }
 
   let entryOutputs: GeneratedOutputs | undefined;
@@ -1091,6 +1085,15 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   if (options.diagnostics) {
     try {
       const entryPreBuilt = preBuilt.get(entryFile);
+      // The board constants land on whichever module's IR was built while the
+      // board import was traversed — not always the entry's. Any populated
+      // map is the same generated board.json; scan like the board-constants
+      // writer below does.
+      let reportBoardConstants: Map<string, string | number | boolean> | undefined;
+      for (const pb of preBuilt.values()) {
+        const bc = pb.programIR.boardConstants as Map<string, string | number | boolean> | undefined;
+        if (bc && bc.size > 0) { reportBoardConstants = bc; break; }
+      }
       const report = buildDiagnosticsReport({
         entryFile,
         program: entryPreBuilt?.programIR ?? null,
@@ -1105,6 +1108,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
         preBuilt,
         profiler,
         removedSymbols: allRemovedSymbols,
+        boardConstants: reportBoardConstants,
       });
       writeDiagnosticsReport(report, entryPreBuilt?.programIR ?? null, outDir);
       diagnosticsReportPath = path.join(outDir, "diagnostics.md");

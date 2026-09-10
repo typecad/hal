@@ -24,6 +24,7 @@ export {
   parseConfigFile,
   loadTypecadConfig,
   generateVirtualTypeDeclaration,
+  ensureLintBoilerplate,
 } from "./config-loader.js";
 
 // ── Transpiler internal API ─────────────────────────────────────────────────

@@ -20,7 +20,6 @@ import type { TypecadConfig } from '@typecad/cuttlefish/api';
 const config: TypecadConfig = {
   entry: './src/showcase.ui',
   framework: '@typecad/framework-native',
-  target: 'generic',
   output: {
     outDir: './out',
   },

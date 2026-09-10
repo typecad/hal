@@ -543,6 +543,10 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
   // Process registered callbacks from HAL resolver
   for (const rc of (program.registeredCallbacks ?? [])) {
     const callbackName = `${ctx.isrPrefix}_isr_${counter.value++}`;
+    // Write the real emitted name back onto the registration so post-emit
+    // consumers (the --diagnostics report's ISR-handler table) can name the
+    // handler the way the generated C++ does instead of the placeholder.
+    rc.emittedName = callbackName;
     const callbackIR = rc.callbackIR as ExpressionIR & { kind: "callback"; body?: StatementIR[]; returnType?: string; typedParams?: { name: string; cppType: string }[] };
     callbackFunctions.push({
       name: callbackName,

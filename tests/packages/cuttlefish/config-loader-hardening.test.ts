@@ -43,7 +43,6 @@ describe("parseConfigFile hardening", () => {
     // demo-ui-sd13 ships `reset: -1` — used to be silently dropped.
     const file = writeConfig(`
       const config = {
-        target: 'esp32',
         display: { profile: 'ili9341-spi', cs: 5, rst: -1 },
       };
       export default config;
@@ -57,23 +56,21 @@ describe("parseConfigFile hardening", () => {
 
   it("unwraps `satisfies` on the config variable initializer", () => {
     const file = writeConfig(`
-      const config = { target: 'esp32', output: { outDir: './gen' } } satisfies Record<string, unknown>;
+      const config = { output: { outDir: './gen' } } satisfies Record<string, unknown>;
       export default config;
     `);
     const resolved = parseConfigFile(file);
-    expect(resolved?.target).toBe("esp32");
     expect(resolved?.outputOutDir).toBe("./gen");
   });
 
   it("warns and drops deprecated output.optimize instead of failing validation", () => {
     const file = writeConfig(`
-      const config = { target: 'esp32', output: { optimize: 'size', outDir: './out' } };
+      const config = { output: { optimize: 'size', outDir: './out' } };
       export default config;
     `);
     // Must not throw (strict schema no longer accepts the key — the loader
     // drops it before validation) and must tell the user to remove it.
     const resolved = parseConfigFile(file);
-    expect(resolved?.target).toBe("esp32");
     expect(resolved?.outputOutDir).toBe("./out");
     expect((resolved as Record<string, unknown>).outputOptimize).toBeUndefined();
     expect(warnedWith("'output.optimize' has no effect")).toBe(true);
@@ -81,17 +78,16 @@ describe("parseConfigFile hardening", () => {
 
   it("unwraps `as const` / parenthesized on the inline default export", () => {
     const file = writeConfig(`
-      export default ({ target: 'avr' }) as const;
+      export default ({ entry: './src/main.ts' }) as const;
     `);
     const resolved = parseConfigFile(file);
-    expect(resolved?.target).toBe("avr");
+    expect(resolved?.entry).toBe("./src/main.ts");
   });
 
   it("warns when an identifier value is silently dropped (the sdlLibraries bug)", () => {
     const file = writeConfig(`
       const sdlLibraries = ['SDL2'];
       const config = {
-        target: 'esp32',
         native: { cxxStandard: 'c++17', libraries: sdlLibraries },
       };
       export default config;
@@ -121,7 +117,7 @@ describe("parseConfigFile hardening", () => {
 
   it("warns on ternary values the parser cannot evaluate", () => {
     const file = writeConfig(`
-      const config = { target: 'esp32', test: { port: process.platform === 'win32' ? 'COM3' : '/dev/ttyACM0' } };
+      const config = { test: { port: process.platform === 'win32' ? 'COM3' : '/dev/ttyACM0' } };
       export default config;
     `);
     parseConfigFile(file);
@@ -131,7 +127,7 @@ describe("parseConfigFile hardening", () => {
 
   it("warns on misspelled top-level keys (dead strict-schema detection)", () => {
     const file = writeConfig(`
-      const config = { target: 'esp32', outputs: { optimize: 'speed' } };
+      const config = { outputs: { optimize: 'speed' } };
       export default config;
     `);
     parseConfigFile(file);
@@ -144,7 +140,7 @@ describe("parseConfigFile hardening", () => {
     // warn-site dedup prints one warning per dropped value, not two.
     const file = writeConfig(`
       const cxxStandard = 'c++17';
-      const config = { target: 'esp32', native: { cxxStandard } };
+      const config = { native: { cxxStandard } };
       export default config;
     `);
     parseConfigFile(file);
@@ -157,7 +153,7 @@ describe("parseConfigFile hardening", () => {
 
   it("warns accurately for null/undefined literals (not 'variables/ternaries')", () => {
     const file = writeConfig(`
-      const config = { target: 'esp32', test: { port: null } };
+      const config = { test: { port: null } };
       export default config;
     `);
     parseConfigFile(file);
@@ -168,7 +164,7 @@ describe("parseConfigFile hardening", () => {
   it("rejects an empty-string psram instead of silently dropping it", () => {
     // `psram: ''` used to skip validation via a truthiness guard and vanish.
     const file = writeConfig(`
-      const config = { target: 'esp32', psram: '' };
+      const config = { psram: '' };
       export default config;
     `);
     expect(() => parseConfigFile(file)).toThrow(/psram/);
@@ -178,7 +174,6 @@ describe("parseConfigFile hardening", () => {
     const file = writeConfig(`
       const config = {
         entry: './src/main.ts',
-        target: 'esp32',
         console: { port: 'COM3', baudRate: 115200 },
       };
       export default config;
@@ -193,14 +188,12 @@ describe("parseConfigFile hardening", () => {
     const file = writeConfig(`
       const config = {
         entry: './src/main.ts',
-        target: 'esp32',
         output: { extraFlags: ['-DX=1'] },
         native: { cxxStandard: 'c++17', libraries: ['curl'] },
       };
       export default config;
     `);
     const resolved = parseConfigFile(file);
-    expect(resolved?.target).toBe("esp32");
     expect(resolved?.outputExtraFlags).toEqual(["-DX=1"]);
     expect(resolved!.frameworkConfig!.libraries).toEqual(["curl"]);
     expect(warnSpy).not.toHaveBeenCalled();

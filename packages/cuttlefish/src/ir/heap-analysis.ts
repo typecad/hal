@@ -176,11 +176,38 @@ function collectStringLiterals(
   if (e.kind === "binary") {
     collectStringLiterals(e.left, literals);
     collectStringLiterals(e.right, literals);
+    return;
+  }
+  // parts-only shape (template strings) — walk each part exactly once
+  if (e.kind === "string_concat") {
+    for (const part of e.parts ?? []) collectStringLiterals(part, literals);
+    return;
+  }
+
+  // Template strings / parens / calls — walk the nested expressions so a
+  // literal inside `writeLine(`adc: ${x}`)` still counts.
+  for (const key of ["expression", "object", "index", "operand", "condition", "whenTrue", "whenFalse"]) {
+    if (e[key]) collectStringLiterals(e[key], literals);
+  }
+  for (const key of ["args", "elements", "parts", "fields"]) {
+    const list = e[key];
+    if (Array.isArray(list)) {
+      for (const item of list) {
+        if (item && typeof item === "object") {
+          if ("value" in item && item.kind === undefined) collectStringLiterals(item.value, literals);
+          else collectStringLiterals(item, literals);
+        }
+      }
+    }
   }
 }
 
 /**
- * Walk statements to find string literals in expressions.
+ * Walk statements to find string literals in expressions. The statement
+ * kinds are the rendered-pipeline ones (call / assign / var_decl), so
+ * literals in call arguments and template strings are counted. Only
+ * structured string IR counts — op fields and rendered snippets are C++
+ * text, not source literals, and counting them would fabricate bytes.
  */
 function collectStatementsStringLiterals(
   stmts: StatementIR[],
@@ -189,15 +216,19 @@ function collectStatementsStringLiterals(
   if (!stmts || !Array.isArray(stmts)) return;
   for (const stmt of stmts) {
     const s = stmt as any;
+    if (!s || typeof s !== "object") continue;
     if (s.kind === "var_decl") {
-      const vd = stmt as VariableDeclarationIR;
-      if (vd.initializer) {
-        collectStringLiterals(vd.initializer, literals);
+      if (s.initializer) collectStringLiterals(s.initializer, literals);
+    } else if (s.kind === "call" || s.kind === "expr_stmt" || s.kind === "assign") {
+      // __EMIT__ call args are RENDERED C++ code, not source literals.
+      if (s.callee === "__EMIT__") continue;
+      if (s.expression) collectStringLiterals(s.expression, literals);
+      if (Array.isArray(s.args)) {
+        for (const arg of s.args) collectStringLiterals(arg, literals);
       }
-    } else if (s.kind === "expr_stmt") {
-      if (s.expression) {
-        collectStringLiterals(s.expression, literals);
-      }
+      if (s.value) collectStringLiterals(s.value, literals);
+    } else if (Array.isArray(s.body)) {
+      collectStatementsStringLiterals(s.body, literals);
     }
   }
 }
@@ -215,8 +246,8 @@ function estimateStackDepth(
 
   function dfs(name: string, depth: number, currentPath: string[]) {
     if (depth > 30) return; // guard against infinite recursion
-    
-    const newPath = [...currentPath, name];
+
+    const newPath = [...currentPath, name === "__top_level__" ? "main" : name];
     visited.add(name);
 
     if (depth > maxDepth) {
@@ -236,9 +267,15 @@ function estimateStackDepth(
     }
   }
 
+  if (entryPoints.length === 0) entryPoints = ["main"];
   for (const entry of entryPoints) {
+    // The report's entry display name "main" is the graph's __top_level__
+    // node — walk the real node or the estimate is vacuously depth 1.
+    const root = entry === "main" && !callGraphNodes.has("main") && callGraphNodes.has("__top_level__")
+      ? "__top_level__"
+      : entry;
     visited.clear();
-    dfs(entry, 1, []);
+    dfs(root, 1, []);
   }
 
   return { depth: maxDepth, paths: deepestPaths.slice(0, 5) }; // Return top 5 deepest paths
@@ -251,6 +288,7 @@ export function analyzeHeapUsage(
   program: ProgramIR | null,
   architecture?: string,
   callGraphNodes?: Map<string, { dependencies: Set<string> }>,
+  entryPoints?: string[],
 ): HeapEstimate {
   const typeSizes = getTypeSizes(architecture);
   const globalVariables: { name: string; cppType: string; estimatedBytes: number }[] = [];
@@ -338,9 +376,9 @@ export function analyzeHeapUsage(
   totalStaticBytes += stringTotal;
 
   // Estimate stack depth from call graph
-  const entryPoints = ["setup", "loop"];
+  const stackEntryPoints = entryPoints && entryPoints.length > 0 ? entryPoints : ["main"];
   const stackInfo = callGraphNodes
-    ? estimateStackDepth(callGraphNodes, entryPoints)
+    ? estimateStackDepth(callGraphNodes, stackEntryPoints)
     : { depth: 0, paths: [] };
 
   // Add notes about approximations

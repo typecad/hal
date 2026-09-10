@@ -36,24 +36,12 @@ export function printHeader(): void {
  * Print build configuration info
  */
 export function printBuildInfo(options: {
-  framework?: string;
-  mcu?: string;
   board?: string;
-  buildTarget?: string;
 }): void {
-  if (options.framework) {
-    console.log(chalk.gray(`  ${ICON_INFO} Framework: `) + chalk.white(options.framework));
-  }
-  if (options.mcu) {
-    console.log(chalk.gray(`  ${ICON_INFO} MCU: `) + chalk.white(options.mcu));
-  }
+  // No bullet, values padded to the same column as formatZephyrSdkFound's
+  // zephyr/toolchain lines — the banner block prints them as one list.
   if (options.board) {
-    console.log(chalk.gray(`  ${ICON_INFO} Board: `) + chalk.white(options.board));
-  }
-  if (options.buildTarget) {
-    console.log(chalk.gray(`  • Build Target: `) + chalk.white(options.buildTarget));
-  }
-  if (options.framework || options.mcu || options.board || options.buildTarget) {
+    console.log(chalk.gray(`  Board:        `) + chalk.white(options.board));
     console.log();
   }
 }

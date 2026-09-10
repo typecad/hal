@@ -5,7 +5,7 @@
 /**
  * Result of a byte read operation (used internally by bus simulators).
  */
-export interface IByteReadResult {
+interface IByteReadResult {
   ok: boolean;
   status: number;
   bytes: Uint8Array;
@@ -28,7 +28,7 @@ export interface IByteReadResult {
 /**
  * Result of a write operation (used internally by bus simulators).
  */
-export interface IWriteResult {
+interface IWriteResult {
   ok: boolean;
   status: number;
   bytesWritten: number;

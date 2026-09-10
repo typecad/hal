@@ -174,7 +174,6 @@ export interface ResolvedConfig {
   /** From typecad-hal.config.ts root. */
   buildTarget: string;
   board: string;
-  target: string;
   /** Framework package name, e.g. "@typecad/framework-zephyr". */
   framework?: string;
   /** Zephyr-specific config (kconfig, etc.) from typecad-hal.config.ts. */

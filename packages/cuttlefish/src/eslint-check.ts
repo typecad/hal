@@ -30,6 +30,17 @@ export async function runEslintCheck(projectRoot: string): Promise<ESLintError[]
     // Legacy: config at project root (existing demo projects)
     overrideConfigFile = path.join(projectRoot, rootConfig);
   } else {
+    // No config anywhere. Ad-hoc transpiles (a bare input file, no project)
+    // stay lenient — linting is opt-in there. But a CONFIGURED project must
+    // never let the gate silently no-op: ensureLintBoilerplate heals the
+    // generated pair on every config load, so a still-missing config means
+    // something is genuinely wrong. Fail closed with the opt-out spelled out.
+    if (fs.existsSync(path.join(projectRoot, "typecad-hal.config.ts"))) {
+      throw new Error(
+        `No ESLint config found for this configured project — the AOT lint gate would silently no-op.\n` +
+          `Run 'typecad-hal build' to regenerate .typecad-hal/eslint.config.mjs, or disable the gate explicitly with 'lint: false' in typecad-hal.config.ts.`,
+      );
+    }
     return [];
   }
 
@@ -71,7 +82,7 @@ export async function runEslintCheck(projectRoot: string): Promise<ESLintError[]
     // this gate exists to prevent. Surface it instead of returning [].
     throw new Error(
       `ESLint config could not be loaded from ${overrideConfigFile}:\n${detail}\n\n` +
-        `Fix the config so linting runs, or remove it to skip the ESLint gate.`,
+        `Fix the config so linting runs, or disable the gate explicitly with 'lint: false' in typecad-hal.config.ts.`,
     );
   }
 

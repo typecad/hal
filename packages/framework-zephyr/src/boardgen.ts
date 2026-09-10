@@ -110,7 +110,7 @@ export function nrfSaadcAinPads(soc: string, identifier: string): readonly [numb
  * S3/C3/C6/H2 dropped it. Sourced from the HAL's dac_periph.c
  * (`dac_channel_io_num[]`), like the nRF SAADC table is from the PS.
  */
-export function esp32DacPins(soc: string): readonly [number, number][] | undefined {
+function esp32DacPins(soc: string): readonly [number, number][] | undefined {
   const table: Record<string, readonly [number, number][]> = {
     esp32: [[0, 25], [1, 26]],
     esp32s2: [[0, 17], [1, 18]],
@@ -1180,16 +1180,61 @@ export function buildModule(
 
   // Bus controllers the board's own DTS wires up — resolveChipFromBoard
   // reconstructs the bus lists from these, and the overlays enable the
-  // nodes the program uses.
+  // nodes the program uses. Each controller also carries its board-DTS
+  // pinctrl routes when the harvest parsed them (`pinctrl` = the route
+  // names, `pads` = `role=PAD` pairs) — the diagnostics report's
+  // peripheral-usage table and the pins.<bus> conflict-map read them.
+  const busPads = (kind: 'i2c' | 'spi' | 'uart', nodelabel: string) =>
+    (entry.busPins ?? []).filter((b) => b.bus === kind && b.nodelabel === nodelabel).flatMap((b) => b.routes);
+  const busPinMap = (kind: 'i2c' | 'spi' | 'uart'): string => {
+    const parts: string[] = [];
+    buses[kind].forEach((nodelabel, i) => {
+      const pairs = busPads(kind, nodelabel)
+        .filter((r) => r.pad && r.role)
+        .map((r) => `${r.role}=${r.pad}`);
+      if (pairs.length > 0) parts.push(`${i}:${pairs.join(',')}`);
+    });
+    return parts.join(';');
+  };
   buses.i2c.forEach((nodelabel, i) => {
     constants[`zephyr.i2c.controllers.${i}.nodeLabel`] = nodelabel;
+    const routes = busPads('i2c', nodelabel);
+    if (routes.length > 0) {
+      constants[`zephyr.i2c.controllers.${i}.pinctrl`] = routes.map((r) => r.name).join(',');
+      constants[`zephyr.i2c.controllers.${i}.pads`] = routes.filter((r) => r.pad).map((r) => `${r.role ?? ''}=${r.pad}`).join(',');
+    }
   });
   buses.spi.forEach((nodelabel, i) => {
     constants[`zephyr.spi.controllers.${i}.nodeLabel`] = nodelabel;
+    const routes = busPads('spi', nodelabel);
+    if (routes.length > 0) {
+      constants[`zephyr.spi.controllers.${i}.pinctrl`] = routes.map((r) => r.name).join(',');
+      constants[`zephyr.spi.controllers.${i}.pads`] = routes.filter((r) => r.pad).map((r) => `${r.role ?? ''}=${r.pad}`).join(',');
+    }
   });
   buses.uart.forEach((nodelabel, i) => {
     constants[`zephyr.uart.controllers.${i}.nodeLabel`] = nodelabel;
+    const routes = busPads('uart', nodelabel);
+    if (routes.length > 0) {
+      constants[`zephyr.uart.controllers.${i}.pinctrl`] = routes.map((r) => r.name).join(',');
+      constants[`zephyr.uart.controllers.${i}.pads`] = routes.filter((r) => r.pad).map((r) => `${r.role ?? ''}=${r.pad}`).join(',');
+    }
   });
+  // The board's console controller (chosen zephyr,console) — the
+  // diagnostics annotate the UART instance the bootloader logs on.
+  if (entry.console) constants['zephyr.console'] = entry.console;
+  // Bus pad conflict maps (analyzeResources): "<inst>:<role>=<PAD>,...;..."
+  const i2cPinMap = busPinMap('i2c');
+  const spiPinMap = busPinMap('spi');
+  const uartPinMap = busPinMap('uart');
+  if (i2cPinMap) constants['pins.i2c'] = i2cPinMap;
+  if (spiPinMap) constants['pins.spi'] = spiPinMap;
+  if (uartPinMap) constants['pins.uart'] = uartPinMap;
+  // Board silicon identity for the diagnostics metadata (the report's
+  // SRAM/flash context) — flash is a devicetree fact, sram/clock are not
+  // harvested and stay absent.
+  if (soc) constants['mcu'] = soc;
+  if (entry.flashKb) constants['memory.flash'] = entry.flashKb * 1024;
 
   // USB device (CDC-ACM): the board's DTS turned the controller on.
   if (hasUsb) {

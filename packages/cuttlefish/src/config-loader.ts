@@ -22,6 +22,8 @@ import { fileURLToPath } from "node:url";
 import { readTestPinsFile, buildTestPinsModuleContent } from "./transpile/test-pins.js";
 import { safeValidateConfig } from "./config-schema.js";
 import { setHALProjectDir } from "./ir/hal-resolver.js";
+import { generateEslintConfig } from "./create/templates.js";
+import { generateEslintRules } from "./create/eslint-rules-template.js";
 
 /** The filename we search for when walking up directories. */
 const CONFIG_FILENAME = "typecad-hal.config.ts";
@@ -29,7 +31,7 @@ const CONFIG_FILENAME = "typecad-hal.config.ts";
 /** Top-level keys recognized by TypecadConfigSchema — used to warn about
  *  misspelled keys that the AST extraction would otherwise drop silently. */
 const KNOWN_TOP_LEVEL_KEYS: ReadonlySet<string> = new Set([
-  "entry", "target", "board", "soc", "contract", "framework", "psram",
+  "entry", "board", "soc", "contract", "framework", "psram", "lint",
   "output", "frameworkData", "include", "exclude", "test", "toolchain",
   "console", "native", "zephyr", "display",
 ]);
@@ -40,7 +42,6 @@ const KNOWN_TOP_LEVEL_KEYS: ReadonlySet<string> = new Set([
  * nested objects (like `output`) are flattened into simple scalars.
  */
 export interface ResolvedTypecadConfig {
-  target?: string;
   /** Zephyr board target — the qualified `west build -b` argument (e.g.
    *  'esp32s3_devkitc/esp32s3/procpu'). The project-local board module is
    *  generated from the framework's board data pack on first build. */
@@ -64,6 +65,10 @@ export interface ResolvedTypecadConfig {
   framework?: string;
   /** ESP32 PSRAM type ('opi' | 'quad') when the target board has PSRAM. */
   psram?: 'opi' | 'quad';
+  /** Explicit opt-out from the ESLint gate. Absent/true → gate runs and the
+   *  eslint boilerplate is kept regenerated. `false` skips both. Deleting the
+   *  .typecad-hal eslint files is not an opt-out — the build regenerates. */
+  lint?: boolean;
   /** Entry point TypeScript file (relative to config file directory). */
   entry?: string;
   /** Path to the config file that was loaded. */
@@ -495,9 +500,6 @@ export function parseConfigFile(configPath: string): ResolvedTypecadConfig | und
   const entry = flat.get("entry");
   if (typeof entry === "string") resolved.entry = entry;
 
-  const target = flat.get("target");
-  if (typeof target === "string") resolved.target = target;
-
   const soc = flat.get("soc");
   if (typeof soc === "string") resolved.soc = soc;
 
@@ -536,6 +538,11 @@ export function parseConfigFile(configPath: string): ResolvedTypecadConfig | und
     // typos ('octal') with a validation error instead of silently dropping it.
     resolved.psram = psram as "opi" | "quad";
   }
+
+  // `!== true` guard keeps `lint: false` (the explicit opt-out) intact —
+  // truthiness would drop it and silently re-enable the gate.
+  const lint = flat.get("lint");
+  if (typeof lint === "boolean") resolved.lint = lint;
 
   const outputFramework = flat.get("output.framework");
   if (typeof outputFramework === "string") resolved.outputFramework = outputFramework;
@@ -609,7 +616,6 @@ export function parseConfigFile(configPath: string): ResolvedTypecadConfig | und
   // Validate the parsed config against the Zod schema.
   // Reconstruct a structured object from the flat-map extraction for validation.
   const structuredForValidation: Record<string, unknown> = {};
-  if (resolved.target) structuredForValidation.target = resolved.target;
   if (resolved.soc) structuredForValidation.soc = resolved.soc;
   if (resolved.board) structuredForValidation.board = resolved.board;
   if (resolved.contract) structuredForValidation.contract = resolved.contract;
@@ -618,6 +624,7 @@ export function parseConfigFile(configPath: string): ResolvedTypecadConfig | und
   // `!== undefined` (not truthiness) so an empty-string psram reaches the
   // PsramType enum and fails validation instead of vanishing.
   if (resolved.psram !== undefined) structuredForValidation.psram = resolved.psram;
+  if (resolved.lint !== undefined) structuredForValidation.lint = resolved.lint;
   if (resolved.outputFramework || resolved.outputOutDir || resolved.outputExtraFlags || resolved.outputDefines) {
     structuredForValidation.output = {
       ...(resolved.outputFramework ? { framework: resolved.outputFramework } : {}),
@@ -977,6 +984,45 @@ export function generateVirtualTypeDeclaration(config: ResolvedTypecadConfig, pl
       if (existing !== withHeader) {
         fs.writeFileSync(testPinsTsPath, withHeader, "utf-8");
       }
+    }
+  }
+}
+
+/**
+ * Keep the ESLint gate's config boilerplate materialized in `.typecad-hal/`.
+ *
+ * The pair (eslint.config.mjs + eslint-transpiler-rules.mjs) is generated
+ * from LINT_RULES — the rule set the gate enforces against non-AOT code
+ * patterns — so it must track the engine version, not the project's age.
+ * `typecad-hal create` writes it, but a project that arrives by `git clone`
+ * never runs create: without this heal, its `.gitignore`d files stay absent
+ * forever, `npm run lint` ENOENTs, and the gate silently no-ops.
+ *
+ * Skipped when the config opts out (`lint: false`) and when an ESLint config
+ * at the project root exists (a project that made an explicit root-level
+ * setup owns its own linting — the legacy demo layout).
+ */
+export function ensureLintBoilerplate(config: ResolvedTypecadConfig): void {
+  if (config.lint === false) return;
+  const configDir = path.dirname(config.configPath);
+  const rootConfigNames = ["eslint.config.mjs", "eslint.config.js", "eslint.config.cjs"];
+  if (rootConfigNames.some(name => fs.existsSync(path.join(configDir, name)))) return;
+
+  const cuttlefishDir = path.join(configDir, ".typecad-hal");
+  if (!fs.existsSync(cuttlefishDir)) {
+    fs.mkdirSync(cuttlefishDir, { recursive: true });
+  }
+  const files: Array<[string, string]> = [
+    ["eslint.config.mjs", generateEslintConfig()],
+    ["eslint-transpiler-rules.mjs", generateEslintRules()],
+  ];
+  for (const [name, content] of files) {
+    const filePath = path.join(cuttlefishDir, name);
+    const existing = fs.existsSync(filePath)
+      ? fs.readFileSync(filePath, "utf8")
+      : undefined;
+    if (existing !== content) {
+      fs.writeFileSync(filePath, content, "utf8");
     }
   }
 }

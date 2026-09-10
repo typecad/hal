@@ -29,6 +29,7 @@ const REFERENCED_IDS = [
   'adafruit_itsybitsy_m4_express',
   'apollo4p_blue_kxr_evb',
   'arduino_nano_33_iot',
+  'blackpill_f401cc',
   'blackpill_f401ce',
   'blackpill_f411ce',
   'cy8ckit_062_wifi_bt',

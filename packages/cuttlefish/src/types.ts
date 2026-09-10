@@ -118,24 +118,10 @@ export interface TranspileOptions {
   strictCss?: boolean;
 }
 
-export interface LibraryDefinitionCondition {
-  target?: TargetProfile;
-  architecture?: string;
-  core?: string;
-  fqbnIncludes?: string;
-}
-
-interface LibraryDefinitionVariant {
-  when: LibraryDefinitionCondition;
-  include: string;
-  symbols?: Record<string, string>;
-}
-
 export interface LibraryDefinition {
   module: string;
   include: string;
   symbols?: Record<string, string>;
-  variants?: LibraryDefinitionVariant[];
 }
 
 export interface CommandLineOptions {

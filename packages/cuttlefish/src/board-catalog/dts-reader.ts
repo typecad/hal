@@ -54,6 +54,53 @@ export interface DtsConnector {
   readonly pins: Readonly<Record<string, DtsGpioRef>>;
 }
 
+/** One serial-bus pinctrl route the board's own DTS wires: a `pinctrl-0`
+ *  phandle of a bus override. `pad` is parsed from the route name when the
+ *  family's name grammar carries it — undefined means "not in the name"
+ *  (nRF group names), never a guessed pad. */
+export interface DtsBusPinRoute {
+  readonly bus: 'i2c' | 'spi' | 'uart';
+  /** The wired controller's nodelabel ('usart1'). */
+  readonly nodelabel: string;
+  /** The pinctrl node name, verbatim (the token overlays reference). */
+  readonly routes: readonly { readonly name: string; readonly role?: string; readonly pad?: string }[];
+}
+
+/** Route pinctrl node names carry the pad on several families — STM32
+ *  `usart1_tx_pa9`, ESP32 `uart0_tx_gpio43`, RP2 `..._gp6`, nRF `..._p0_6`.
+ *  The LAST name segment decides; the segment before it is the role
+ *  (tx/rx/scl/sda/...). Group-style names (`uart0_default`) yield no pad. */
+export function parsePadFromRouteName(name: string): { role?: string; pad?: string } {
+  const lower = name.toLowerCase();
+  const m = lower.match(/(?:^|_)(p([a-z])(\d+)|p(\d+)_(\d+)|gpio(\d+)|gp(\d+))$/);
+  if (!m) {
+    const roleOnly = lower.match(/(?:^|_)(tx|rx|scl|sda|mosi|miso|sck|ss|cts|rts|de|re)$/);
+    return { role: roleOnly?.[1] };
+  }
+  const pad = m[2] !== undefined ? `P${m[2]!.toUpperCase()}${m[3]}`
+    : m[4] !== undefined ? `P${m[4]}.${m[5]!.padStart(2, '0')}`
+    : m[6] !== undefined ? `GPIO${m[6]}`
+    : `GP${m[7]}`;
+  const head = lower.slice(0, m.index).replace(/[\s_]+$/, '');
+  const role = head.match(/([a-z0-9]+)$/)?.[1];
+  return { role, pad };
+}
+
+/** Parse a `pinctrl-0 = <&a &b>` property's phandle list into route records. */
+export function parseBusPinctrlRoutes(
+  bus: 'i2c' | 'spi' | 'uart',
+  nodelabel: string,
+  propText: string | undefined,
+): DtsBusPinRoute | undefined {
+  if (!propText) return undefined;
+  const routes = [...propText.matchAll(/&([\w-]+)/g)].map((m) => ({
+    name: m[1]!,
+    ...parsePadFromRouteName(m[1]!),
+  }));
+  if (routes.length === 0) return undefined;
+  return { bus, nodelabel, routes };
+}
+
 /** Everything the reader could extract from one board DTS (post local includes). */
 export interface DtsBoardFacts {
   /** alias name → nodelabel ('led0' → 'user_led', 'sw0' → 'button0'). */
@@ -97,6 +144,13 @@ export interface DtsBoardFacts {
     readonly spi: readonly string[];
     readonly uart: readonly string[];
   };
+  /** Serial-bus pinctrl routes from the board's own bus overrides: the
+   *  `pinctrl-0` phandle names of each wired controller, with the pad
+   *  parsed from the route name where the family's name grammar carries it
+   *  (STM32 `usart1_tx_pa9`, ESP32 `..._gpio43`, nRF `..._p0_6`). Families
+   *  whose route names carry no pad yield `pad: undefined` — honestly
+   *  omitted, never guessed. */
+  readonly busPins: readonly DtsBusPinRoute[];
   /** Silicon PWM routes from the SoC pinctrl files the board's include
    *  chain reaches (STM32 vendor HAL ships per-soc *-pinctrl.dtsi with
    *  `tim4_ch1_pb6`-style nodes). Empty for SoCs whose pinctrl data lives
@@ -1188,6 +1242,7 @@ export function readBoardDts(
   // groups ('i2c0_default') never appear in it; _default/_sleep is belt and
   // braces.
   const seenBuses = new Set<string>();
+  const busPins: DtsBusPinRoute[] = [];
   for (const [label, node] of byLabel) {
     if (!refOverrides.has(label)) continue;
     if (label === 'usbd' || /_(default|sleep)$/.test(label)) continue;
@@ -1198,12 +1253,14 @@ export function readBoardDts(
     if (status === '"disabled"') continue;
     seenBuses.add(nodelabel);
     buses[kind].push(nodelabel);
+    const routes = parseBusPinctrlRoutes(kind, nodelabel, node.props.get('pinctrl-0'));
+    if (routes) busPins.push(routes);
   }
   for (const kind of ['i2c', 'spi', 'uart'] as const) buses[kind].sort();
 
   void byLabel; // (labels already captured during parse)
   return {
-    aliases, chosen, leds, buttons, connectors, connectorAdc, pwmLeds, buses,
+    aliases, chosen, leds, buttons, connectors, connectorAdc, pwmLeds, buses, busPins,
     ...(pinctrlWarnings.length > 0 ? { pinctrlWarnings } : {}),
     pwmPins: [...pwmPins.values()],
     adcPins: [...adcPins.values()],

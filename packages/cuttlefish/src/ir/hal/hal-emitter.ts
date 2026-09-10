@@ -1,6 +1,6 @@
 ﻿import ts from "typescript";
 import { ExpressionIR, HALOpIR } from "../../api/index.js";
-import { requiredIncludes, registeredCallbacks, activeStringVars, TYPED_ARRAY_ELEMENT_MAP, getContext, floatVariables, halInstances, getCurrentBoardConstants, markHalOpResolved } from "../build-ir-state.js";
+import { requiredIncludes, registeredCallbacks, isrHandlerFunctions, activeStringVars, TYPED_ARRAY_ELEMENT_MAP, getContext, floatVariables, halInstances, getCurrentBoardConstants, markHalOpResolved } from "../build-ir-state.js";
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { renderExprAsText } from "../render-expr.js";
 import { escapeCppKeyword, escapeCppStringLiteral } from "../../utils/strings.js";
@@ -353,6 +353,14 @@ export function extractAndRegisterCallbacks(
             }
             registeredCallbacks.push({ placeholderName: placeholder, callbackIR: normalized });
             callArgTexts[paramIdx] = placeholder;
+          } else if (isInterruptHandler && callbackIR.kind === "identifier" && typeof (callbackIR as any).value === "string") {
+            // Named free function passed as the handler — the C lowering accepts
+            // the bare name, but no callback IR node exists to scan. Record the
+            // function so interrupt-analysis treats its body as ISR code.
+            // Member references (obj.method) are not recorded: a C function
+            // pointer cannot bind them without a thunk the lowering doesn't
+            // emit, and this path never reaches the ISR chains.
+            isrHandlerFunctions.add((callbackIR as any).value as string);
           }
         }
       }
@@ -743,8 +751,8 @@ export function resolveHALExprToText(expr: Extract<import("../../api/shared/inde
   if (resolved) {
     // The op may never exist as an IR node (its text is baked into the
     // calling method's emit lines), so record it for program-analysis's
-    // peripheral usage flags.
-    markHalOpResolved(expr.operation.operation);
+    // peripheral usage flags and analyzePeripheralUsage's pin/instance sets.
+    markHalOpResolved(expr.operation);
     if (resolved.expression) return resolved.expression;
     if (resolved.code) return resolved.code.replace(/;\s*$/, "");
   }

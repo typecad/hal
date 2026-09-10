@@ -12,7 +12,7 @@ import type { DigitalValue } from '../../index.js';
 /**
  * Tracks the history of pin state changes for test assertions.
  */
-export interface PinStateChange {
+interface PinStateChange {
   /** Timestamp (ms since simulation start) */
   timestamp: number;
   /** Previous value (0 or 1) */

@@ -30,39 +30,6 @@ function findDtSpec(chip: ZephyrChipDescriptor, pin: number) {
   return chip.gpio.dtSpecs.find((s) => s.pin === pin);
 }
 
-// HAL passes UPPERCASE modes ("OUTPUT") while docs say lowercase ("output").
-// The *_pullup / *_pulldown modes map to GPIO_INPUT (Zephyr does not have
-// separate input+pull mode flags) and OR in a GPIO_PULL_UP / GPIO_PULL_DOWN
-// bit via `dtFlagsForMode` — without that bit the pin floats, so INPUT_PULLUP
-// was a silent no-op (bug B1). Mirrors the gpio_pullup_en/gpio_pulldown_en
-// extras framework-esp32 emits for the same modes.
-const MODE_MAP: Record<string, string> = {
-  output: 'GPIO_OUTPUT',
-  OUTPUT: 'GPIO_OUTPUT',
-  input: 'GPIO_INPUT',
-  INPUT: 'GPIO_INPUT',
-  input_pullup: 'GPIO_INPUT',
-  INPUT_PULLUP: 'GPIO_INPUT',
-  input_pulldown: 'GPIO_INPUT',
-  INPUT_PULLDOWN: 'GPIO_INPUT',
-};
-
-/** Additional DT flag bits for a HAL mode, OR'd into the configure flags.
- *  Returns '' for modes with no extra bits so the join leaves the mode alone. */
-function dtFlagsForMode(mode: string): string {
-  const m = (mode ?? '').toLowerCase();
-  if (m === 'input_pullup') return ' | GPIO_PULL_UP';
-  if (m === 'input_pulldown') return ' | GPIO_PULL_DOWN';
-  return '';
-}
-
-/** Combined mode + pull flags for a HAL mode string, e.g.
- *  'INPUT_PULLUP' → 'GPIO_INPUT | GPIO_PULL_UP'. */
-function flagsForMode(mode: string): string {
-  const base = MODE_MAP[mode] ?? 'GPIO_INPUT';
-  return base + dtFlagsForMode(mode);
-}
-
 // ── Thin GPIO (hal/gpio-pin.ts) — flag tokens ─────────────────────────────
 //
 // "GPIO.OUTPUT | GPIO.PULL_UP" token text maps name-for-name onto the GPIO_*

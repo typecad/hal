@@ -17,10 +17,6 @@ const config: TypecadConfig = {
   // Entry point — the main TypeScript file to transpile
   entry: './src/main.ts',
 
-  // Target architecture
-
-  // MCU package — provides silicon-level pin definitions
-
   // Board package — provides pin definitions and board constants
   board: 'blackpill_f401cc/stm32f401xc',
 

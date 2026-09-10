@@ -77,8 +77,7 @@ export function loadConfig(
     // cuttlefish config-loader: frameworkData.buildTarget is the board-less
     // custom-board form). An explicit test.buildTarget overrides both.
     buildTarget: test.buildTarget ?? raw.board ?? raw.frameworkData?.buildTarget ?? '',
-    board: test.board ?? raw.board ?? 'xiao_ble/nrf52840',
-    target: raw.target ?? 'zephyr',
+    board: test.board ?? raw.board ?? '',
     framework: raw.framework,
     zephyrConfig: raw.zephyr,
     projectRoot,
@@ -96,7 +95,6 @@ export function loadConfig(
 function findConfigFile(projectRoot: string): string | undefined {
   const candidates = [
     path.join(projectRoot, 'typecad-hal.config.ts'),
-    path.join(projectRoot, 'cuttlefish.config.js'),
   ];
   return candidates.find(c => fs.existsSync(c));
 }
@@ -110,9 +108,7 @@ function findConfigFile(projectRoot: string): string | undefined {
 // ---------------------------------------------------------------------------
 
 export interface RawConfig {
-  target?: string;
   board?: string;
-  mcu?: string;
   frameworkData?: { buildTarget?: string };
   framework?: string;
   toolchain?: { type?: string };
@@ -143,7 +139,7 @@ function unwrapExpr(node: ts.Expression): ts.Expression {
   }
 }
 
-/** Property key as plain text — accepts both `target:` and `'target':` forms. */
+/** Property key as plain text — accepts both `board:` and `'board':` forms. */
 function propName(prop: ts.ObjectLiteralElement): string | undefined {
   const name = (prop as any).name;
   if (name && (ts.isIdentifier(name) || ts.isStringLiteral(name))) return name.text;
@@ -215,19 +211,9 @@ function extractConfigProperties(obj: ts.ObjectLiteralExpression, out: RawConfig
     if (!name) continue;
 
     switch (name) {
-      case 'target': {
-        const v = stringLikeText(prop.initializer);
-        if (v !== undefined) out.target = v;
-        break;
-      }
       case 'board': {
         const v = stringLikeText(prop.initializer);
         if (v !== undefined) out.board = v;
-        break;
-      }
-      case 'mcu': {
-        const v = stringLikeText(prop.initializer);
-        if (v !== undefined) out.mcu = v;
         break;
       }
       case 'frameworkData': {

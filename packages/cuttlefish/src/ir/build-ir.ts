@@ -11,7 +11,7 @@ import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution.js";
 import { tryResolveBoardDefFile, findGeneratedBoard, readGeneratedBoardConstants, BoardConstants } from "./board-resolver.js";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage.js";
 import { runProgramValidations } from "./validation-orchestrator.js";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinForwardMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers } from "./build-ir-state.js";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinForwardMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, isrHandlerFunctions, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers } from "./build-ir-state.js";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir.js";
 import { registerUIModuleImport, registerElementValue, recordClickHandler, recordBinding } from "./transformers/ui-call-resolver.js";
 import { requireUIHook } from "../ui-hook.js";
@@ -317,9 +317,10 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
       break;
     }
   }
-  // If only the default board constants are loaded (4 keys from getDefaultBoardConstants),
-  // load the generated board manifest directly — covers the case where board()/boardResolve()
-  // is imported from @typecad/hal but no @typecad/board import is present in the user's code.
+  // If no real board constants are loaded (the stand-in map from
+  // getDefaultBoardConstants is empty), load the generated board manifest
+  // directly — covers the case where board()/boardResolve() is imported from
+  // @typecad/hal but no board-module import is present in the user's code.
   const currentBC = getCurrentBoardConstants();
   if (currentBC && currentBC.size <= 4) {
     const generated = findGeneratedBoard(fileName);
@@ -877,6 +878,9 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
       // interrupt-analysis.ts:212 never iterates, so ISR unsafe-op detection
       // silently misses every user interrupt handler.
       registeredCallbacks: [...registeredCallbacks],
+      // Same for named free functions used as handlers — their bodies are
+      // only reachable through this list.
+      isrHandlerFunctions: [...isrHandlerFunctions],
     };
 
     peripheralUsage = analyzePeripheralUsage(partialProgram);
@@ -906,6 +910,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
     interfaces,
     namespaces,
     registeredCallbacks: [...registeredCallbacks],
+    isrHandlerFunctions: [...isrHandlerFunctions],
     restParamFunctions: new Map(restParamFunctions),
     ...(defaultExportName ? { defaultExportName } : {}),
   };

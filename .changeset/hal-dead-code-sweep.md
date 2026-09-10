@@ -1,0 +1,5 @@
+---
+"@typecad/hal": patch
+---
+
+fix: remove the unused surface found by a dead-code sweep. `createBoardFromDefinition()` and `sim/board/from-definition.ts` are gone — exported from `@typecad/hal/sim` but never called by any demo, test, or engine path (its JSDoc example imported a board.json from a path that does not exist), and its removal drops hal's only `@typecad/cuttlefish/api/schema` type-import. `TimeClass` and `NumClass` are no longer exported from `@typecad/hal` — the `Time`/`Num` singletons were always the used API; the classes remain as their (unexported) implementations, which the engine's hal-parser still consumes since it registers every class declaration regardless of export. The never-imported sim types `PinChangeCallback`/`InterruptCallback` (also unused inside the sim — deleted) and `IInputModePin`/`IOutputModePin`/`InterruptEvent`/`PinStateChange`/`IByteReadResult`/`IWriteResult` (used only within their own modules as typing — kept, unexported) no longer widen the barrels.

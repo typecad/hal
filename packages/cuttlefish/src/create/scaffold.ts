@@ -13,6 +13,7 @@ import {
   generateStarterSim,
   generateGitignore,
   generateEditorconfig,
+  generateVitestConfig,
   generateEslintConfig,
 } from "./templates.js";
 import { generateEslintRules } from "./eslint-rules-template.js";
@@ -111,6 +112,11 @@ export function scaffoldProject(
   writeFile('.typecad-hal/eslint-transpiler-rules.mjs', generateEslintRules(options));
   writeFile('.gitignore', generateGitignore(options));
   writeFile('.editorconfig', generateEditorconfig(options));
+  // Project-local vitest config: `npm run simulate` must not inherit a parent
+  // directory's include pattern (monorepo roots) and silently match nothing.
+  // Plain .ts is fine — the generated package.json declares "type": "module",
+  // so Vite's config loader treats it as ESM.
+  writeFile('vitest.config.ts', generateVitestConfig(options));
 
   // Editor integration: workspace-bundled VS Code extension for .ui syntax
   // highlighting (best-effort — warns and skips if the assets are missing).

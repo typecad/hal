@@ -57,8 +57,7 @@ export function listFiles(dirPath: string, extension: string): string[] {
  * Recursive variant of {@link listFiles}. Walks `dirPath` depth-first and
  * returns every file (in every subdirectory) whose name ends with `extension`.
  *
- * Used by {@link loadLibraryDefinitions} so libdefs in project subdirectories
- * are discovered. Purely additive vs. the non-recursive `listFiles` —
+ * Purely additive vs. the non-recursive `listFiles` —
  * single-level layouts keep working, nested layouts now also work.
  *
  * Returns absolute paths. Unreadable directories are silently skipped

@@ -1,0 +1,5 @@
+---
+"@typecad/cuttlefish": patch
+---
+
+fix(test-runner): remove the dead `target === 'esp32'` `resetAfterOpen` defaulting and the `target` plumbing feeding it. The hardware test runner used to serve Arduino + ESP-IDF + Zephyr frameworks, where a config's `target: 'esp32'` meant ESP-IDF and DevKit auto-reset circuitry (RTS→EN, DTR→GPIO0) — the runner defaulted to pulsing reset after opening the serial port so the run started from boot. Zephyr-only consolidation removed framework-esp32 and stopped emitting `target:`; with the field gone from `TypecadConfig` the default could never fire (`raw.target ?? 'zephyr'` made the comparison constant-false). Deleted the check, the `ResolvedConfig.target` field, the `RawConfig.target` parser case, and the `target` token/label fallbacks in the skip/only-target directive matching (directives now match on `buildTarget`/`board`, the Zephyr-native identity). `test.resetAfterOpen` remains the explicit per-board opt-in; the ESP32-style DTR/RTS pulse itself stays in serial.ts.

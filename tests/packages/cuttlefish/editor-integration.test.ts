@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { minimatch } from "minimatch";
 
 import { writeEditorIntegration } from "../../../packages/cuttlefish/src/create/editor-integration";
 
@@ -29,7 +30,15 @@ describe("writeEditorIntegration hideNpm settings", () => {
     const dir = makeProject();
     writeEditorIntegration(dir, undefined, true);
     const settings = JSON.parse(fs.readFileSync(path.join(dir, ".vscode", "settings.json"), "utf-8"));
-    expect(settings["npm.exclude"]).toBe("**/.vscode/extensions/**/package.json");
+    // VS Code evaluates npm.exclude exactly this way (extensions/npm/src/tasks.ts,
+    // isExcluded): minimatch the package.json's PARENT DIRECTORY with dot:true.
+    // A pattern ending in "/package.json" can never match a directory — which is
+    // how the bundled extension manifests leaked into the NPM Scripts view.
+    const excludedByVSCode = (packageJsonPath: string) =>
+      minimatch(path.dirname(path.resolve(packageJsonPath)), settings["npm.exclude"], { dot: true });
+    expect(excludedByVSCode(path.join(dir, ".vscode", "extensions", "typecad-ui", "package.json"))).toBe(true);
+    expect(excludedByVSCode(path.join(dir, ".vscode", "extensions", "vscode-typecad-debug", "package.json"))).toBe(true);
+    expect(excludedByVSCode(path.join(dir, "package.json"))).toBe(false);
   });
 
   it("keeps the NPM Scripts pane working (autoDetect on, explicit — heals older 'off' scaffolds)", () => {

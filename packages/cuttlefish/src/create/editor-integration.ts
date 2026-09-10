@@ -210,17 +210,24 @@ const BUNDLED_EXTENSION_GLOB = '**/.vscode/extensions/**';
 /**
  * Settings that keep the NPM Scripts pane working on the PROJECT's scripts
  * (build/upload/… — the project's primary commands) while hiding the
- * workspace-bundled editor extensions' manifests: their package.json files
- * are excluded from npm detection individually (so no second package shows
- * up) and the extensions folder is hidden from the Explorer and search — it
- * is internal scaffolding, not user code. `npm.autoDetect` is set to 'on'
- * EXPLICITLY: an earlier scaffold wrote 'off', which blanks the NPM Scripts
- * pane ("the setting npm.autoDetect is off") — and the explicit value also
- * heals settings.json files written by that older scaffold.
+ * workspace-bundled editor extensions' manifests: their containing folder is
+ * excluded from npm detection (so no second package shows up) and the
+ * extensions folder is hidden from the Explorer and search — it is internal
+ * scaffolding, not user code. `npm.autoDetect` is set to 'on' EXPLICITLY: an
+ * earlier scaffold wrote 'off', which blanks the NPM Scripts pane ("the
+ * setting npm.autoDetect is off") — and the explicit value also heals
+ * settings.json files written by that older scaffold.
+ *
+ * `npm.exclude` must be a FOLDER glob, no `/package.json` suffix: VS Code
+ * (extensions/npm/src/tasks.ts, isExcluded) minimatch's each discovered
+ * package.json's PARENT DIRECTORY against the pattern with { dot: true },
+ * so a pattern ending in a file name can never match. minimatch normalizes
+ * Windows separators in the tested path, so the single forward-slash glob
+ * covers both platforms.
  */
 const END_USER_NPM_SETTINGS: Record<string, unknown> = {
   'npm.autoDetect': 'on',
-  'npm.exclude': `${BUNDLED_EXTENSION_GLOB}/package.json`,
+  'npm.exclude': BUNDLED_EXTENSION_GLOB,
   'debug.javascript.codelens.npmScripts': 'never',
   'files.exclude': { '.vscode/extensions': true },
   'search.exclude': { '**/.vscode/extensions': true },

@@ -52,11 +52,12 @@ const ZephyrConfig = z.object({
 /**
  * Schema for the full TypecadConfig shape.
  *
- * `target` and `board` are required. Everything else is optional.
+ * Every field is optional — requiredness is contextual (board: for
+ * board-target projects, soc: + contract: for contract projects) and
+ * enforced downstream.
  */
 export const TypecadConfigSchema = z.object({
   entry: z.string().optional(),
-  target: z.string().min(1).optional(),
   board: z.string().optional(),
   soc: z.string().optional(),
   contract: z.string().optional(),
@@ -66,6 +67,11 @@ export const TypecadConfigSchema = z.object({
    *  viewports/lists stop failing on PSRAM targets). No effect on boards
    *  without PSRAM (the runtime falls back to SRAM then the band renderer). */
   psram: PsramType.optional(),
+  /** Explicit opt-out from the ESLint gate (the AOT pattern rules enforced
+   *  during transpile). `lint: false` also stops the build from regenerating
+   *  the .typecad-hal eslint boilerplate. Deleting the config files is NOT
+   *  an opt-out — the build regenerates them. */
+  lint: z.boolean().optional(),
   output: OutputConfig.optional(),
   frameworkData: z.record(z.string(), z.unknown()).optional(),
   include: z.array(z.string()).optional(),

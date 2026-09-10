@@ -18,7 +18,6 @@ import type { TypecadConfig } from '@typecad/cuttlefish/api';
 // attach via zephyr.runner (openocd + any ST-Link-class SWD probe here).
 const config: TypecadConfig = {
   entry: './src/main.ts',
-  target: 'stm32f411',
   soc: 'stm32f411xe',
   contract: './board.contract.json',
   framework: '@typecad/framework-zephyr',

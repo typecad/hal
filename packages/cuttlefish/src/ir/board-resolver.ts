@@ -22,16 +22,14 @@ import type { BoardConstants } from "../api/shared/index.js";
 export type { BoardConstants };
 
 /**
- * Returns a set of default board constants (standard Arduino Uno-like)
- * used as a fallback when no specific board manifest is loaded.
+ * Returns the stand-in constants used when no board manifest is loaded —
+ * an empty map. The project's generated `board.json` (the Zephyr board the
+ * catalog built) is the ONLY source of board constants; there are no
+ * compiled-in defaults. Code paths that read constants tolerate the empty
+ * map and surface pointing diagnostics for unresolvable lookups.
  */
 export function getDefaultBoardConstants(): BoardConstants {
-  const result: BoardConstants = new Map();
-  result.set("pins.analogOffset", 14);
-  result.set("peripherals.aliases.UART0", "UART0");
-  result.set("peripherals.aliases.I2C0", "I2C0");
-  result.set("peripherals.aliases.SPI0", "SPI0");
-  return result;
+  return new Map();
 }
 
 /**

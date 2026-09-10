@@ -11,7 +11,7 @@
 
 import { timeSleep, timeNow, timeNowUs, timeBusyWaitUs } from './emit.js';
 
-export class TimeClass {
+class TimeClass {
   static readonly __instance_name = 'Time';
 
   /** Yielding sleep in milliseconds (k_msleep). On the generated

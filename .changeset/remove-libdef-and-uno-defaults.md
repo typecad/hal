@@ -1,0 +1,5 @@
+---
+"@typecad/cuttlefish": patch
+---
+
+fix: remove the Arduino-era library-definition variant system and the Uno stand-in board constants. The `.libdef.json` project-local loader, the `LibraryDefinitionVariant` selection layer, and its `target`/`architecture`/`fqbnIncludes` conditions are gone — no `.libdef.json` existed anywhere, the loader tooling never authored them, and the FQBN/anatomy conditions could never match on a Zephyr-only workspace (`frameworkData.fqbn` is never set). Library packages (`typecad-hal.library.json` — flat module → shim-include/symbol mapping, e.g. zephyr-esp32s3-rgb) keep driving import resolution unchanged. `getDefaultBoardConstants` now returns an empty map: the project's generated `board.json` is the only source of board constants, and the compiled-in "Arduino Uno-like" defaults (`pins.analogOffset: 14`, identity `peripherals.aliases` for UART0/I2C0/SPI0) existed only for board-less programs that cannot build anyway. Real-board behavior is unchanged — the A0/D0 silkscreen-alias paths read the board manifest's own tables, and the no-board `?? 14` inline fallback supplies the same value the map used to.

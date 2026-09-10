@@ -11,6 +11,7 @@
 // test keeps the two in lockstep; change them together.
 // ----------------------------------------------------------------------------
 
+import chalk from 'chalk';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -210,16 +211,17 @@ export function assertZephyrSdkForCreate(): Extract<SdkCheck, { status: 'ok' }> 
   );
 }
 
-/** Multi-line summary of a successful check — the CLI's indented
- *  key/value list style (match the `board sync` block's format). */
+/** Multi-line summary of a successful check — the CLI's indented key/value
+ *  list style: labels gray, values white, padded to a shared value column
+ *  (the build banner's Board line matches it — keep the widths in step). */
 export function formatZephyrSdkFound(check: Extract<SdkCheck, { status: 'ok' }>): string[] {
   const lines = [
-    `  zephyr:       ${check.version} @ ${check.tree}`,
+    chalk.gray(`  zephyr:       `) + chalk.white(`${check.version} @ ${check.tree}`),
   ];
   lines.push(
     check.toolchainDir
-      ? `  toolchain:    SDK ${check.toolchainVersion ?? ''} @ ${check.toolchainDir}`
-      : `  toolchain:    not found (west builds still work; some runners may not)`,
+      ? chalk.gray(`  toolchain:    `) + chalk.white(`SDK ${check.toolchainVersion ?? ''} @ ${check.toolchainDir}`)
+      : chalk.gray(`  toolchain:    not found (west builds still work; some runners may not)`),
   );
   return lines;
 }

@@ -131,7 +131,6 @@ describe('typecad-hal library packages', () => {
       const resolved = resolveImport(
         { moduleSpecifier: FIXTURE_SPECIFIER, namedImports: ['rgbLed'] } as any,
         definitions,
-        'zephyr' as any,
       );
       expect(resolved.include).toBe('"__tc_fake_rgb.h"');
       expect(resolved.symbolMap['rgbLed']).toBe('rgbLed');

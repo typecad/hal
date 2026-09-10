@@ -34,7 +34,7 @@ export function routeHALOp(
   if (typeof op.operation === "string") {
     if (op.operation.startsWith("display.")) {
       const r = strategy.resolveDisplayOp?.(op as Extract<HALOpIR, { operation: `display.${string}` }>);
-      if (r) markHalOpResolved(op.operation);
+      if (r) markHalOpResolved(op);
       return r;
     }
     if (op.operation.startsWith("safety.")) {
@@ -42,12 +42,12 @@ export function routeHALOp(
       // Returns undefined if the package is not loaded (caller emits an
       // unhandled-op warning).
       const r = getSafetyHook()?.resolveSafetyOp?.(op);
-      if (r) markHalOpResolved(op.operation);
+      if (r) markHalOpResolved(op);
       return r;
     }
   }
 
   const resolved = strategy.resolveHALOperation?.(op);
-  if (resolved) markHalOpResolved(op.operation);
+  if (resolved) markHalOpResolved(op);
   return resolved;
 }

@@ -1656,10 +1656,13 @@ export class ZephyrStrategy implements PlatformStrategy {
   // ── Interrupt safety ─────────────────────────────────────────────────────
   // Zephyr ISRs run above thread context: anything that sleeps (k_msleep),
   // pends, or takes a driver lock is illegal there (asserted by the kernel in
-  // debug builds; corrupts scheduler state otherwise). The names below are the
-  // IR-level callees cuttlefish's interrupt-analysis pass matches (the same
-  // keys ArduinoStrategy uses; timing.delay/delay_microseconds hal-ops are
-  // mapped back to the bare names by the analyzer itself).
+  // debug builds; corrupts scheduler state otherwise). The keys below are
+  // matched by cuttlefish's interrupt-analysis pass in two shapes: bare/qualified
+  // callee names (call statements) and resolved hal-op payloads — the analyzer
+  // maps timing.delay/delay_microseconds/sleep/busy_wait_us ops back to the
+  // bare timing keys, and matches the op payload's port/bus field (UART0,
+  // I2C0, SPI0, …) against these keys directly. The same keys ArduinoStrategy
+  // uses.
   isrUnsafeOperations(): Map<string, { reason: string; severity: 'warning' | 'info' }> {
     return new Map<string, { reason: string; severity: 'warning' | 'info' }>([
       ['delay', {

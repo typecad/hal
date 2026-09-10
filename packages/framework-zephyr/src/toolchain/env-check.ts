@@ -23,7 +23,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { type WestInstall, discoverWest, resetWestDiscoveryCache } from './west-discover.js';
+import { type WestInstall, discoverWest } from './west-discover.js';
 import { westSpawn } from './west-spawn.js';
 import {
   detectZephyrVersion,
@@ -103,12 +103,6 @@ export type ZephyrEnvResult = ZephyrEnvOk | ZephyrEnvFailure;
 // ---- west probe (impure; isolated + cached + overridable) ------------------
 
 let cachedProbe: WestProbeData | undefined;
-
-/** Clear the west-probe cache (for tests). Also resets discovery cache. */
-export function resetWestProbeCacheForTest(): void {
-  cachedProbe = undefined;
-  resetWestDiscoveryCache();
-}
 
 /**
  * Gather west facts: discover a usable install, then run `west --version`

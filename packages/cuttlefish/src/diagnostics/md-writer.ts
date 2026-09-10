@@ -118,7 +118,7 @@ function buildExecutionFlowSection(flow: ExecutionFlow, callGraph: CallGraph): s
 
   if (flow.usesTimers) {
     lines.push("### Timer Usage");
-    lines.push("- ⏱ `millis()` / `micros()` timer is **active**");
+    lines.push("- ⏱ `Time.now()` / `Time.nowUs()` timer is **active**");
     lines.push("");
   }
 
@@ -151,7 +151,9 @@ function buildResourceAccessMatrixSection(
   lines.push(`| :--- | ${resourceList.map(() => ":---:").join(" | ")} |`);
 
   for (const entry of entries) {
-    // Find all APIs called by this entry (recursive)
+    // Find all APIs called by this entry (recursive). The program's
+    // top-level code is the graph's `__top_level__` node — `main` is the
+    // report's display name for it.
     const calledAPIs = new Set<string>();
     const visited = new Set<string>();
     const walk = (name: string) => {
@@ -165,7 +167,7 @@ function buildResourceAccessMatrixSection(
         }
       }
     };
-    walk(entry);
+    walk(entry === "main" ? "__top_level__" : entry);
 
     const row: string[] = [`\`${entry}()\``];
     for (const res of resourceList) {
@@ -180,6 +182,12 @@ function buildResourceAccessMatrixSection(
         // Check GPIO pins
         if (calledAPIs.has(res)) used = true;
       }
+      // The main row is the program's whole top-level execution: every
+      // resource the report lists was reached from it. Dependency names are
+      // rendered text tokens and never equal the table's display names, so
+      // the walk above can't decide this row — force it open. ISR/async rows
+      // keep the walk result.
+      if (entry === "main") used = true;
       row.push(used ? "✅" : "—");
     }
     lines.push(`| ${row.join(" | ")} |`);
@@ -196,7 +204,7 @@ function buildPinUsageSection(
   summary: { totalPins: number; usedPins: number; unusedPins: number },
 ): string {
   const lines: string[] = [];
-  lines.push("## Pin Configuration");
+  lines.push("## Peripheral Usage");
   lines.push("");
   lines.push("> **Tip:** Unused pins are available for connecting additional sensors, actuators, or peripherals.");
   lines.push("");

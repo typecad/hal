@@ -283,7 +283,7 @@ const uploadResult = uploadProgram(
     config.test.baudRate,
     config.test.timeout,
     readOpenDelay,
-    { resetAfterOpen: config.test.resetAfterOpen ?? config.target === 'esp32' },
+    { resetAfterOpen: config.test.resetAfterOpen },
   );
 
   if (serialResult.error && !serialResult.completed) {
@@ -432,7 +432,6 @@ function findTargetDirective(
 
 function targetListMatches(targets: string[], config: ResolvedConfig): boolean {
   const tokens = new Set<string>();
-  if (config.target) tokens.add(config.target.toLowerCase());
   if (config.buildTarget) {
     const buildTarget = config.buildTarget.toLowerCase();
     tokens.add(buildTarget);
@@ -452,7 +451,7 @@ function targetListMatches(targets: string[], config: ResolvedConfig): boolean {
 }
 
 function targetLabel(config: ResolvedConfig): string {
-  return config.buildTarget || config.target || config.board || 'unknown';
+  return config.buildTarget || config.board || 'unknown';
 }
 
 function matchesTestPattern(relativePath: string, pattern: string): boolean {

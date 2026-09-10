@@ -72,8 +72,10 @@ const OVERLAY_ENV = 'TYPECAD_HAL_BOARD_CATALOG';
  *  `timX_chY_pwm_out_pZ` PWM node, and the digitless `dac_outN_pZ` DAC node
  *  (source dac1).
  *  31: Atmel SAM PWM routes (pinconfig tc/tcc + wo<N> — the WO pinmux macro
- *  token synthesized from the position+peripheral+signal triple). */
-export const GENERATOR_REV = 31;
+ *  token synthesized from the position+peripheral+signal triple).
+ *  32: serial-bus pinctrl routes from the board's own bus overrides
+ *  (busPins → zephyr.<bus>.controllers.N.pinctrl/pads + pins.<bus> maps). */
+export const GENERATOR_REV = 32;
 
 // ── fs-only Zephyr tree discovery ──────────────────────────────────────────
 

@@ -164,9 +164,8 @@ const HELP = `
   Add a \`test\` section to your typecad-hal.config.ts:
 
     const config = {
-      board: 'xiao_ble/nrf52840',
+      board: 'blackpill_f411ce/stm32f411xe',
       test: {
-        buildTarget: 'blackpill/stm32f411ce',
         port: 'COM4',
         include: ['tests/**/*.test.ts'],
         baudRate: 115200,
