@@ -1008,8 +1008,14 @@ export function tryResolveSemanticCall(
       const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const address = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       const hz = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      const reg = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
-      const value = resolveNumericArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+      // reg/value may be runtime expressions (a variable, a ternary) — the
+      // Zephyr lowering interpolates them inside static_cast<uint8_t>(...),
+      // so the expression text is valid C++. Resolving them strictly as
+      // numbers made any non-literal argument (e.g. `cond ? 1 : 0`) return
+      // null here, silently dropping the whole i2c op — the call then fell
+      // back to raw, unlowered C++ and vanished from peripheral usage.
+      const reg = resolveNumericOrExpression(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericOrExpression(args, 4, instance, paramNames, callArgTexts, paramDefaults);
       if (bus === null || address === null || hz === null || reg === null || value === null) return null;
       return { operation: "i2c.reg_write", bus, address, hz, reg, value };
     }
@@ -1018,7 +1024,7 @@ export function tryResolveSemanticCall(
       const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const address = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       const hz = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      const reg = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const reg = resolveNumericOrExpression(args, 3, instance, paramNames, callArgTexts, paramDefaults);
       if (bus === null || address === null || hz === null || reg === null) return null;
       return { operation: "i2c.reg_read", bus, address, hz, reg };
     }
@@ -1027,9 +1033,9 @@ export function tryResolveSemanticCall(
       const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const address = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       const hz = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      const reg = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
-      const mask = resolveNumericArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
-      const value = resolveNumericArg(args, 5, instance, paramNames, callArgTexts, paramDefaults);
+      const reg = resolveNumericOrExpression(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const mask = resolveNumericOrExpression(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericOrExpression(args, 5, instance, paramNames, callArgTexts, paramDefaults);
       if (bus === null || address === null || hz === null || reg === null || mask === null || value === null) return null;
       return { operation: "i2c.reg_update", bus, address, hz, reg, mask, value };
     }

@@ -135,6 +135,10 @@ tmp-scaffold/
 # tracked (ignore rules don't untrack).
 .typecad-hal/
 
+# Build/lint gate cache written beside the project root (absolute rootDir +
+# timestamps + toolchain fingerprint) — machine-local, never tracked.
+.typecad-hal-cache.json
+
 # hal network-test rig: transpiled/built diagnostic output (regenerated per
 # run) + self-signed test certs — never tracked (the standalone hal repo
 # matches this)

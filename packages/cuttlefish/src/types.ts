@@ -276,6 +276,21 @@ export interface TestCommandOptions {
   forwarded: string[];
 }
 
+/** Parsed `typecad-hal query [subject]` options. */
+export interface QueryCommandOptions {
+  command: "query";
+  /** Inspection subject; empty prints the subject list. */
+  subject: string;
+  /** Entry file override; defaults to the config's entry field. */
+  entryFile?: string;
+  /** Board target override (pins / devicetree facts). */
+  board?: string;
+  /** Framework package override. */
+  framework?: string;
+  /** Machine-readable output. */
+  json?: boolean;
+}
+
 /** Parsed `typecad-hal library <subcommand>` options. */
 export interface LibraryCommandOptions {
   command: "library";

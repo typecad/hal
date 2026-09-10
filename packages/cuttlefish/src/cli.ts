@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { parseCommandLine, printHelp } from "./utils/cli.js";
 import type { GeneratedOutputs } from "./types.js";
 import type { CreateCommandOptions } from "./types.js";
+import type { QueryCommandOptions } from "./types.js";
 import type { CleanCommandOptions, DebugServerCommandOptions } from "./types.js";
 import { runClean } from "./clean.js";
 import { runLibraryCommand } from "./library/cli.js";
@@ -641,6 +642,15 @@ async function main(): Promise<void> {
       if (buildConfig.display) {
         (options as any).display = displayConfigForTranspile(buildConfig);
       }
+    }
+
+    // query — read-only inspection of the firmware design (agent-friendly,
+    // pcb-style subjects with --json). Runs before the !options.inputFile
+    // guard: it resolves its own entry from the config or a positional.
+    if (options.command === "query") {
+      const { runQuery } = await import("./query.js");
+      await runQuery(options as QueryCommandOptions);
+      return;
     }
 
     // gen-decls runs before the !options.inputFile guard below: in --all mode

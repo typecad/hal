@@ -308,7 +308,7 @@ function throwIfFatalDiagnostics(entries: LocatedDiagnostic[]): void {
  * doesn't export a FrameworkStrategy, allowing emitCpp to fall back to
  * target-based resolution via the platform registry.
  */
-function loadPlatformStrategy(
+export function loadPlatformStrategy(
   frameworkPackage: string | undefined,
   _boardTarget: string | undefined,
   fromDir: string,

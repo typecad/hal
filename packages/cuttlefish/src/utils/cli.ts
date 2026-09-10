@@ -1,5 +1,5 @@
 ﻿import path from "node:path";
-import { CommandLineOptions, CreateCommandOptions, LibraryCommandOptions, BoardCommandOptions, CleanCommandOptions, DebugServerCommandOptions, TestCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
+import { CommandLineOptions, CreateCommandOptions, LibraryCommandOptions, BoardCommandOptions, CleanCommandOptions, DebugServerCommandOptions, TestCommandOptions, QueryCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
 
 import chalk from "chalk";
 
@@ -30,6 +30,9 @@ export function printHelp(): void {
   console.log(`  typecad-hal <input.ts> [options]`);
   console.log(`  typecad-hal create [name] [options]`);
   console.log(`  typecad-hal build [options]`);
+  console.log(`  typecad-hal query [subject] [entry] [--json]     Inspect the firmware design: summary, pins,`);
+  console.log(`                          peripherals, tasks, memory, modules, diagnostics (read-only, no emit)`);
+  console.log(`                          [--board <id>] [--framework <pkg>] override the config's board/framework`);
   console.log(`  typecad-hal test [files...] [options]            Run hardware tests (flash tests/ + report over serial)`);
   console.log(`  typecad-hal preview [--config <path>] [--port <port>]`);
   console.log(`  typecad-hal gen-decls <input.cpp|--all <directory>>`);
@@ -400,7 +403,7 @@ function parsePipelineCommand(
   };
 }
 
-export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | LibraryCommandOptions | BoardCommandOptions | CleanCommandOptions | DebugServerCommandOptions | TestCommandOptions | "help" {
+export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | LibraryCommandOptions | BoardCommandOptions | CleanCommandOptions | DebugServerCommandOptions | TestCommandOptions | QueryCommandOptions | "help" {
   const firstArg = argv[2];
 
   if (!firstArg || firstArg === "--help" || firstArg === "-h") {
@@ -621,6 +624,67 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
       targets: flagValues.get("--targets"),
       dir: flagValues.get("--dir"),
       yes: yesFlag,
+      json: jsonFlag,
+    };
+  }
+
+  // query subcommand — read-only inspection of the firmware design.
+  // Positionals: [subject] [entry]; value flags accept both --flag value and
+  // --flag=value forms. Every --token is validated: an unknown flag, a
+  // valueless --board/--framework, or a non-boolean --json=... is an error,
+  // never a silent drop.
+  if (firstArg === "query") {
+    const valueFlags = new Set(["--board", "--framework"]);
+    const validFlags = "--json, --board <id>, --framework <pkg>";
+    const flagValues = new Map<string, string>();
+    const positionals: string[] = [];
+    let jsonFlag = false;
+    const applyFlag = (flag: string, value: string): void => {
+      if (flag === "--json") {
+        if (value === "true") jsonFlag = true;
+        else if (value === "false") jsonFlag = false;
+        else throw new Error(`Invalid --json value: ${value}. Use --json, --json=true, or --json=false.`);
+        return;
+      }
+      if (!valueFlags.has(flag)) {
+        throw new Error(`Unknown query flag: ${flag}. Valid flags: ${validFlags}.`);
+      }
+      if (value.length === 0) {
+        throw new Error(`Query flag ${flag} requires a value. Valid flags: ${validFlags}.`);
+      }
+      flagValues.set(flag, value);
+    };
+    for (let i = 3; i < argv.length; i++) {
+      const tok = argv[i];
+      if (tok.startsWith("--") && tok.includes("=")) {
+        const eq = tok.indexOf("=");
+        applyFlag(tok.slice(0, eq), tok.slice(eq + 1));
+        continue;
+      }
+      if (valueFlags.has(tok)) {
+        // A missing value — end of argv, or the next token looks like a flag
+        // rather than a board id — is an error, not a dropped board.
+        if (i + 1 >= argv.length || argv[i + 1].startsWith("-")) {
+          throw new Error(`Query flag ${tok} requires a value. Valid flags: ${validFlags}.`);
+        }
+        applyFlag(tok, argv[++i]);
+        continue;
+      }
+      if (tok === "--json") {
+        jsonFlag = true;
+        continue;
+      }
+      if (tok.startsWith("-")) {
+        throw new Error(`Unknown query flag: ${tok}. Valid flags: ${validFlags}.`);
+      }
+      positionals.push(tok);
+    }
+    return {
+      command: "query",
+      subject: positionals[0] ?? "",
+      entryFile: positionals[1],
+      board: flagValues.get("--board"),
+      framework: flagValues.get("--framework"),
       json: jsonFlag,
     };
   }
