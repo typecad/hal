@@ -1493,6 +1493,19 @@ export const Toolchain = {
       // Own process group on POSIX so `stop` can signal the whole tree.
       ...(process.platform !== 'win32' ? { detached: true } : {}),
     });
+    // @types/node 26 types ChildProcess's on/once through the internal
+    // InternalEventEmitter base. When `tsc -b` rechecks this package in the
+    // same solution pass that rebuilds its project references, that
+    // inheritance can fail to surface and the spawned child's type loses
+    // .on/.once (TS2339) — while stream types, which COPY the event
+    // signatures, keep working. Subscribe through a structural copy of the
+    // one signature this file needs: the copy-don't-inherit prescription
+    // @types/node itself applies to multi-level emitter classes. The `unknown`
+    // hop keeps the cast legal in both resolution states.
+    const childExit = child as unknown as {
+      on(event: 'exit', listener: (code: number | null) => void): unknown;
+      once(event: 'exit', listener: (code: number | null) => void): unknown;
+    };
     mkdirSync(join(projectRoot, '.typecad-hal'), { recursive: true });
     writeFileSync(pidFile, String(child.pid), 'utf-8');
     console.log(`[typecad-hal] starting west debugserver (gdb on localhost:${DEBUG_SERVER_PORT})`);
@@ -1531,7 +1544,7 @@ export const Toolchain = {
     };
     poll();
 
-    child.on('exit', (code) => {
+    childExit.on('exit', (code) => {
       try { rmSync(pidFile, { force: true }); } catch { /* already gone */ }
       // Exit before ready: surface as a task failure (the debugger never
       // connects and VS Code reports the background task's non-zero exit).
@@ -1539,7 +1552,7 @@ export const Toolchain = {
     });
     const forwardSignal = (): void => {
       stopDebugServer(pidFile);
-      child.once('exit', () => process.exit(0));
+      childExit.once('exit', () => process.exit(0));
       setTimeout(() => process.exit(0), 1500).unref();
     };
     process.on('SIGINT', forwardSignal);
