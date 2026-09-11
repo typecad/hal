@@ -26,22 +26,16 @@ export type Bit = 0 | 1;
  *  the bit width for documentation only; the value is the raw field contents. */
 export type Bits<N extends number = number> = number;
 
-/** Class decorator marking a struct as a memory-mapped register at `address`.
- *  Erased at transpile time — the class becomes a `volatile uint32_t*`.
- *
- *  These carry real (inert) runtime bodies rather than `declare`, so the
- *  `export { register, bits }` re-export in index.ts resolves under Node's ESM
- *  loader, which validates that re-exported bindings exist at runtime. They are
- *  never invoked: the typecad-hal transpiler detects them by name and lowers the
- *  decorated struct away, so these stubs are only reached when the decorator
- *  source is imported without transpilation (e.g. host-side tests). */
+/** Class decorator: treat the class as a memory-mapped 32-bit register at
+ *  `address`. Fields marked with `@bits` read and write their bit ranges
+ *  of that register directly — see the example above. */
 export function register(_address: number): ClassDecorator {
   return () => {};
 }
 
-/** Property decorator carrying the bit range [lo, hi] (inclusive) of a field
- *  within its register. Erased at transpile time. See `register` for why these
- *  have runtime bodies. */
+/** Property decorator: this field maps the bit range [lo, hi] (inclusive)
+ *  of its register. Reading returns the field's bits; writing replaces
+ *  them without touching the rest of the register. */
 export function bits(_hi: number, _lo: number): PropertyDecorator {
   return () => {};
 }

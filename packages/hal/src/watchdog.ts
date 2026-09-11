@@ -9,26 +9,33 @@
 
 import { wdtSetup, wdtFeed, wdtDisable } from './emit.js';
 
+/**
+ * The hardware watchdog: `const w = new Watchdog(10_000); w.enable();`
+ * resets the whole board if `feed()` isn't called within every
+ * `timeoutMs` window. Typical use: enable once in setup, then feed() from
+ * the main loop.
+ */
 export class Watchdog {
   private readonly _timeoutMs: number;
 
-  /** Construct with the timeout in milliseconds. */
+  /** Construct with the timeout window in milliseconds. */
   constructor(timeoutMs: number) {
     this._timeoutMs = timeoutMs;
   }
 
-  /** Arm the watchdog (wdt_install_timeout + wdt_setup). Full CPU reset on
-   *  expiry. Call feed() at least once per timeout window afterwards. */
+  /** Arm the watchdog. If `feed()` isn't called within the timeout
+   *  afterwards, the board resets. */
   enable(): void {
     wdtSetup(this._timeoutMs);
   }
 
-  /** Feed the watchdog (wdt_feed). */
+  /** Restart the watchdog's countdown — call at least once per timeout
+   *  window. */
   feed(): void {
     wdtFeed();
   }
 
-  /** Disable (wdt_disable). Not all drivers support runtime disable. */
+  /** Disarm the watchdog. Not supported on all boards. */
   disable(): void {
     wdtDisable();
   }

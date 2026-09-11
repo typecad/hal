@@ -35,10 +35,18 @@ export interface SensorOptions {
   spiHz?: number;
   /** SPI mode (CPOL/CPHA bits), 0-3. Default 0. */
   mode?: 0 | 1 | 2 | 3;
-  /** Alert GPIO, for parts whose binding declares alert-gpios. */
+  /** Alert pin, on parts that expose one. */
   alert?: number;
 }
 
+/**
+ * A sensor from the board-support catalog — one shape for every supported
+ * part: `const s = new Sensor(SENSOR.sensirion_sht3xd, I2C1.device(0x44))`.
+ * `fetch()` reads a fresh sample from the device; `get(CHAN.AMBIENT_TEMP)`
+ * returns one value from the last fetch. Constructing with a literal
+ * `SENSOR.x` token narrows `get()` to that part's channels, with editor
+ * completion.
+ */
 export class Sensor<P extends SensorPartId = SensorPartId> {
   private readonly _part: string;
   private readonly _bus: string = '';
@@ -48,31 +56,28 @@ export class Sensor<P extends SensorPartId = SensorPartId> {
   private readonly _mode: number = 0;
   private readonly _alert: number = -1;
 
-  /** Construct a sensor handle. `part` is a `SENSOR.<name>` token;
-   *  `dev` is the bus device (e.g. `I2C1.device(0x44)`) carrying the bus
-   *  and address. The transpiler resolves the bus instance and address from
-   *  `dev` — the class fields are the IR carrier, not runtime state.
-   *  The `P` parameter is editor-only: it narrows `get()` to this part's
-   *  channels (from the generated SensorChannelOf map); the transpiler
-   *  re-validates at build time with the driver's full channel list. */
+  /** Construct a sensor handle. `part` is a `SENSOR.<name>` token; `dev`
+   *  is the bus device (e.g. `I2C1.device(0x44)`) carrying bus and
+   *  address. The type parameter is editor-only — it narrows `get()` to
+   *  this part's channels; the build validates against the driver's full
+   *  channel list either way. */
   constructor(part: P, dev: SensorBusDevice<P>, opts?: SensorOptions) {
     this._part = part;
     void dev;
     void opts;
   }
 
-  /** Fetch a fresh sample (sensor_sample_fetch). Reads reflect the last
-   *  fetch — Zephyr's own fetch/get split, kept verbatim. */
+  /** Read a fresh sample from the sensor. `get()` returns values from the
+   *  last fetch. */
   fetch(): void {
     include('<zephyr/drivers/sensor.h>');
     sensorFetch(this._part, this._bus, this._port, this._kind, this._spiHz, this._mode, this._alert);
   }
 
-  /** Read one channel from the fetched sample (sensor_channel_get).
-   *  Returns the value as a double (val1 + val2/1e6). The parameter is
-   *  narrowed to this part's channels when constructed from a literal
-   *  SENSOR token — `sht3x.get(` completes AMBIENT_TEMP | HUMIDITY and
-   *  rejects the rest in the editor. */
+  /** Read one channel of the last fetched sample as a number, in the
+   *  part's natural unit (degrees C, %RH, Pa…). With a literal SENSOR
+   *  token, the parameter completes to this part's channels and rejects
+   *  the others in the editor. */
   get(chan: SensorChannelOf[P]): number {
     include('<zephyr/drivers/sensor.h>');
     return sensorGet(this._part, this._bus, this._port, this._kind, this._spiHz, this._mode, this._alert, chan);

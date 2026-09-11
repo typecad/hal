@@ -16,6 +16,12 @@
 import { adcReadRaw, adcReadMv } from './emit.js';
 import type { Pin } from './gpio.js';
 
+/**
+ * An analog input channel: `new ADC(A1)`. `read()` returns raw converter
+ * counts at the chip's resolution; `readMillivolts()` returns the input
+ * voltage in millivolts. Gain and reference are chosen at construction and
+ * default to the pair the chip supports.
+ */
 export class ADC {
   // ── Gain tokens (enum adc_gain, verbatim — generated set, see the
   //    token-sync test) ───────────────────────────────────────────────────
@@ -60,9 +66,11 @@ export class ADC {
   private readonly _device: string;
   private readonly _pinctrl: string;
 
-  /** Construct an analog input channel. Omitted gain/reference fall back to
-   *  the chip descriptor's pair (the values the platform's driver validates
-   *  against, e.g. STM32's ADC_GAIN_1 + ADC_REF_INTERNAL). */
+  /** Construct an analog input. `gain` scales the input before conversion
+   *  (one of the ADC.GAIN_* values); `reference` selects what the
+   *  conversion is measured against (one of the ADC.REF_* values). Both
+   *  default to the pair the chip supports. `channel`/`device`/`pinctrl`
+   *  are manual routing overrides for pins the board data doesn't cover. */
   constructor(
     pin: number | Pin,
     opts?: { gain?: number; reference?: number; channel?: number; device?: string; pinctrl?: string },
@@ -75,14 +83,14 @@ export class ADC {
     this._pinctrl = opts?.pinctrl ?? '';
   }
 
-  /** Read raw counts at the chip's resolution (adc_channel_setup on first
-   *  use with the construction gain/reference, then adc_read). */
+  /** Read raw counts at the chip's resolution — e.g. 0–4095 on a 12-bit
+   *  converter. */
   read(): number {
     return adcReadRaw(this._pin, this._gain, this._reference, this._channel, this._device, this._pinctrl);
   }
 
-  /** Read millivolts (adc_raw_to_millivolts against the descriptor's
-   *  vref). Returns mV. */
+  /** Read the input voltage in millivolts, accounting for this channel's
+   *  gain and reference. */
   readMillivolts(): number {
     return adcReadMv(this._pin, this._gain, this._reference, this._channel, this._device, this._pinctrl);
   }

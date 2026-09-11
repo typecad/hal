@@ -32,6 +32,13 @@ export interface MqttOpts {
   caCert?: string;
 }
 
+/**
+ * An MQTT pub/sub client: `const m = new Mqtt('mqtt://broker.local', {
+ * clientId: 'dev1' }); m.onMessage((topic, payload) => ...); m.connect();`.
+ * connect() starts the session — poll linked() until it reports up.
+ * subscribe() adds a topic filter, publish() sends a message. For TLS
+ * brokers use `mqtts://` and pin the broker's CA with `opts.caCert`.
+ */
 export class Mqtt {
   private readonly _uri: string;
   private readonly _clientId: string;
@@ -46,9 +53,9 @@ export class Mqtt {
     this._caCert = opts.caCert ?? '';
   }
 
-  /** Connect to the broker. Requires a network connection (WiFi) first.
-   *  The Zephyr client completes the session in its poll thread — poll
-   *  linked() afterwards. */
+  /** Connect to the broker. Requires a network connection first (e.g.
+   *  `WiFi.join()`). The session completes in the background — poll
+   *  linked() until it reports true. */
   connect(): void {
     mqttSetCaCert(this._caCert);
     mqttConnect(this._uri, this._clientId);

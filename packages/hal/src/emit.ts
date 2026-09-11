@@ -274,7 +274,7 @@ export function bleClientCount(): number { return 0; }
 export function rawCpp(code: string): void {}
 
 /**
- * Emit raw C++ in expression context. Use when an IDF macro or constructor
+ * Emit raw C++ in expression context. Use when a C++ macro or constructor
  * must produce a value (e.g. `WIFI_INIT_CONFIG_DEFAULT()` expands to a struct
  * initializer; there's no TS-side way to construct it). The type parameter
  * is purely a TS hint — the transpiler doesn't check it; it just emits the

@@ -16,6 +16,13 @@ import {
   fsReadText, fsWriteText, fsExists, fsRemove,
 } from './emit.js';
 
+/**
+ * A text file in the board's persistent storage: `new File('/settings.json')`.
+ * `read()` returns the contents ("" when the file is missing);
+ * `write()` replaces them. Files persist across re-flashing the
+ * application — they live in the board's storage partition, not the app
+ * image.
+ */
 export class File {
   private readonly _path: string;
 
@@ -23,14 +30,15 @@ export class File {
     this._path = path;
   }
 
-  /** Read the file as UTF-8 text. "" when missing/unreadable; the buffer is
-   *  shim-owned until the next read. */
+  /** Read the file as text. Returns "" when missing or unreadable. The
+   *  returned string is valid until the next read — copy it if you need
+   *  to keep it. */
   read(): string {
     return fsReadText(this._path);
   }
 
-  /** Overwrite the file with `content`. Silently no-ops when the file
-   *  cannot be opened for writing. */
+  /** Replace the file's contents with `content`. Silently does nothing
+   *  when the file cannot be written. */
   write(content: string): void {
     fsWriteText(this._path, content);
   }

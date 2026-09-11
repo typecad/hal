@@ -44,6 +44,20 @@ export interface Diagnostic {
   filePath?: string;
   /** Text of the source line for display context. */
   sourceLine?: string;
+  /**
+   * A mechanical textual fix for this diagnostic, for editor quick-fixes.
+   * `swap` replaces an identifier at its pin-argument sites (pin capability:
+   * the first pin on this board that supports the operation). `edits` are
+   * precise substitutions at 1-based positions, applied only where the
+   * document still matches `fromText` (ownership: let→const promotion,
+   * borrow-by-reference annotation). `title` names the lightbulb entry;
+   * clients derive one from `swap` when absent.
+   */
+  fix?: {
+    title?: string;
+    swap?: { from: string; to: string };
+    edits?: ReadonlyArray<{ line: number; column: number; fromText: string; toText: string }>;
+  };
 }
 
 /**

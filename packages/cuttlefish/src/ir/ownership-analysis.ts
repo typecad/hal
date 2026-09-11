@@ -383,10 +383,27 @@ function analyzeStatement(
               scope.move(initName);
               // ownership-owned-copy: moving a non-primitive is a C++ copy, not a true move
               if (!isPrimitiveCppType(stmt.cppType)) {
+                // The executable form of the hint: promote the storage
+                // keyword and annotate the destination as Shared. The
+                // statement's span starts at the NAME, so the keyword sits
+                // `kw.length + 1` before it; every edit carries a fromText
+                // guard so a drifted document skips it instead of mangling.
+                // A `const` destination has no keyword to promote — only the
+                // annotation edit applies.
+                const kw = stmt.storage === 'var' ? 'var' : stmt.storage === 'const' ? undefined : 'let';
                 diagnostics.push({
                   severity: 'info',
                   message: `Moving '${initName}' into '${stmt.name}' creates a C++ copy.`,
                   hint: `const ${stmt.name}: Shared = ${initName};  // borrow by reference instead of copying`,
+                  fix: {
+                    title: `Borrow by reference: const ${stmt.name}: Shared = ${initName}`,
+                    edits: [
+                      ...(kw
+                        ? [{ line: span.startLine, column: span.startColumn - kw.length - 1, fromText: kw, toText: 'const' }]
+                        : []),
+                      { line: span.startLine, column: span.startColumn, fromText: `${stmt.name} `, toText: `${stmt.name}: Shared ` },
+                    ],
+                  },
                   line: span.startLine,
                   column: span.startColumn,
                   filePath: span.filePath,
@@ -1206,10 +1223,25 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
       // undefined behavior and disagree with the array-shaped definition.
       const bufferInit = entry.stmt.initializer;
       if (bufferInit?.kind === 'array' && /\*\s*$/.test(entry.stmt.cppType ?? '')) continue;
+      // Capture the SOURCE keyword before the storage promotion below —
+      // the emitted fix must edit what the document says, not the IR state.
+      const sourceKw = entry.stmt.storage === 'const' ? undefined
+        : entry.stmt.storage === 'var' ? 'var' : 'let';
       entry.stmt.storage = 'const';
       diagnostics.push({
         severity: 'info',
         message: `'${entry.name}' is never reassigned — emitted as \`const\` so the C++ compiler can place it in ROM and fold it.`,
+        ...(sourceKw ? {
+          fix: {
+            title: `Make '${entry.name}' const`,
+            edits: [{
+              line: entry.span.startLine,
+              column: entry.span.startColumn - sourceKw.length - 1,
+              fromText: sourceKw,
+              toText: 'const',
+            }],
+          },
+        } : {}),
         line: entry.span.startLine,
         column: entry.span.startColumn,
         filePath: entry.span.filePath,

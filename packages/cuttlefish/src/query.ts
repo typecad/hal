@@ -12,7 +12,7 @@ import { buildDiagnosticsReport } from "./diagnostics/diagnostics-report.js";
 import type { DiagnosticsReport } from "./diagnostics/json-schema.js";
 import { loadPlatformStrategy } from "./transpile.js";
 import { resetCuttlefishLibraries } from "./library-packages.js";
-import type { ClassIR, ProgramIR } from "./api/index.js";
+import type { ClassIR, Diagnostic, ProgramIR } from "./api/index.js";
 import type { PlatformStrategy } from "./api/shared/index.js";
 import type { QueryCommandOptions } from "./types.js";
 import * as ui from "./utils/ui.js";
@@ -57,6 +57,14 @@ export interface AnalyzeResult {
   program: ProgramIR;
   /** The aggregated diagnostics report every subject projects from. */
   report: DiagnosticsReport;
+  /**
+   * Diagnostics from EVERY file in the graph, not just the entry — each
+   * carrying the file it refers to (filePath defaults to the IR that produced
+   * it), deduped, sorted by file then position. Editor surfaces (the
+   * ./language-server subpath) map these straight onto squiggles; the CLI's
+   * `diagnostics` subject keeps printing the entry's program.diagnostics.
+   */
+  allDiagnostics: Diagnostic[];
 }
 
 export async function analyzeProject(opts: AnalyzeOptions): Promise<AnalyzeResult> {
@@ -152,7 +160,30 @@ export async function analyzeProject(opts: AnalyzeOptions): Promise<AnalyzeResul
     boardConstants,
   });
 
-  return { entryFile, files, program: entryIR, report };
+  // Cross-file diagnostics: same Diagnostic objects the per-file IRs carry,
+  // with filePath defaulted to the file whose IR produced them (positional
+  // diagnostics already name their own file via sourceSpan).
+  const seen = new Set<string>();
+  const allDiagnostics: Diagnostic[] = [];
+  for (const { filePath, programIR } of rawIRs) {
+    for (const d of programIR.diagnostics ?? []) {
+      const withFile: Diagnostic = { ...d, filePath: d.filePath ?? filePath };
+      const key = `${withFile.severity}|${withFile.code ?? ""}|${withFile.filePath}|${withFile.line ?? ""}|${withFile.column ?? ""}|${withFile.message}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      allDiagnostics.push(withFile);
+    }
+  }
+  const severityRank: Record<string, number> = { error: 0, warning: 1, info: 2 };
+  allDiagnostics.sort(
+    (a, b) =>
+      (a.filePath ?? "").localeCompare(b.filePath ?? "")
+      || (a.line ?? 0) - (b.line ?? 0)
+      || (a.column ?? 0) - (b.column ?? 0)
+      || (severityRank[a.severity] ?? 3) - (severityRank[b.severity] ?? 3),
+  );
+
+  return { entryFile, files, program: entryIR, report, allDiagnostics };
 }
 
 // ─── Command entry ──────────────────────────────────────────────────────────

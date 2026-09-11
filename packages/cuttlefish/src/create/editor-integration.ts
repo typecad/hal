@@ -11,6 +11,9 @@
 //                    ```ui fence highlighting (grammar-only, no code).
 //   typecad-debug  — the built TypeCAD Debug extension (breakpoint syncing +
 //                    F5 commands), so debugging works with zero install.
+//   typecad-intel  — the built TypeCAD Intel extension (board-aware
+//                    diagnostics from the project's own engine), so the
+//                    Problems panel is live without running the watch task.
 //
 // VS Code (1.89+, trusted workspaces) detects workspace-bundled extensions and
 // installs them scoped to that workspace. The companion .vscode/extensions.json
@@ -36,11 +39,13 @@ import { fileURLToPath } from 'node:url';
 /** VS Code extension identifiers (publisher.name) of the bundled extensions. */
 export const TYPECAD_UI_EXTENSION_ID = 'typecad.typecad-ui';
 export const TYPECAD_DEBUG_EXTENSION_ID = 'typecad.vscode-typecad-debug';
+export const TYPECAD_INTEL_EXTENSION_ID = 'typecad.vscode-typecad-intel';
 
 /** Extensions to bundle, as { asset folder name → extension id } pairs. */
 const BUNDLED_EXTENSIONS: ReadonlyArray<{ dir: string; id: string }> = [
   { dir: 'typecad-ui', id: TYPECAD_UI_EXTENSION_ID },
   { dir: 'typecad-debug', id: TYPECAD_DEBUG_EXTENSION_ID },
+  { dir: 'typecad-intel', id: TYPECAD_INTEL_EXTENSION_ID },
 ];
 
 const ASSETS_ROOT = path.resolve(

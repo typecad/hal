@@ -13,6 +13,13 @@
 import { pwmSetPulse, pwmSetDuty, pwmSetPeriod } from './emit.js';
 import type { Pin } from './gpio.js';
 
+/**
+ * A PWM output channel: `new PWM(PA5, { periodNs: 20_000_000 })`. The
+ * period belongs to the channel and is set at construction;
+ * `setPulse(pulseNs)` sets the pulse width in nanoseconds and
+ * `setDuty(0.0–1.0)` sets it as a fraction of the period. All values are
+ * nanoseconds — 50 Hz servo = 20_000_000, 1 kHz LED dimming = 1_000_000.
+ */
 export class PWM {
   private readonly _pin: number;
   private readonly _periodNs: number;
@@ -22,9 +29,9 @@ export class PWM {
   private readonly _channel: number;
 
   /** Construct a PWM channel. `periodNs` is required — the channel's period
-   *  in nanoseconds (50 Hz servo = 20_000_000; 1 kHz LED dimming = 1_000_000).
-   *  `controller`/`channel` override the routing when the board's facts do
-   *  not map this pin. */
+   *  in nanoseconds (50 Hz servo = 20_000_000; 1 kHz LED dimming =
+   *  1_000_000). `controller`/`channel` are manual routing overrides for
+   *  pins the board data doesn't cover. */
   constructor(
     pin: number | Pin,
     opts: { periodNs: number; controller?: string; channel?: number },
@@ -35,19 +42,20 @@ export class PWM {
     this._channel = opts?.channel ?? -1;
   }
 
-  /** Set the pulse width in nanoseconds (pwm_set_pulse_dt). */
+  /** Set the pulse width in nanoseconds — the active time within each
+   *  period. */
   setPulse(pulseNs: number): void {
     pwmSetPulse(this._pin, this._periodNs, pulseNs, this._controller, this._channel);
   }
 
-  /** Set the duty cycle as a fraction 0.0–1.0. Sugar: lowers to one
-   *  pwm_set_pulse_dt with pulse = duty × the constructed period. */
+  /** Set the duty cycle as a fraction of the period: 0.0 = always off,
+   *  1.0 = always on. */
   setDuty(duty: number): void {
     pwmSetDuty(this._pin, this._periodNs, duty, this._controller, this._channel);
   }
 
-  /** Change the period at runtime (pwm_set_dt). Zephyr 4.4 has no period-only
-   *  setter, so the pulse resets to idle — follow with setPulse/setDuty. */
+  /** Change the period at runtime. The output goes idle until the next
+   *  setPulse/setDuty call — follow this with one of them. */
   setPeriod(periodNs: number): void {
     pwmSetPeriod(this._pin, periodNs, this._controller, this._channel);
   }

@@ -28,21 +28,29 @@ import {
 } from './emit.js';
 import type { SerialValue } from './types.js';
 
+/**
+ * A serial console over the board's USB connector. Board modules export
+ * the pre-wired instance as `USB0`. Output written before the host opens
+ * the port is lost — gate on `linked()` or `waitLinked()` when early
+ * output matters. There is no baud rate to set; the host's terminal
+ * settings don't affect it.
+ */
 export class USBConsole {
   private readonly _port: string;
 
-  /** Construct the console for a CDC instance ('USB0' = instance 0). */
+  /** Construct the console ('USB0' = the board's USB port — prefer the
+   *  board module's pre-wired `USB0`). */
   constructor(port: string = 'USB0') {
     this._port = port;
   }
 
-  /** Start the USB device stack and bring the CDC port up. Idempotent. */
+  /** Bring the console up. Idempotent — safe to call from setup. */
   open(): void {
     usbBegin(this._port);
   }
 
-  /** Stop using the port. Observable no-op on Zephyr — the device stack is
-   *  shared by every CDC instance and is not torn down per-port. */
+  /** Stop using the port. In practice a no-op — the USB stack keeps
+   *  running for the rest of the firmware. */
   close(): void {
     usbEnd(this._port);
   }
@@ -58,14 +66,14 @@ export class USBConsole {
     usbPrintln(this._port, value);
   }
 
-  /** True when the host has the port open (DTR asserted). Output written
-   *  before this is true is silently dropped by most hosts. */
+  /** True when the host has the port open. Output written before this is
+   *  true is silently dropped by most hosts. */
   linked(): boolean {
     return usbConnected(this._port);
   }
 
-  /** Block until the host opens the port, polling in the shim (no user-code
-   *  busy loop). `timeoutMs` 0 = wait forever. Returns true once linked. */
+  /** Block until the host opens the port or `timeoutMs` elapses (0 =
+   *  wait forever). Returns true once linked. */
   waitLinked(timeoutMs: number = 0): boolean {
     return usbWaitReady(this._port, timeoutMs);
   }
@@ -75,7 +83,7 @@ export class USBConsole {
     return usbRead(this._port);
   }
 
-  /** Bytes ready to read (the CDC poll path reports 0/1 — see the lowering). */
+  /** Bytes ready to read — reports 0 or 1. */
   available(): number {
     return usbAvailable(this._port);
   }

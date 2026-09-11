@@ -13,6 +13,12 @@
 
 import { I2CTarget } from './i2c-target.js';
 
+/**
+ * An I2C bus. Board modules export one instance per wired bus (`I2C0`,
+ * `I2C1`…). Get a device with `I2C0.device(0x44)` and call its register
+ * verbs directly, or hand it to a Sensor: `new Sensor(SENSOR.x,
+ * I2C0.device(0x44))`.
+ */
 export class I2CBus {
   private _bus: string;
 
@@ -20,9 +26,9 @@ export class I2CBus {
     this._bus = bus;
   }
 
-  /** The functional device target at `address` on this controller —
-   *  register verbs callable directly, and the fact-carrier `new Sensor(...)`
-   *  accepts. Equivalent to `new I2CTarget(this, address)`. */
+  /** The device at 7-bit `address` on this bus — e.g.
+   *  `I2C0.device(0x44).writeReg(0x30, 1)`. Also the form `new Sensor(...)`
+   *  accepts. */
   device(address: number): I2CTarget {
     return new I2CTarget(this._bus, address);
   }

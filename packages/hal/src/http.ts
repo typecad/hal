@@ -54,7 +54,16 @@ export interface RequestOpts {
   caCert?: string;
 }
 
+/**
+ * An HTTP/HTTPS client. Build the request, then send and read:
+ * `const req = new Request(Request.POST, url, { json: true, body: '{"v":1}' });
+ * req.header('X-Custom', 'v'); if (req.send()) console.log(req.text());`.
+ * `send()` blocks until the response arrives or the timeout passes. For
+ * HTTPS, `caCert` pins a trusted CA for verified TLS and `insecure: true`
+ * skips certificate verification (development only).
+ */
 export class Request {
+  /** HTTP method tokens — the first constructor argument. */
   static readonly GET = 'GET';
   static readonly POST = 'POST';
   static readonly PUT = 'PUT';
@@ -88,11 +97,9 @@ export class Request {
     return this;
   }
 
-  /** Send the request (blocking). The shim resets its slot and stages the
-   *  method/url first, then this request's facts lower in order — the
-   *  reset-before-setters protocol the shim is built around.
-   *  Awaitable inside async functions — the async machinery splits the
-   *  send into a background request + done-poll. */
+  /** Send the request and wait for the response (bounded by `timeoutMs`).
+   *  Read the response through status()/text()/responseHeader() afterwards.
+   *  Awaitable inside async functions. */
   send(): boolean {
     httpBegin(this._method, this._url);
     httpSetTimeout(this._timeoutMs);

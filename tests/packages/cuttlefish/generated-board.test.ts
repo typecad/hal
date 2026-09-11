@@ -80,6 +80,16 @@ describe('generated board module (board-target config)', () => {
     expect(ts).not.toContain('export const LED =');
     expect(ts).toContain('export const BUTTON');
 
+    // Editor annotations: harvested facts ride JSDoc on the pin exports so
+    // plain tsserver shows capabilities in hover/completions without any
+    // extension (route/matrix coverage lives in the framework's boardgen
+    // pin-docs unit test — the fixture catalog carries no silicon routes;
+    // the board-DTS button fact is what this record has). Every doc line
+    // immediately precedes a pin export; pins with no fact stay bare.
+    const annotated = ts.match(/\/\*\*[^\n]*\*\/\nexport const GPIO0 = Pin\.fromPort\('GPIO0'\);/) ?? [];
+    expect(annotated.length).toBe(1);
+    expect(ts).toMatch(/\/\*\* aliases: BUTTON \*\/\nexport const GPIO0 = Pin\.fromPort\('GPIO0'\);/);
+
     const manifest = JSON.parse(fs.readFileSync(boardJson, 'utf-8'));
     expect(manifest.soc).toBe('esp32s3');
     expect(manifest.constants['build.frameworks.zephyr']).toBe('esp32s3_devkitc/esp32s3/procpu');

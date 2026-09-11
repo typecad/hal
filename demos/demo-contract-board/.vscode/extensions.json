@@ -1,6 +1,7 @@
 {
   "forceInstall": [
     "typecad.typecad-ui",
-    "typecad.vscode-typecad-debug"
+    "typecad.vscode-typecad-debug",
+    "typecad.vscode-typecad-intel"
   ]
 }

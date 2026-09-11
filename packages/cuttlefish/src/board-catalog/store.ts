@@ -74,8 +74,12 @@ const OVERLAY_ENV = 'TYPECAD_HAL_BOARD_CATALOG';
  *  31: Atmel SAM PWM routes (pinconfig tc/tcc + wo<N> — the WO pinmux macro
  *  token synthesized from the position+peripheral+signal triple).
  *  32: serial-bus pinctrl routes from the board's own bus overrides
- *  (busPins → zephyr.<bus>.controllers.N.pinctrl/pads + pins.<bus> maps). */
-export const GENERATOR_REV = 32;
+ *  (busPins → zephyr.<bus>.controllers.N.pinctrl/pads + pins.<bus> maps).
+ *  33: per-pin JSDoc editor annotations on the board module's pin exports
+ *  (harvested routes/roles/aliases surfaced for tsserver hover) + JSDoc on
+ *  the bus/USB instance exports carrying their devicetree controller and
+ *  pinctrl pad routes. */
+export const GENERATOR_REV = 33;
 
 // ── fs-only Zephyr tree discovery ──────────────────────────────────────────
 

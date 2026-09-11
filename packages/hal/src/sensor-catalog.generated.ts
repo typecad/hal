@@ -254,11 +254,9 @@ export const SENSOR_PART_INFO: Readonly<Record<string, SensorPartInfo>> = {
 };
 
 /**
- * Sensor part tokens — every Zephyr sensor binding, named by its underscored
- * compatible ('sensirion,sht3xd' → `sensirion_sht3xd`). Pass to
- * `new Sensor(SENSOR.<part>, I2C1.device(0x44))`. The name is the Zephyr
- * compatible with , and - replaced by _, so any Zephyr binding or doc greps
- * straight into code.
+ * Sensor part tokens — one per supported sensor part, named vendor and part
+ * ('sensirion_sht3xd' for the Sensirion SHT3xD). Pass to
+ * `new Sensor(SENSOR.<part>, I2C1.device(0x44))`.
  */
 export const SENSOR = {
   /** | — spi. Channels: ROTATION, RPM */
@@ -693,17 +691,13 @@ export const SENSOR = {
   "we_wsen_tids_2521020222501": "we_wsen_tids_2521020222501",
 } as const;
 
-/** Sensor token value (an underscored Zephyr compatible). */
+/** Sensor part token value (e.g. 'sensirion_sht3xd'). */
 export type SensorToken = string;
 
 /**
- * Sensor channel names — Zephyr's `enum sensor_channel` minus the
- * SENSOR_CHAN_ prefix, verbatim, as a STRING ENUM: enum members are what
- * make TypeScript auto-qualify argument-position completion (typing AMB
- * inside sensor.get( offers CHAN first, isRecommended — verified against
- * the language service; plain const objects do not trigger this). The
- * member value equals its name, and the lowering maps it back to
- * SENSOR_CHAN_<name>.
+ * Sensor channel names ('AMBIENT_TEMP', 'HUMIDITY', …) — a string enum so
+ * the editor offers CHAN members directly while typing inside
+ * sensor.get(...). The member value equals its name.
  */
 export enum CHAN {
   ACCEL_X = "ACCEL_X",
@@ -786,7 +780,7 @@ export enum CHAN {
   MAX = "MAX",
 }
 
-/** Channel name (a SENSOR_CHAN_* suffix, see CHAN). */
+/** Channel name value (a CHAN member, see CHAN). */
 export type SensorChannelName = string;
 
 /**

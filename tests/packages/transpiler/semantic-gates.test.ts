@@ -902,6 +902,36 @@ describe("runSemanticGates — Phase 3 fact-completeness verifier", () => {
     expect(byCode.has("TS2CPP_UNCLASSIFIABLE_TYPE")).toBe(false);
   });
 
+  it("does NOT flag a bare Shared/Mutable borrow (unknown by design)", () => {
+    // `const ref: Shared = src` is the exact form the ownership diagnostics
+    // recommend. The alias is transparent (`type Shared<T = unknown> = T`), so
+    // the variable IS TS-unknown — but the lowering resolves the type through
+    // the borrow source, never from the annotation. Flagging it would warn
+    // about the engine's own suggested fix (same for parameter borrows). Bare
+    // `Owned` owns storage and still needs a concrete type — it stays flagged.
+    const borrowFile = `
+      type Shared<T = unknown> = T;
+      type Mutable<T = unknown> = T;
+      let src = new Uint8Array(8);
+      const ref: Shared = src;
+      function takes(m: Mutable): number { return 0; }
+      export { ref, takes };
+    `;
+    expect(runGates(borrowFile).byCode.has("TS2CPP_UNCLASSIFIABLE_TYPE")).toBe(false);
+  });
+
+  it("flags a bare Owned declaration (owned storage needs a concrete type)", () => {
+    // src is a known typed array; `owned` is unknown ONLY through the bare
+    // Owned annotation — the exemption must not cover it.
+    const ownedFile = `
+      type Owned<T = unknown> = T;
+      let src = new Uint8Array(8);
+      const owned: Owned = src;
+      export { owned };
+    `;
+    expect(runGates(ownedFile).byCode.has("TS2CPP_UNCLASSIFIABLE_TYPE")).toBe(true);
+  });
+
   it("flags a heterogeneous union (primitive | struct) as unclassifiable", () => {
     // A union whose constituents canonicalize to DIFFERENT categories does
     // not coalesce and remains a genuine hazard — the transpiler cannot pick

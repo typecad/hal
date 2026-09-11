@@ -54,6 +54,10 @@
       "types": "./dist/library-packages.d.ts",
       "default": "./dist/library-packages.js"
     },
+    "./language-server": {
+      "types": "./dist/language-server.d.ts",
+      "default": "./dist/language-server.js"
+    },
     "./compliance": {
       "types": "./dist/emit/compliance/index.d.ts",
       "default": "./dist/emit/compliance/index.js"

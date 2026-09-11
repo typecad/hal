@@ -38,6 +38,7 @@ describe("writeEditorIntegration hideNpm settings", () => {
       minimatch(path.dirname(path.resolve(packageJsonPath)), settings["npm.exclude"], { dot: true });
     expect(excludedByVSCode(path.join(dir, ".vscode", "extensions", "typecad-ui", "package.json"))).toBe(true);
     expect(excludedByVSCode(path.join(dir, ".vscode", "extensions", "vscode-typecad-debug", "package.json"))).toBe(true);
+    expect(excludedByVSCode(path.join(dir, ".vscode", "extensions", "typecad-intel", "package.json"))).toBe(true);
     expect(excludedByVSCode(path.join(dir, "package.json"))).toBe(false);
   });
 
@@ -71,7 +72,10 @@ describe("writeEditorIntegration hideNpm settings", () => {
     const dir = makeProject();
     const written = writeEditorIntegration(dir, undefined, true);
     expect(fs.existsSync(path.join(dir, ".vscode", "extensions", "typecad-ui", "package.json"))).toBe(true);
-    expect(JSON.parse(fs.readFileSync(path.join(dir, ".vscode", "extensions.json"), "utf-8")).forceInstall).toContain("typecad.typecad-ui");
+    const forceInstall = JSON.parse(fs.readFileSync(path.join(dir, ".vscode", "extensions.json"), "utf-8")).forceInstall;
+    expect(forceInstall).toContain("typecad.typecad-ui");
+    expect(forceInstall).toContain("typecad.vscode-typecad-debug");
+    expect(forceInstall).toContain("typecad.vscode-typecad-intel");
     expect(written.length).toBeGreaterThan(0);
   });
 });

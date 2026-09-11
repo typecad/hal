@@ -165,6 +165,9 @@ function checkCapability(
     code: 'pin-capability-mismatch',
     message: `${pinName} does not support ${capLabel} on this board.`,
     hint,
+    ...(validPins.length > 0
+      ? { fix: { swap: { from: pinName, to: validPins[0]! } } }
+      : {}),
     line: sourceLine,
     column: sourceCol,
     filePath,

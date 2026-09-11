@@ -7,11 +7,13 @@
 //
 //   1. compiles packages/vscode-typecad-debug and stages its build into
 //      typecad-hal assets (the runtime pieces only — no devDependencies)
+//   1b. compiles packages/vscode-typecad-intel (tracked source) and stages it
+//      the same way
 //   2. rebuilds @typecad/cuttlefish so dist matches src
 //   3. re-runs writeEditorIntegration on the repo root and every demo with a
 //      typecad-hal.config.ts (.vscode/extensions/, extensions.json, tasks.json)
 //
-// Run after changing the typecad-ui assets or the debug extension:
+// Run after changing the typecad-ui assets or either extension:
 //   npm run sync:typecad-ui
 // ---------------------------------------------------------------------------
 
@@ -46,6 +48,29 @@ if (fs.existsSync(path.join(DEBUG_SRC, 'package.json'))) {
   console.log(`staged typecad-debug -> ${path.relative(REPO, DEBUG_DEST)}`);
 } else {
   console.log('skip: packages/vscode-typecad-debug not present (untracked) — keeping staged assets as-is');
+}
+
+// 1b. Stage the intel extension (board-aware diagnostics). Its source is
+//     TRACKED (unlike the debug extension), but it is not an npm workspace —
+//     bootstrap its devDependencies on first use so a fresh clone can sync.
+const INTEL_SRC = path.join(REPO, 'packages/vscode-typecad-intel');
+const INTEL_DEST = path.join(REPO, 'packages/cuttlefish/assets/editor-extensions/typecad-intel');
+if (fs.existsSync(path.join(INTEL_SRC, 'package.json'))) {
+  if (!fs.existsSync(path.join(INTEL_SRC, 'node_modules', 'typescript'))) {
+    run('npm install --prefix packages/vscode-typecad-intel');
+  }
+  run('npm run compile --prefix packages/vscode-typecad-intel');
+  fs.rmSync(INTEL_DEST, { recursive: true, force: true });
+  fs.mkdirSync(INTEL_DEST, { recursive: true });
+  // The whole compiled out/ (extension.js + helpers like board-facts.js) —
+  // the vendored copy must be runnable standalone.
+  fs.cpSync(path.join(INTEL_SRC, 'out'), path.join(INTEL_DEST, 'out'), { recursive: true });
+  for (const file of ['package.json', 'README.md']) {
+    fs.copyFileSync(path.join(INTEL_SRC, file), path.join(INTEL_DEST, file));
+  }
+  console.log(`staged typecad-intel -> ${path.relative(REPO, INTEL_DEST)}`);
+} else {
+  console.log('skip: packages/vscode-typecad-intel not present — keeping staged assets as-is');
 }
 
 // 2. Rebuild cuttlefish so dist serves the current assets + integration code.

@@ -77,6 +77,50 @@ function isVoidOrNeverExpression(node: ts.Expression): boolean {
   );
 }
 
+/** The borrow annotations whose bare form is deliberately TS-`unknown`. */
+const BORROW_ANNOTATION_NAMES = new Set(["Shared", "Mutable"]);
+
+/**
+ * Whether `node` is an identifier declared with a BARE `Shared`/`Mutable`
+ * annotation (`const ref: Shared = src` — no type argument). The alias is
+ * transparent (`type Shared<T = unknown> = T`), so the variable's TS type is
+ * plain `unknown` with no alias trace; the detection must read the
+ * declaration's annotation node. Such borrows are unknown AT the TS level BY
+ * DESIGN: the C++ lowering resolves the type through the borrow source
+ * (ownership-analysis borrowSource), never from the annotation. Flagging them
+ * TS2CPP_UNCLASSIFIABLE_TYPE would warn about the exact form the ownership
+ * diagnostics recommend. Bare `Owned` stays flagged — owned storage needs a
+ * concrete type of its own.
+ */
+function isBareBorrowIdentifier(checker: ts.TypeChecker, node: ts.Node): boolean {
+  if (!ts.isIdentifier(node)) return false;
+  let symbol = checker.getSymbolAtLocation(node);
+  if (!symbol) return false;
+  // `export { ref }` resolves to the export ALIAS symbol — look through it
+  // to the variable it names.
+  if (symbol.flags & ts.SymbolFlags.Alias) {
+    symbol = checker.getAliasedSymbol(symbol);
+  }
+  if (!symbol?.declarations) return false;
+  for (const decl of symbol.declarations) {
+    const typeNode = (
+      ts.isVariableDeclaration(decl) || ts.isParameter(decl)
+    )
+      ? decl.type
+      : undefined;
+    if (
+      typeNode
+      && ts.isTypeReferenceNode(typeNode)
+      && !typeNode.typeArguments
+      && ts.isIdentifier(typeNode.typeName)
+      && BORROW_ANNOTATION_NAMES.has(typeNode.typeName.text)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Verify semantic-fact completeness across user files.
  *
@@ -134,7 +178,9 @@ export function verifyFacts(
               : {}),
           });
         }
-        if (category === "unknown") {
+        if (category === "unknown" && !isBareBorrowIdentifier(checker, node)) {
+          // Bare-borrow identifiers (see isBareBorrowIdentifier) are unknown by
+          // design — neither warn nor count them toward the blast radius.
           unknownTypeExpressions++;
           if (unknownSeverity !== "off") {
             diagnostics.push(

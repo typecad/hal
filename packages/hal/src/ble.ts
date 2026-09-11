@@ -120,7 +120,9 @@ export class BleChain {
 
 }
 
-/** A GATT peripheral. The advertised device name is the construction fact. */
+/** A GATT peripheral (server): advertise a name, declare services and
+ *  characteristics, and push updates to connected clients. Constructed
+ *  with the advertised device name. */
 export class BLE {
   private readonly _name: string;
 
@@ -128,7 +130,8 @@ export class BLE {
     this._name = name;
   }
 
-  /** Begin a service grouping; chain char() declarations off it. */
+  /** Begin a new service grouping; subsequent char() declarations attach
+   *  to it. */
   service(uuid: string): BleChain {
     bleAddService(uuid);
     return new BleChain();
@@ -141,41 +144,41 @@ export class BLE {
     return new BleChain();
   }
 
-  /** Register the declared GATT database, enable the stack, and start
-   *  advertising the construction name. */
+  /** Register the declared services, start the stack, and advertise the
+   *  construction name. */
   start(): void {
     bleServerBegin(this._name);
     bleAdvertiseStart();
   }
 
-  /** Stop advertising (the GATT database and any link stay up). */
+  /** Stop advertising (connected clients and declared services stay). */
   stop(): void {
     bleAdvertiseStop();
   }
 
-  /** True while a central is connected. */
+  /** True while a client is connected. */
   linked(): boolean {
     return bleIsConnected();
   }
 
-  /** Number of connected centrals (0 or 1 — the shim is single-connection). */
+  /** Number of connected clients (0 or 1 — one connection at a time). */
   clients(): number {
     return bleClientCount();
   }
 
-  /** Fires when a central connects. */
+  /** Fires when a client connects. */
   onConnect(handler: () => void): void {
     bleOnConnect(callback(handler));
   }
 
-  /** Fires when the central disconnects. */
+  /** Fires when the client disconnects. */
   onDrop(handler: () => void): void {
     bleOnDisconnect(callback(handler));
   }
 
-  /** Push a value to subscribed clients on a characteristic
-   *  (bt_gatt_notify). `index` is the characteristic's declaration order
-   *  (0-based — the first char() is 0). */
+  /** Push a value to clients subscribed to a characteristic. `index` is
+   *  the characteristic's declaration order (0-based — the first char()
+   *  is 0). */
   notify(index: number, value: number): void {
     bleNotify(index, value);
   }
