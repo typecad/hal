@@ -15,7 +15,5 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": [
-    "vscode-typecad-debug"
-  ]
+  "ignore": []
 }

@@ -11,8 +11,7 @@
 //   typecad-hal  — .ui syntax highlighting + snippets + file icons
 //                  (declarative contributes, zero runtime), board-aware
 //                  diagnostics/hovers/quick-fixes from the project's own
-//                  engine, and Serial.print breakpoint syncing for `--debug`
-//                  builds.
+//                  engine, and C++ → .d.ts declaration generation.
 //
 // VS Code (1.89+, trusted workspaces) detects workspace-bundled extensions and
 // installs them scoped to that workspace. The companion .vscode/extensions.json

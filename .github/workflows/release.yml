@@ -9,7 +9,11 @@
 #     the action publishes whatever versions are ahead of the registry.
 #
 # Pre-release mode (.changeset/pre.json) flows through untouched: version PRs
-# keep cutting alphas until `npx changeset pre exit` is run locally.
+# keep cutting alphas until `npx changeset pre exit` is run locally. Note the
+# changesets semantics: in pre mode, a package that has never had a normal
+# (non-prerelease) release publishes to `latest`, not the pre tag — so until
+# the first stable ships, plain `npm install @typecad/*` tracks the newest
+# alpha and the `alpha` dist-tag lags unless moved manually.
 name: Release
 
 on:

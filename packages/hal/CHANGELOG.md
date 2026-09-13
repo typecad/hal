@@ -1,5 +1,39 @@
 # @typecad/hal
 
+## 1.0.0-alpha.18
+
+### Minor Changes
+
+- 813db79: Remove the printf/Serial.print breakpoint debugging feature entirely. `--debug` is now the native source-level (GDB) flow only: it builds with debug-oriented flags and the VS Code F5 artifacts for boards whose probe facts carry a debug-capable method (openocd/jlink — 74% of the board catalog), and fails with an explicit `debug-unsupported-target` diagnostic on bootloader-only boards instead of silently building an un-debuggable binary.
+  
+  - The breakpoint instrumentation pipeline is gone: `.typecad-hal/breakpoints.json` (loader, preprocessor, per-type variable dumps, conditional breakpoints, logpoints, the `__tc_debug_wait_for_continue` halt shim and its ENTER/s serial protocol) no longer exists in the engine or the Zephyr framework, and `PlatformDebugStrategy.debugMode()` now answers `'gdb' | 'none'`.
+  - The VS Code extension loses the breakpoint-sync commands (`toggleBreakpoint`/`clearAllBreakpoints`/`debugWithBreakpoints`/`syncBreakpoints`, the F9 keybinding, and the editor context menu). C++ → `.d.ts` declaration generation stays (`typecad-debug.generateDeclaration` keeps its historical id), and F5/GDB debugging is unchanged (launch.json/tasks written by the engine).
+  - Print-state debugging via the serial console (`USB0.writeLine(...)` / `UART0.writeLine(...)` from the board module) works on every board and is the recommended replacement for quick value reporting.
+- d2db69e: Board-aware editor intelligence, bundled with every project as ONE extension:
+  
+  - **typeCAD/hal** — the three formerly separate VS Code extensions (the `.ui` grammar `typecad-ui`, `vscode-typecad-debug`, and `vscode-typecad-intel`) are merged into a single extension branded **typeCAD/hal** (`packages/vscode-typecad-hal`, id `typecad.vscode-typecad-hal`, vendored into `.vscode/extensions/` by `typecad-hal create`). Command ids keep their historical `typecad-debug.*`/`typecad-intel.*` prefixes, so muscle memory is unchanged (the breakpoint-sync commands and the F9 keybinding are gone with the printf-debug removal — see the paired changeset); the extension only acts in TypeCAD workspaces, and all build/flash/debug commands share one terminal. The intel surface resolves the project's own `@typecad/cuttlefish` copy and calls the new `./language-server` subpath (`analyzeForEditor`) — a no-emit pass of the same analysis `typecad-hal query` runs (pin capability errors, alias conflicts, peripheral ownership, try/catch on no-exception targets, …) — so editor diagnostics can never drift from build diagnostics. Everything degrades gracefully (missing engine/config → status hint); existing projects converge automatically (the writer prunes the superseded vendored folders).
+  - **Editor hover surface** — the hover provider resolves the user's own bindings (`const adc = new ADC(PA0)` reads "ADC — on PA0" with the pin's routes, pin aliases and board-bus devices likewise), gated HAL classes carry their wiring facts (Store/File → the storage region, Counter → the free hardware counters, Watchdog → its wiring fact), `SENSOR('…')` tokens resolve against the 215-part catalog (compatible, buses, channels), and pins the program claims show how they're used ("In this project: ANALOG (ADC 0)"). The status-bar tooltip carries the memory estimate and task counts.
+  - **Quick-fixes** — diagnostics can now carry an executable fix the editor surfaces on the lightbulb: pin-capability errors offer a pin swap at the construction site (the first pin on the board supporting the operation, pin-argument positions only), and ownership diagnostics offer token-precise rewrites ("Borrow by reference: const archived: Shared = packet" — storage keyword plus `: Shared` annotation; "Make 'x' const" promotion) with per-edit text verification so drifted documents skip rather than mangle.
+  - **Inline fact chips + device commands** — construction lines render an after-line chip naming the argument's resolved datasheet pin followed by its harvested facts (`new GPIO(LED, …)` shows `⌁ PC13`; `new ADC(PA0)` shows `⌁ PA0 · PWM pwm2 ch1 · ADC adc1 ch0 · aliases: BUTTON` — the alias echoing the written identifier is stripped), tracking unsaved edits; the entry file carries a `▶ Flash & Monitor` CodeLens and test files carry `⚡ Run on Hardware` (shared terminal; the serial port is picked from attached USB devices via a new `listPorts()` on the `./language-server` subpath, falling back to manual entry). The chosen port is cached for the session but re-validated against the attached ports on every use — a port that disappeared (board moved, new COM number) re-opens the picker instead of flashing a ghost — and **TypeCAD: Select Serial Port** forces a re-pick at any time.
+  - **Pin facts in the board module** — generated `.typecad-hal/board.ts` pin exports now carry their harvested facts as JSDoc (`/** PWM tim4 ch1 · aliases: D0 */`), and bus/USB instance exports carry their pinctrl pad routes (`/** Board-wired I2C bus 0 (SCL=PB8, SDA=PB9). */`) — the same facts the `--diagnostics` peripherals table resolves — so hover and completions are board-aware in plain TypeScript tooling too. Pins with no route stay bare (the module header documents the convention); `GENERATOR_REV` bumped so existing projects regenerate. Bare `Shared`/`Mutable` borrow annotations no longer trip the unknown-type warning — their C++ type comes from the borrow source, so applying the suggested borrow-by-reference fix leaves a clean build.
+  - **HAL API JSDoc** — every exported hal class now carries class-level JSDoc (drawn from the per-file design notes), so hovering `GPIO`, `PWM`, `ADC`, `Store`, `WiFi`, … shows the API contract in any editor.
+  - **Monitor waits out the post-flash re-enumeration** — `--monitor` (and the extension's Flash & Monitor) no longer races the board's post-flash reset: the chip reboots when upload finishes and the OS briefly tears down and re-creates the serial device, so miniterm's single open could land in that window and fail with `FileNotFoundError` even though the board never unplugged. The monitor now polls pyserial's `list_ports` (never opening the port — a DTR toggle can itself reset some boards) until the device reappears (up to 8 s, announced when waiting) before handing off to miniterm, and times out with a message that notes some boards come back under a different port name.
+
+### Patch Changes
+
+- 1dc8548: fix: remove the unused surface found by a dead-code sweep. `createBoardFromDefinition()` and `sim/board/from-definition.ts` are gone — exported from `@typecad/hal/sim` but never called by any demo, test, or engine path (its JSDoc example imported a board.json from a path that does not exist), and its removal drops hal's only `@typecad/cuttlefish/api/schema` type-import. `TimeClass` and `NumClass` are no longer exported from `@typecad/hal` — the `Time`/`Num` singletons were always the used API; the classes remain as their (unexported) implementations, which the engine's hal-parser still consumes since it registers every class declaration regardless of export. The never-imported sim types `PinChangeCallback`/`InterruptCallback` (also unused inside the sim — deleted) and `IInputModePin`/`IOutputModePin`/`InterruptEvent`/`PinStateChange`/`IByteReadResult`/`IWriteResult` (used only within their own modules as typing — kept, unexported) no longer widen the barrels.
+- Updated dependencies [1dc8548]
+- Updated dependencies [813db79]
+- Updated dependencies [1dc8548]
+- Updated dependencies [b964e6d]
+- Updated dependencies [813db79]
+- Updated dependencies [1dc8548]
+- Updated dependencies [1dc8548]
+- Updated dependencies [1dc8548]
+- Updated dependencies [1dc8548]
+- Updated dependencies [d2db69e]
+  - @typecad/cuttlefish@1.0.0-alpha.18
+
 ## 1.0.0-alpha.17
 
 ### Minor Changes
