@@ -1,0 +1,98 @@
+{
+  "name": "vscode-typecad-hal",
+  "displayName": "typeCAD/hal",
+  "description": "The typeCAD/hal VS Code extension — .ui syntax highlighting, board-aware diagnostics and hovers from the project's own engine, quick-fixes, and C++ declaration generation",
+  "version": "0.3.0",
+  "private": true,
+  "publisher": "typecad",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/justind000/typecode.git"
+  },
+  "engines": {
+    "vscode": "^1.89.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "activationEvents": [
+    "onLanguage:typescript",
+    "workspaceContains:**/typecad-hal.config.ts"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "typecad-ui",
+        "aliases": [
+          "TypeCAD UI",
+          "typecad-ui"
+        ],
+        "extensions": [
+          ".ui"
+        ],
+        "icon": {
+          "light": "./ui-language/file-icon-light.png",
+          "dark": "./ui-language/file-icon-dark.png"
+        },
+        "configuration": "./ui-language/language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "typecad-ui",
+        "scopeName": "source.typecad-ui",
+        "path": "./ui-language/syntaxes/typecad-ui.tmLanguage.json"
+      },
+      {
+        "scopeName": "markdown.typecad-ui.codeblock",
+        "path": "./ui-language/syntaxes/markdown-ui.json",
+        "injectTo": [
+          "text.html.markdown"
+        ]
+      }
+    ],
+    "snippets": [
+      {
+        "language": "typecad-ui",
+        "path": "./ui-language/snippets/typecad-ui.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "typecad-intel.reanalyze",
+        "title": "TypeCAD: Re-analyze Project"
+      },
+      {
+        "command": "typecad-intel.flashMonitor",
+        "title": "TypeCAD: Flash & Monitor"
+      },
+      {
+        "command": "typecad-intel.runTests",
+        "title": "TypeCAD: Run Tests on Hardware"
+      },
+      {
+        "command": "typecad-intel.selectPort",
+        "title": "TypeCAD: Select Serial Port"
+      },
+      {
+        "command": "typecad-debug.generateDeclaration",
+        "title": "TypeCAD: Generate Declaration from C++"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-yarn --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "@types/vscode": "^1.89.0",
+    "@vscode/vsce": "^3.2.0",
+    "typescript": "^5.7.3"
+  }
+}

@@ -116,6 +116,12 @@ export function collectInterruptPins(program: unknown): Set<number> {
     }
   };
   visit(program);
+  // Ops resolved to text while inlining one HAL call into another never become
+  // IR nodes — they ride on ProgramIR.resolvedHalOps (see strategy.ts's
+  // visitResolvedHalOps for the full story).
+  for (const op of (program as { resolvedHalOps?: unknown[] })?.resolvedHalOps ?? []) {
+    visit({ operation: op });
+  }
   return pins;
 }
 

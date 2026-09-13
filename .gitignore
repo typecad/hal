@@ -121,11 +121,6 @@ packages/hal/tests/network/secrets.ts
 .tmp-narrow/
 .doccheck/
 
-# VS Code debug extension — kept locally only for now (untracked per decision);
-# the vendored copy under packages/cuttlefish/assets/editor-extensions/typecad-debug/
-# remains tracked and is what scaffolds install.
-packages/vscode-typecad-debug/
-
 # Local scaffold scratch dirs (cuttlefish create test output)
 my-project/
 tmp-scaffold/

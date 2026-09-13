@@ -27,8 +27,6 @@ export {
   watchBuildTask,
   writeEditorIntegration,
   bundledExtensionSourceDir,
-  typecadUiExtensionSourceDir,
-  TYPECAD_UI_EXTENSION_ID,
-  TYPECAD_DEBUG_EXTENSION_ID,
+  TYPECAD_EXTENSION_ID,
   WATCH_TASK_LABEL,
 } from './editor-integration.js';

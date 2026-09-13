@@ -12,6 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import { transpile, expectCppContains } from '../../setup';
 import { ZephyrStrategy } from '../../../packages/framework-zephyr/src/strategy';
+import { generateBoard } from '../../../packages/framework-zephyr/src/boardgen';
 
 const _strategy = new ZephyrStrategy();
 const tr = (code: string) => transpile(code, { strategy: _strategy, target: 'zephyr' });
@@ -46,5 +47,42 @@ describe('string-variable interpolation into HAL calls (Zephyr)', () => {
     // The literal streams directly (no __cuttlefish_snprintf buffer for it).
     expect(result.cpp).not.toContain('__cuttlefish_snprintf');
     expect(result.cpp).toMatch(/__tc_dev_put\(__tc_uart0_dev[^;]*"plain"/);
+  });
+});
+
+// ── HAL call interpolated into another HAL call's template ───────────────────
+//
+// `led.get()` inside UART0.writeLine(`led: ${led.get()}`) is lowered to C++
+// text while BUILDING the IR (resolveHALExprToText) — it never becomes a
+// hal-op/hal-expr IR node. The dt-spec shim therefore cannot learn its pin
+// from the IR walk; without the raw-text scan sweeping the baked `string`
+// payloads, the led0 spec went undeclared and west failed with
+// "'__tc_dt_led0' was not declared in this scope" (zephyr-blackpill demo).
+
+describe('hal-call interpolation into a HAL template (Zephyr dt specs)', () => {
+  it('declares the __tc_dt_* spec a template-inlined gpio read references', () => {
+    const g = generateBoard('xiao_ble/nrf52840'); // led0 = P0.26
+    const result = transpile(
+      [
+        "import { GPIO, LED, UART0 } from '@typecad/hal';",
+        'const led = new GPIO(LED, GPIO.OUTPUT);',
+        'UART0.writeLine(`led: ${led.get()}`);',
+        '',
+      ].join('\n'),
+      {
+        strategy: _strategy,
+        boardConstants: new Map(Object.entries(JSON.parse(g.boardJson).constants)) as never,
+        boardTs: g.boardTs,
+        platformContext: { frameworkData: { buildTarget: 'xiao_ble/nrf52840' } } as never,
+      },
+    );
+    // The read lowers through the board's led0 dt spec…
+    expectCppContains(result, ['gpio_pin_get_dt(&__tc_dt_led0)']);
+    // …and the spec declaration is emitted for it — the spec name inside the
+    // baked __EMIT__ text is the only signal the shim has.
+    expect(result.cpp).toContain('#ifndef __TC_DT_LED0_SPEC');
+    expect(result.cpp).toContain(
+      'static const struct gpio_dt_spec __tc_dt_led0 = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);',
+    );
   });
 });

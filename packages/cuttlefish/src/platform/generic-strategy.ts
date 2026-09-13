@@ -6,7 +6,6 @@ import type { PlatformStrategy, AsyncRuntimeConfig } from "../api/shared/index.j
 import type { ExpressionIR, ProgramIR } from "../api/index.js";
 import type { BoardConstants } from "../api/shared/index.js";
 import type { Diagnostic, PlatformContext } from "../types.js";
-import { generateGenericInitCode, generateGenericBreakpointCode, generateGenericLogpointCode } from "./generic-debug-codegen.js";
 import type { RuntimePolyfillIR, StdLibSupport } from "../api/shared/index.js";
 import type { PlatformGraphicsStrategy, GraphicsCapacity, DisplayHALOp } from "../api/shared/index.js";
 import { DEFAULT_STDLIB_SUPPORT } from "../api/shared/index.js";
@@ -231,34 +230,12 @@ export class GenericStrategy implements PlatformStrategy {
   enumApiGuard(_enumName: string): { open: string; close: string } | undefined { return undefined; }
   getStdLibSupport(_architecture?: string): StdLibSupport { return DEFAULT_STDLIB_SUPPORT; }
 
-  // ── Debug code generation ─────────────────────────────────────────────────
+  // ── Debug capability ─────────────────────────────────────────────────────
 
-  debugMode(_target?: string): 'gdb' | 'printf' {
-    return 'printf';
-  }
-
-  generateDebugInitCode(): string[] {
-    return generateGenericInitCode();
-  }
-
-  generateDebugBreakpointCode(params: {
-    fileName: string; lineNum: number; originalLine: string;
-    variables: Array<{ name: string; isFunction?: boolean; cppType?: 'bool' | 'int' | 'long' | 'float' | 'string' | 'unknown' }>;
-    normalizedCondition?: string;
-    breakpointId?: number;
-  }): string[] {
-    return generateGenericBreakpointCode(
-      params.fileName, params.lineNum, params.originalLine,
-      params.variables, params.normalizedCondition, params.breakpointId,
-    );
-  }
-
-  generateDebugLogpointCode(params: {
-    fileName: string; lineNum: number;
-    parts: Array<{ type: 'text' | 'variable'; value: string }>;
-    variables: Array<{ name: string; isFunction?: boolean; cppType?: 'bool' | 'int' | 'long' | 'float' | 'string' | 'unknown' }>;
-  }): string[] {
-    return generateGenericLogpointCode(params.fileName, params.lineNum, params.parts, params.variables);
+  debugMode(_target?: string): 'gdb' | 'none' {
+    // Hosted/generic targets have no engine-wired gdb session — debug the
+    // transpiled C++ with the host toolchain directly instead.
+    return 'none';
   }
 
   // ── Graphics (fallback) ────────────────────────────────────────────────

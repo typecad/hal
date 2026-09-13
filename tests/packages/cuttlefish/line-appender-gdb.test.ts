@@ -1,6 +1,6 @@
 // Unit tests for appendSourceLine / appendHeaderLine linemarker emission in
 // gdb debug mode. Verifies markers emit only on source-span transitions and
-// only when ctx.debugMode === 'gdb'; printf mode emits none.
+// only when ctx.debugMode === 'gdb'; 'none' mode emits none.
 
 import { describe, it, expect } from 'vitest';
 import { appendSourceLine } from '../../../packages/cuttlefish/src/emit/emitters/line-appender';
@@ -9,7 +9,7 @@ import type { SourceSpan } from '../../../packages/cuttlefish/src/types';
 
 // Minimal EmitterContext stub — appendSourceLine only touches sourceLines,
 // sourceMapEntries, debugMode, and lastEmittedSource. We cast to satisfy TS.
-function makeCtx(debugMode: 'gdb' | 'printf'): EmitterContext {
+function makeCtx(debugMode: 'gdb' | 'none'): EmitterContext {
   return {
     sourceLines: [],
     sourceMapEntries: [],

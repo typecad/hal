@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseSource } from "../ast/parse.js";
 import { Diagnostic } from "../types.js";
+import type { HALOpIR } from "../api/shared/hal-op-ir.js";
 import { EnumIR, ClassIR, FunctionIR, ImportIR, InterfaceIR, NamespaceIR, ProgramIR, ReExportIR, RegisterClassIR, StatementIR, TypeAliasIR } from "../api/index.js";
 import { isStringEnum } from "../api/shared/index.js";
 import type { ParameterIR } from "../api/shared/ir-core.js";
@@ -181,6 +182,12 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
   resetBuildState();
   resetHALResolver();
   registerFieldMap.clear();
+
+  // Sink for HAL ops resolved to C++ text during this file's IR build (the
+  // template-inlining seams). Lifted onto ProgramIR.resolvedHalOps below so
+  // per-file scans see inlined ops; see CompilationContext.resolvedHalOpsSink.
+  const resolvedHalOps: HALOpIR[] = [];
+  getContext().resolvedHalOpsSink = resolvedHalOps;
 
   // Phase 0: Pre-scan for top-level classes and register them so type inference can resolve them.
   // Also register classes from other files in the transpile graph so that property accesses
@@ -912,6 +919,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
     registeredCallbacks: [...registeredCallbacks],
     isrHandlerFunctions: [...isrHandlerFunctions],
     restParamFunctions: new Map(restParamFunctions),
+    ...(resolvedHalOps.length > 0 ? { resolvedHalOps } : {}),
     ...(defaultExportName ? { defaultExportName } : {}),
   };
 

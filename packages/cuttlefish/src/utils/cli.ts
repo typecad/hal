@@ -158,11 +158,10 @@ export function printHelp(): void {
   console.log(`  --diagnostics           Generate diagnostics.md and diagnostics.json reports`);
   console.log(`                          Includes IR graph, heap analysis, and task analysis`);
   console.log();
-  console.log(`  --debug                 Inject Serial.println instrumentation at breakpoints.`);
-  console.log(`                          Reads .typecad-hal/breakpoints.json (written by the`);
-  console.log(`                          TypeCAD Debug VS Code extension). At each breakpoint the`);
-  console.log(`                          firmware prints the location, original line, and in-scope`);
-  console.log(`                          variables, then halts — press ENTER over serial to continue.`);
+  console.log(`  --debug                 Build for source-level debugging (F5/GDB): debug-oriented`);
+  console.log(`                          compile flags and the VS Code debug artifacts. Requires a`);
+  console.log(`                          board whose probe facts carry a debug-capable method`);
+  console.log(`                          (openocd/jlink) — bootloader-only boards error out.`);
   console.log();
   console.log(`  --help, -h              Show this help message`);
   console.log();

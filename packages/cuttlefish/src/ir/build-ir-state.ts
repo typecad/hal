@@ -138,6 +138,18 @@ export class CompilationContext {
    * helper return types. Cleared in resetBuildState.
    */
   activeFunctionReturnTypes = new Map<string, string>();
+
+  /**
+   * Sink for HAL ops resolved to C++ text while building THIS file's IR (the
+   * template-inlining seams — see markHalOpResolved). Assigned by
+   * buildProgramIR before any statement lowering and lifted onto
+   * ProgramIR.resolvedHalOps at the end of the build, so per-file scans
+   * (framework shims) see inlined ops without touching module-global state
+   * (which would split across src/dist module instances under test). Null
+   * outside a build (render-time resolutions are for ops that exist as IR
+   * nodes — they don't need the sink).
+   */
+  resolvedHalOpsSink: HALOpIR[] | null = null;
 }
 
 /**
@@ -397,6 +409,10 @@ export function resetBuildState(): void {
   restParamFunctions.clear();
   activeFunctionReturnTypes.clear();
   getContext()._currentBoardConstants = undefined;
+  // Detach the per-file resolved-op sink: ops resolved after this file's build
+  // finished (emit-time routing, whose ops exist as IR nodes anyway) must not
+  // append to the array already lifted onto the previous ProgramIR.
+  getContext().resolvedHalOpsSink = null;
 }
 
 // ── Transpile-resolved HAL ops ──────────────────────────────────────────────
@@ -415,6 +431,10 @@ export function resetBuildState(): void {
 const transpileResolvedHalOps: HALOpIR[] = [];
 export function markHalOpResolved(op: HALOpIR): void {
   transpileResolvedHalOps.push(op);
+  // Per-file sink: the op may never exist as an IR node of the file being
+  // built, so record it on that file's program-to-be (ProgramIR.resolvedHalOps)
+  // as well — see CompilationContext.resolvedHalOpsSink.
+  getContext().resolvedHalOpsSink?.push(op);
 }
 export function getTranspileResolvedOpNodes(): HALOpIR[] {
   return [...transpileResolvedHalOps];

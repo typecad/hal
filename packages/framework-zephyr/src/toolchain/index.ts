@@ -1364,6 +1364,14 @@ export const Toolchain = {
     // python we spawn resolves pyserial from the same venv). Falls back to the
     // process env when no install is discovered.
     const env = install ? buildEnv(install) : process.env;
+    // Post-flash re-enumeration: the chip resets when `--upload` finishes, the
+    // OS tears the serial device object down and re-creates it, and miniterm's
+    // single open can land inside that window (a FileNotFoundError even though
+    // the board never unplugged). Wait for the port to (re)appear first.
+    if (!waitForSerialPort(py, env, projectRootFromOptions(o), o.port)) {
+      process.exitCode = 1;
+      return;
+    }
     spawnSync(py, ['-m', 'serial.tools.miniterm', o.port, String(baud)], {
       cwd: projectRootFromOptions(o),
       env,
@@ -1638,4 +1646,58 @@ function stopDebugServer(pidFile: string): void {
   killPidTree(pid);
   try { rmSync(pidFile, { force: true }); } catch { /* already gone */ }
   console.log(`[typecad-hal] debug server stopped (pid ${pid})`);
+}
+
+// -- serial monitor: post-flash re-enumeration wait --------------------------
+
+/** How long `--monitor` waits for the port to (re)appear after a flash reset. */
+export const MONITOR_PORT_WAIT_MS = 8000;
+
+/**
+ * The pyserial port wait run before miniterm (argv built by
+ * serialPortWaitArgs). Polls list_ports — never OPENS the port, because
+ * toggling DTR on an open can itself reset some boards — until the device
+ * name matches case-insensitively or the timeout elapses. Exit codes:
+ * 0 port present, 1 timeout (message printed to stderr), 2 pyserial
+ * unavailable (the caller lets miniterm surface the real error instead of
+ * reporting a bogus timeout).
+ */
+const SERIAL_PORT_WAIT_PY = [
+  'import sys, time',
+  'try:',
+  '    from serial.tools import list_ports',
+  'except Exception:',
+  '    sys.exit(2)',
+  'port, timeout = sys.argv[1], float(sys.argv[2])',
+  'def present():',
+  '    return any(d.device.lower() == port.lower() for d in list_ports.comports())',
+  'if not present():',
+  "    print('waiting for %s to re-enumerate (the board resets after flashing)...' % port, flush=True)",
+  '    end = time.time() + timeout',
+  '    while not present():',
+  '        if time.time() >= end:',
+  "            print('%s did not come back within %ds - some boards re-enumerate under a different port name' % (port, int(timeout)), file=sys.stderr, flush=True)",
+  '            sys.exit(1)',
+  '        time.sleep(0.25)',
+].join('\n');
+
+/** argv for the pyserial port wait — exported for the toolchain unit tests. */
+export function serialPortWaitArgs(port: string, timeoutMs: number): string[] {
+  return ['-c', SERIAL_PORT_WAIT_PY, port, String(timeoutMs / 1000)];
+}
+
+/**
+ * Wait for `port` to be listed by the venv's pyserial before miniterm opens
+ * it once. True = proceed to miniterm (port present, or the wait itself was
+ * best-effort-skipped — a missing python/pyserial lets miniterm show the
+ * underlying failure); false = the port never came back (message printed).
+ */
+function waitForSerialPort(py: string, env: NodeJS.ProcessEnv, cwd: string, port: string): boolean {
+  const res = spawnSync(py, serialPortWaitArgs(port, MONITOR_PORT_WAIT_MS), {
+    cwd,
+    env,
+    stdio: 'inherit',
+  });
+  if (res.error || res.status === null || res.status === 2) return true;
+  return res.status === 0;
 }

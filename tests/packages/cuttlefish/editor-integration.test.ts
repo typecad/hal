@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe("writeEditorIntegration hideNpm settings", () => {
-  it("excludes only the bundled extensions' package.json from npm, not the root one", () => {
+  it("excludes only the bundled extension's package.json from npm, not the root one", () => {
     const dir = makeProject();
     writeEditorIntegration(dir, undefined, true);
     const settings = JSON.parse(fs.readFileSync(path.join(dir, ".vscode", "settings.json"), "utf-8"));
@@ -36,9 +36,7 @@ describe("writeEditorIntegration hideNpm settings", () => {
     // how the bundled extension manifests leaked into the NPM Scripts view.
     const excludedByVSCode = (packageJsonPath: string) =>
       minimatch(path.dirname(path.resolve(packageJsonPath)), settings["npm.exclude"], { dot: true });
-    expect(excludedByVSCode(path.join(dir, ".vscode", "extensions", "typecad-ui", "package.json"))).toBe(true);
-    expect(excludedByVSCode(path.join(dir, ".vscode", "extensions", "vscode-typecad-debug", "package.json"))).toBe(true);
-    expect(excludedByVSCode(path.join(dir, ".vscode", "extensions", "typecad-intel", "package.json"))).toBe(true);
+    expect(excludedByVSCode(path.join(dir, ".vscode", "extensions", "typecad-hal", "package.json"))).toBe(true);
     expect(excludedByVSCode(path.join(dir, "package.json"))).toBe(false);
   });
 
@@ -68,14 +66,36 @@ describe("writeEditorIntegration hideNpm settings", () => {
     expect(settings["cortex-debug.openocdConfigFiles"]).toEqual(["openocd.cfg"]);
   });
 
-  it("still writes the extensions and extensions.json", () => {
+  it("still writes the extension and extensions.json (single merged extension)", () => {
     const dir = makeProject();
     const written = writeEditorIntegration(dir, undefined, true);
-    expect(fs.existsSync(path.join(dir, ".vscode", "extensions", "typecad-ui", "package.json"))).toBe(true);
+    expect(fs.existsSync(path.join(dir, ".vscode", "extensions", "typecad-hal", "package.json"))).toBe(true);
     const forceInstall = JSON.parse(fs.readFileSync(path.join(dir, ".vscode", "extensions.json"), "utf-8")).forceInstall;
-    expect(forceInstall).toContain("typecad.typecad-ui");
-    expect(forceInstall).toContain("typecad.vscode-typecad-debug");
-    expect(forceInstall).toContain("typecad.vscode-typecad-intel");
+    expect(forceInstall).toEqual(["typecad.vscode-typecad-hal"]);
     expect(written.length).toBeGreaterThan(0);
+  });
+
+  it("prunes superseded pre-merge extension folders and their forceInstall ids", () => {
+    const dir = makeProject();
+    // Simulate a project vendored in the three-extension era: the old folders
+    // present and the old extensions.json listing all three ids.
+    const extRoot = path.join(dir, ".vscode", "extensions");
+    for (const old of ["typecad-ui", "typecad-debug", "typecad-intel"]) {
+      fs.mkdirSync(path.join(extRoot, old), { recursive: true });
+      fs.writeFileSync(path.join(extRoot, old, "package.json"), "{}");
+    }
+    fs.writeFileSync(
+      path.join(dir, ".vscode", "extensions.json"),
+      JSON.stringify({ forceInstall: ["typecad.typecad-ui", "typecad.vscode-typecad-debug", "typecad.vscode-typecad-intel"] }),
+    );
+
+    writeEditorIntegration(dir, undefined, true);
+
+    expect(fs.existsSync(path.join(extRoot, "typecad-hal"))).toBe(true);
+    for (const old of ["typecad-ui", "typecad-debug", "typecad-intel"]) {
+      expect(fs.existsSync(path.join(extRoot, old))).toBe(false);
+    }
+    const forceInstall = JSON.parse(fs.readFileSync(path.join(dir, ".vscode", "extensions.json"), "utf-8")).forceInstall;
+    expect(forceInstall).toEqual(["typecad.vscode-typecad-hal"]);
   });
 });

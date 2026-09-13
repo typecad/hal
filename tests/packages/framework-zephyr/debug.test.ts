@@ -36,14 +36,15 @@ describe('ZephyrStrategy.debugMode — facts-based target selection', () => {
     expect(strategy.debugMode('xiao_ble/nrf52840')).toBe('gdb');
   });
 
-  it('falls back to printf for boards without a debug-capable probe method', () => {
-    // Bootloader-only table (bossac) and no table at all — printf both ways.
-    expect(strategy.debugMode('arduino_nano_33_iot/samd21g18a')).toBe('printf');
-    expect(strategy.debugMode('mps2/an385')).toBe('printf');
-    expect(strategy.debugMode(undefined)).toBe('printf');
-    expect(strategy.debugMode('')).toBe('printf');
+  it('reports none for boards without a debug-capable probe method', () => {
+    // Bootloader-only table (bossac) and no table at all — 'none' both ways:
+    // --debug errors on these targets (no printf instrumentation anymore).
+    expect(strategy.debugMode('arduino_nano_33_iot/samd21g18a')).toBe('none');
+    expect(strategy.debugMode('mps2/an385')).toBe('none');
+    expect(strategy.debugMode(undefined)).toBe('none');
+    expect(strategy.debugMode('')).toBe('none');
     // Unresolvable targets never crash the gate.
-    expect(strategy.debugMode('no_such_board_xyz')).toBe('printf');
+    expect(strategy.debugMode('no_such_board_xyz')).toBe('none');
   });
 });
 
@@ -324,8 +325,8 @@ describe('writeProjectDebugArtifacts — create-time starter artifacts', () => {
     }
   });
 
-  it('no-ops for printf-facts boards and when no target is given', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-starterdbg-printf-'));
+  it('no-ops for probe-less boards and when no target is given', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-starterdbg-none-'));
     try {
       expect(writeProjectDebugArtifacts({ workspaceRoot: tmp, buildTarget: 'arduino_nano_33_iot/samd21g18a' })).toEqual([]);
       expect(writeProjectDebugArtifacts({ workspaceRoot: tmp })).toEqual([]);

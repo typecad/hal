@@ -1,19 +1,23 @@
 // ---------------------------------------------------------------------------
-// sync-typecad-ui.mjs — refresh every vendored copy of the editor extensions
+// sync-typecad-ui.mjs — refresh every vendored copy of the typeCAD/hal VS Code
+// extension
 //
-// The bundled VS Code extensions live in packages/cuttlefish/assets/
-// (source of truth, shipped with the npm package) and are vendored into
-// workspaces via writeEditorIntegration. This script keeps all copies pinned:
+// The bundled VS Code extension (the merge of the former typecad-ui grammar,
+// TypeCAD Debug, and TypeCAD Intel extensions) lives in
+// packages/vscode-typecad-hal (tracked source) and is staged into
+// packages/cuttlefish/assets/editor-extensions/typecad-hal (shipped with the
+// npm package), then vendored into workspaces via writeEditorIntegration.
+// This script keeps all copies pinned:
 //
-//   1. compiles packages/vscode-typecad-debug and stages its build into
-//      typecad-hal assets (the runtime pieces only — no devDependencies)
-//   1b. compiles packages/vscode-typecad-intel (tracked source) and stages it
-//      the same way
+//   1. compiles packages/vscode-typecad-hal and stages its build +
+//      ui-language assets into cuttlefish assets (the runtime pieces only —
+//      no devDependencies)
 //   2. rebuilds @typecad/cuttlefish so dist matches src
 //   3. re-runs writeEditorIntegration on the repo root and every demo with a
-//      typecad-hal.config.ts (.vscode/extensions/, extensions.json, tasks.json)
+//      typecad-hal.config.ts (.vscode/extensions/, extensions.json, tasks.json
+//      — pruning the superseded pre-merge extension folders)
 //
-// Run after changing the typecad-ui assets or either extension:
+// Run after changing the extension or the ui-language assets:
 //   npm run sync:typecad-ui
 // ---------------------------------------------------------------------------
 
@@ -29,48 +33,29 @@ const run = (cmd, cwd = REPO) => {
   execSync(cmd, { cwd, stdio: 'inherit' });
 };
 
-// 1. Stage the debug extension build into cuttlefish assets.
-//    packages/vscode-typecad-debug is untracked/gitignored — it exists only on
-//    machines that keep a checkout of it. Skip staging when absent; the vendored
-//    copy under cuttlefish assets remains whatever was last staged.
-const DEBUG_SRC = path.join(REPO, 'packages/vscode-typecad-debug');
-const DEBUG_DEST = path.join(REPO, 'packages/cuttlefish/assets/editor-extensions/typecad-debug');
-if (fs.existsSync(path.join(DEBUG_SRC, 'package.json'))) {
-  run('npm run compile --prefix packages/vscode-typecad-debug');
-  fs.rmSync(DEBUG_DEST, { recursive: true, force: true });
-  fs.mkdirSync(path.join(DEBUG_DEST, 'out'), { recursive: true });
-  for (const file of ['out/extension.js', 'out/extension.js.map']) {
-    fs.copyFileSync(path.join(DEBUG_SRC, file), path.join(DEBUG_DEST, file));
+// 1. Stage the extension build into cuttlefish assets. The source is TRACKED,
+//    but it is not an npm workspace — bootstrap its devDependencies on first
+//    use so a fresh clone can sync.
+const EXT_SRC = path.join(REPO, 'packages/vscode-typecad-hal');
+const EXT_DEST = path.join(REPO, 'packages/cuttlefish/assets/editor-extensions/typecad-hal');
+if (fs.existsSync(path.join(EXT_SRC, 'package.json'))) {
+  if (!fs.existsSync(path.join(EXT_SRC, 'node_modules', 'typescript'))) {
+    run('npm install --prefix packages/vscode-typecad-hal');
   }
+  run('npm run compile --prefix packages/vscode-typecad-hal');
+  fs.rmSync(EXT_DEST, { recursive: true, force: true });
+  fs.mkdirSync(EXT_DEST, { recursive: true });
+  // The whole compiled out/ (extension.js + modules like board-facts.js) and
+  // the declarative ui-language/ assets (grammars, snippets, icons) — the
+  // vendored copy must be runnable standalone.
+  fs.cpSync(path.join(EXT_SRC, 'out'), path.join(EXT_DEST, 'out'), { recursive: true });
+  fs.cpSync(path.join(EXT_SRC, 'ui-language'), path.join(EXT_DEST, 'ui-language'), { recursive: true });
   for (const file of ['package.json', 'README.md']) {
-    fs.copyFileSync(path.join(DEBUG_SRC, file), path.join(DEBUG_DEST, file));
+    fs.copyFileSync(path.join(EXT_SRC, file), path.join(EXT_DEST, file));
   }
-  console.log(`staged typecad-debug -> ${path.relative(REPO, DEBUG_DEST)}`);
+  console.log(`staged typecad-hal -> ${path.relative(REPO, EXT_DEST)}`);
 } else {
-  console.log('skip: packages/vscode-typecad-debug not present (untracked) — keeping staged assets as-is');
-}
-
-// 1b. Stage the intel extension (board-aware diagnostics). Its source is
-//     TRACKED (unlike the debug extension), but it is not an npm workspace —
-//     bootstrap its devDependencies on first use so a fresh clone can sync.
-const INTEL_SRC = path.join(REPO, 'packages/vscode-typecad-intel');
-const INTEL_DEST = path.join(REPO, 'packages/cuttlefish/assets/editor-extensions/typecad-intel');
-if (fs.existsSync(path.join(INTEL_SRC, 'package.json'))) {
-  if (!fs.existsSync(path.join(INTEL_SRC, 'node_modules', 'typescript'))) {
-    run('npm install --prefix packages/vscode-typecad-intel');
-  }
-  run('npm run compile --prefix packages/vscode-typecad-intel');
-  fs.rmSync(INTEL_DEST, { recursive: true, force: true });
-  fs.mkdirSync(INTEL_DEST, { recursive: true });
-  // The whole compiled out/ (extension.js + helpers like board-facts.js) —
-  // the vendored copy must be runnable standalone.
-  fs.cpSync(path.join(INTEL_SRC, 'out'), path.join(INTEL_DEST, 'out'), { recursive: true });
-  for (const file of ['package.json', 'README.md']) {
-    fs.copyFileSync(path.join(INTEL_SRC, file), path.join(INTEL_DEST, file));
-  }
-  console.log(`staged typecad-intel -> ${path.relative(REPO, INTEL_DEST)}`);
-} else {
-  console.log('skip: packages/vscode-typecad-intel not present — keeping staged assets as-is');
+  console.log('skip: packages/vscode-typecad-hal not present — keeping staged assets as-is');
 }
 
 // 2. Rebuild cuttlefish so dist serves the current assets + integration code.

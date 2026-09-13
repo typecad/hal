@@ -55,6 +55,25 @@ import { emitGpioDevDispatcher } from './chips/controllers.js';
 import type { ZephyrChipDescriptor } from './chips/types.js';
 
 /**
+ * Visit the program's transpile-resolved HAL ops with the same `visit` the IR
+ * walk uses. A HAL call inlined into another HAL call's template literal
+ * (`USB0.writeLine(\`n: ${gps.available()}\`)`) is lowered to C++ text while
+ * the IR is built — it never becomes a hal-op/hal-expr IR node, so the walk
+ * alone cannot see it. Such ops ride on ProgramIR.resolvedHalOps; wrapped as
+ * `{ operation: op }` they match the hal-op node shape every collector below
+ * tests for. Without this fold, shims keyed on these scans (UART RX rings,
+ * sensor device handles, per-controller bus state, ADC channels/overrides,
+ * dt specs) go undeclared while the baked text still references them — the
+ * `'__tc_dt_led0' was not declared` failure class.
+ */
+function visitResolvedHalOps(
+  program: ProgramIR | undefined,
+  visit: (node: unknown) => void,
+): void {
+  for (const op of program?.resolvedHalOps ?? []) visit({ operation: op });
+}
+
+/**
  * Deep-walk the program IR and collect the HAL pin numbers the program
  * actually touches for a peripheral family ('adc' | 'pwm') — the same walk
  * profileDiagnostics does. Emit paths gate per-channel state on these sets
@@ -89,6 +108,7 @@ function collectUsedPins(
     }
   };
   visit(program);
+  visitResolvedHalOps(program, visit);
   return pins;
 }
 
@@ -119,6 +139,7 @@ function collectAdcOverrideDevices(program: ProgramIR | undefined): Set<string> 
     }
   };
   visit(program);
+  visitResolvedHalOps(program, visit);
   return devices;
 }
 
@@ -151,6 +172,7 @@ function collectPwmOverrideSpecs(program: ProgramIR | undefined): { pin: number;
     }
   };
   visit(program);
+  visitResolvedHalOps(program, visit);
   return specs;
 }
 
@@ -195,6 +217,7 @@ function collectUsedBusIndices(program: ProgramIR | undefined): { i2c: Set<numbe
     }
   };
   visit(program);
+  visitResolvedHalOps(program, visit);
   return indices;
 }
 
@@ -232,6 +255,7 @@ export function collectSensors(program: ProgramIR | undefined): Map<string, { pa
     }
   };
   visit(program);
+  visitResolvedHalOps(program, visit);
   return sensors;
 }
 
@@ -265,6 +289,7 @@ export function collectSpiTargets(program: ProgramIR | undefined): Map<string, {
     }
   };
   visit(program);
+  visitResolvedHalOps(program, visit);
   return targets;
 }
 
@@ -299,6 +324,7 @@ export function collectUartRings(program: ProgramIR | undefined): Map<number, { 
     }
   };
   visit(program);
+  visitResolvedHalOps(program, visit);
   return rings;
 }
 
@@ -328,6 +354,7 @@ export function collectThreads(program: ProgramIR | undefined): Map<number, { in
     }
   };
   visit(program);
+  visitResolvedHalOps(program, visit);
   return threads;
 }
 import { lowerHalOp } from './lowering/index.js';
@@ -375,7 +402,6 @@ import { httpInitLines } from './lowering/http.js';
 import { mqttInitLines } from './lowering/mqtt.js';
 import { preferencesInitLines } from './lowering/preferences.js';
 import { randomInitLines } from './lowering/random.js';
-import { generateZephyrInitCode, generateZephyrBreakpointCode, generateZephyrLogpointCode } from './debug-codegen.js';
 import { generateStaticAsyncRuntime } from '@typecad/cuttlefish/api/shared';
 import { resolveZephyrDisplayOp, newDisplayState, type DisplayState } from './display/index.js';
 import { buildDisplayRuntime } from './display/gfx.js';
@@ -384,8 +410,8 @@ import { zephyrDisplayAdapterGenerator } from './display/ui-adapter.js';
 import { zephyrTouchAdapter } from './display/touch-adapter.js';
 
 /** debugMode() memo — the boardgen facts lookup is not free and the method is
- *  called several times per build (codegen gates + artifact writers). */
-const debugModeMemo = new Map<string, 'gdb' | 'printf'>();
+ *  called several times per build (transpile gate + artifact writers). */
+const debugModeMemo = new Map<string, 'gdb' | 'none'>();
 
 export class ZephyrStrategy implements PlatformStrategy {
   readonly id = 'zephyr';
@@ -437,24 +463,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     return fromBoard ?? NO_BOARD_CHIP;
   }
 
-  /**
-   * Resolve the debug mode for the active target from the platform context.
-   * Mirrors resolveChip's target extraction so shimLines/forcedIncludes can
-   * gate the printf halt shim + console UART include to printf builds only
-   * (gdb builds use VS Code native breakpoints + #line markers, so the
-   * __tc_debug_wait_for_continue shim and its <zephyr/drivers/uart.h> include
-   * are dead code there).
-   */
-  private resolveDebugMode(ctx?: PlatformContext): 'gdb' | 'printf' {
-    const fd = ctx?.frameworkData as Record<string, unknown> | undefined;
-    const target =
-      (fd?.target as string | undefined) ??
-      (fd?.buildTarget as string | undefined);
-    return this.debugMode(target);
-  }
-
   forcedIncludes(_program?: ProgramIR, ctx?: PlatformContext): string[] {
-    const isPrintf = this.resolveDebugMode(ctx) === 'printf';
     // <zephyr/kernel.h> for k_msleep / k_uptime_get_32 / k_busy_wait / printk.
     // <zephyr/drivers/gpio.h> for the gpio_pin_*_dt / gpio_dt_spec API.
     // <cstdint> because DIRECT_CPP_TYPE_MAP passes int32_t/uint8_t through
@@ -488,11 +497,6 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesSensor')) inc.push('<zephyr/drivers/sensor.h>');
     if (uses('usesSPI')) inc.push('<zephyr/drivers/spi.h>');
     if (uses('usesUart')) inc.push('<zephyr/drivers/uart.h>');
-    // uart.h is also needed by the printf-mode debug halt shim
-    // (__tc_debug_wait_for_continue polls the console UART) even when the
-    // program itself does not use the UART HAL. In gdb mode the shim is not
-    // emitted, so skip the include there to avoid pulling in an unused header.
-    if (isPrintf && !inc.includes('<zephyr/drivers/uart.h>')) inc.push('<zephyr/drivers/uart.h>');
     // USB CDC serial: the class instance is a UART device (uart.h); the
     // device context macros + usbd_* API live in the next-stack header.
     if (uses('usesUsb')) {
@@ -601,6 +605,7 @@ export class ZephyrStrategy implements PlatformStrategy {
         found = true; return;
       }
       for (const v of Object.values(node)) {
+        if (typeof v === 'string' && v.includes(TOKEN)) { found = true; return; }
         if (Array.isArray(v)) { for (const item of v) visit(item); }
         else if (v && typeof v === 'object') visit(v);
       }
@@ -610,9 +615,17 @@ export class ZephyrStrategy implements PlatformStrategy {
   }
 
   /** Pins referenced by gpio.* hal-ops in the program IR. lowerGpio routes a
-   *  pin to its devicetree spec by pin NUMBER, so the structured hal-op pins
-   *  are the authoritative signal for which __tc_dt_* specs are needed —
-   *  regardless of when the final call text is rendered. */
+   * pin to its devicetree spec by pin NUMBER, so the structured hal-op pins
+   * are the authoritative signal for which __tc_dt_* specs are needed —
+   * regardless of when the final call text is rendered.
+   *
+   * A gpio op interpolated into another HAL call's template literal
+   * (`USB0.writeLine(\`led: ${led.get()}\`)`) never becomes an IR node —
+   * resolveHALExprToText lowers it to C++ text while building the IR and bakes
+   * it into an __EMIT__ snprintf prelude, so the walk cannot see its pin. The
+   * spec NAME it references is still in that text; collectRawMatches finds it
+   * there, or the spec goes undeclared and the build fails on `__tc_dt_led0
+   * was not declared in this scope`. */
   private collectGpioPinUsage(program?: ProgramIR): Set<number> {
     const pins = new Set<number>();
     if (!program) return pins;
@@ -630,14 +643,19 @@ export class ZephyrStrategy implements PlatformStrategy {
       }
     };
     visit(program);
+    visitResolvedHalOps(program, visit);
     return pins;
   }
 
   /** Run `re` (global) against every raw string in the IR — raw expression
-   *  values plus raw hal-op codes — returning capture group 1 of each match
-   *  (the full match when the regex has no group). This is how references the
-   *  text scanners must see but that never appear as IR call nodes (e.g. a
-   *  rawCpp() escape hatch naming `__tc_dt_sw0` directly) are discovered. */
+   * values plus raw hal-op codes — returning capture group 1 of each match
+   * (the full match when the regex has no group). This is how references the
+   * text scanners must see but that never appear as IR call nodes are
+   * discovered: a rawCpp() escape hatch naming `__tc_dt_sw0` directly, and —
+   * the reason every string LEAF is scanned, not just raw nodes — the
+   * pre-lowered C++ text of a HAL call inlined into another HAL call's
+   * template literal, which the IR builder bakes into plain `string` payloads
+   * (__EMIT__ snprintf preludes, op data fields) rather than raw nodes. */
   private collectRawMatches(program: ProgramIR | undefined, re: RegExp): Set<string> {
     const found = new Set<string>();
     if (!program) return found;
@@ -646,13 +664,9 @@ export class ZephyrStrategy implements PlatformStrategy {
     };
     const visit = (node: any): void => {
       if (!node || typeof node !== 'object') return;
-      if (node.kind === 'raw' && typeof node.value === 'string') scan(node.value);
-      if (node.operation && typeof node.operation === 'object'
-          && node.operation.operation === 'raw' && typeof node.operation.code === 'string') {
-        scan(node.operation.code);
-      }
       for (const v of Object.values(node)) {
-        if (Array.isArray(v)) { for (const item of v) visit(item); }
+        if (typeof v === 'string') scan(v);
+        else if (Array.isArray(v)) { for (const item of v) visit(item); }
         else if (v && typeof v === 'object') visit(v);
       }
     };
@@ -677,7 +691,6 @@ export class ZephyrStrategy implements PlatformStrategy {
 
   shimLines(program?: ProgramIR, ctx?: PlatformContext): string[] {
     const chip = this.resolveChip(ctx, program);
-    const isPrintf = this.resolveDebugMode(ctx) === 'printf';
     const a = (ctx as any)?.analysis;
     const uses = (f: string): boolean => (a ? !!a[f] : true);
     const helpers = (a as { usedPolyfillHelpers?: Set<string> } | undefined)?.usedPolyfillHelpers;
@@ -974,13 +987,15 @@ export class ZephyrStrategy implements PlatformStrategy {
     }
 
     // Devicetree specs — one per board-defined GPIO pin, but ONLY for pins the
-    // program actually addresses (lowerGpio routes by pin number, and the
-    // structured gpio.* hal-op pins are visible here) plus aliases named
-    // verbatim in raw code (rawCpp escape hatches). Emitted OUTSIDE the single
-    // CUTTLEFISH_SHIM_DEFINED guard with a per-symbol guard: per-file pin sets
-    // differ, and in a multi-header TU the first header's TU-wide guard would
-    // otherwise hide the second header's specs. Without a program (capability
-    // query), emit them all.
+    // program actually addresses (lowerGpio routes by pin number; the
+    // structured gpio.* hal-op pins plus the spec names appearing in any IR
+    // string — including the pre-lowered text of a HAL call inlined into
+    // another HAL call's template literal — are visible here) and aliases
+    // named verbatim in raw code (rawCpp escape hatches). Emitted OUTSIDE the
+    // single CUTTLEFISH_SHIM_DEFINED guard with a per-symbol guard: per-file
+    // pin sets differ, and in a multi-header TU the first header's TU-wide
+    // guard would otherwise hide the second header's specs. Without a program
+    // (capability query), emit them all.
     const usedPins = this.collectGpioPinUsage(program);
     const dtTextRefs = this.collectRawMatches(program, /__tc_dt_([A-Za-z0-9_]+)/g);
     for (const spec of chip.gpio.dtSpecs) {
@@ -994,54 +1009,6 @@ export class ZephyrStrategy implements PlatformStrategy {
       );
     }
 
-    // --- Debug-mode halt + per-breakpoint disable registry ---
-    //
-    // Printf mode only. In gdb mode the cuttlefish debug preprocessor is
-    // skipped (core emits #line markers + VS Code native breakpoints instead),
-    // so __tc_debug_wait_for_continue is never called — skip the shim and its
-    // <zephyr/drivers/uart.h> dependency entirely (forcedIncludes mirrors this).
-    //
-    // The cuttlefish debug preprocessor injects __tc_debug_wait_for_continue(id)
-    // calls at each breakpoint; without these definitions the emitted code
-    // would not link.
-    //
-    // Zephyr's minimal libc has no getchar()/EOF, so the halt polls the console
-    // UART directly via uart_poll_in on the system console device, yielding to
-    // the scheduler with k_msleep between polls so an unattended breakpoint
-    // does not starve the system. ENTER (or any non-'s' byte) = continue;
-    // 's'/'S' = skip this breakpoint for the rest of the run (records the id).
-    if (isPrintf) {
-      lines.push(
-        '#ifndef __TC_BP_DISABLED_DEFINED',
-        '#define __TC_BP_DISABLED_DEFINED',
-        'static bool __tc_bp_disabled[256] = {0};',
-        'static inline bool __tc_bp_is_disabled(int id) { return id >= 0 && id < 256 && __tc_bp_disabled[id]; }',
-        // Console input: poll the UART console device. DEVICE_DT_GET(DT_CHOSEN(zephyr_console))
-        // resolves to the board's console (UART0 USB-CDC on the XIAO nRF52840).
-        // Not every board DTS declares a zephyr,console chosen (STM32MP1 M-side,
-        // display/carrier boards): there is nothing to print a prompt on and
-        // nothing to read a key from, so breakpoints auto-continue instead of
-        // hanging an unattended run.
-        '#if DT_HAS_CHOSEN(zephyr_console)',
-        'static inline char __tc_debug_wait_for_continue(int id) {',
-        '    const struct device* __con = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));',
-        '    unsigned char __c = 0;',
-        "    while (uart_poll_in(__con, &__c) != 0) {",
-        '        k_msleep(10);',
-        '    }',
-        "    // Drain the rest of the typed line so the next breakpoint waits fresh.",
-        "    unsigned char __peek = 0;",
-        "    while (uart_poll_in(__con, &__peek) == 0 && __peek != '\\n') { (void)0; }",
-        "    if ((__c == 's') || (__c == 'S')) { if (id >= 0 && id < 256) __tc_bp_disabled[id] = true; }",
-        '    return static_cast<char>(__c);',
-        '}',
-        '#else',
-        'static inline char __tc_debug_wait_for_continue(int id) { (void)id; return static_cast<char>(0); }',
-        '#endif // DT_HAS_CHOSEN(zephyr_console)',
-        '#endif // __TC_BP_DISABLED_DEFINED',
-        '',
-      );
-    }
 
     // --- Zephyr entrypoint ---------------------------------------------------
     // No bridge here: the synthesizer emits main() itself (it keys off
@@ -2259,31 +2226,24 @@ struct __tc_StaticArray {
   }
 
   // ── Debug ─────────────────────────────────────────────────────────────────
-  // Zephyr's minimal C++ config has no <iostream>, so the GenericStrategy
-  // std::cout fallback the debug preprocessor uses by default would NOT
-  // compile. Override the debug surface to route through printk (always
-  // available, no CONFIG_CONSOLE dependency) and the __tc_debug_wait_for_continue
-  // halt emitted in shimLines. See src/debug-codegen.ts.
-  //
-  // Target-selective: gdb-capable boards (a debug-capable probe method in the
-  // board facts) get native GDB source-level debugging (core emits #line
-  // markers + skips printf instrumentation, and the west-owned gdb server
+  // Source-level debugging is the GDB flow only (the west-owned gdb server
   // serves F5 via cortex-debug's external-server mode — see
-  // toolchain/debug-config.ts); every other board falls back to the printk
-  // instrumentation path.
+  // toolchain/debug-config.ts). The printf/Serial breakpoint instrumentation
+  // pipeline was removed from the product.
 
-  debugMode(target?: string): 'gdb' | 'printf' {
+  debugMode(target?: string): 'gdb' | 'none' {
     // `target` is the Zephyr board id (optionally with a /qualifier suffix).
-    // gdb mode is a FACT of the board: its probe-method table carries a
+    // gdb capability is a FACT of the board: its probe-method table carries a
     // debug-capable entry (bootloaders mark debug:false; SWD/JTAG probes and
     // built-in USB-JTAG carry debug:true) — the same table west's runner
     // selection uses. Boards without a table (or unresolvable targets, e.g.
-    // generated custom boards) stay on printf instrumentation.
+    // generated custom boards) report 'none', and --debug fails with an
+    // explicit diagnostic (transpile.ts) rather than building silently.
     const t = (target ?? '').trim();
-    if (!t) return 'printf';
+    if (!t) return 'none';
     const memo = debugModeMemo.get(t);
     if (memo) return memo;
-    let mode: 'gdb' | 'printf' = 'printf';
+    let mode: 'gdb' | 'none' = 'none';
     try {
       const g = generateBoard(t);
       const constants = JSON.parse(g.boardJson).constants as Record<string, unknown>;
@@ -2296,34 +2256,10 @@ struct __tc_StaticArray {
         }
       }
     } catch {
-      // Board not resolvable from facts — printf (never crash codegen over
-      // the debug-mode gate).
+      // Board not resolvable from facts — 'none' (never crash codegen over
+      // the debug-capability gate).
     }
     debugModeMemo.set(t, mode);
     return mode;
-  }
-
-  generateDebugInitCode(): string[] {
-    return generateZephyrInitCode();
-  }
-
-  generateDebugBreakpointCode(params: {
-    fileName: string; lineNum: number; originalLine: string;
-    variables: Array<{ name: string; isFunction?: boolean; cppType?: 'bool'|'int'|'long'|'float'|'string'|'unknown' }>;
-    normalizedCondition?: string;
-    breakpointId?: number;
-  }): string[] {
-    return generateZephyrBreakpointCode(
-      params.fileName, params.lineNum, params.originalLine,
-      params.variables, params.normalizedCondition, params.breakpointId,
-    );
-  }
-
-  generateDebugLogpointCode(params: {
-    fileName: string; lineNum: number;
-    parts: Array<{ type: 'text' | 'variable'; value: string }>;
-    variables: Array<{ name: string; isFunction?: boolean }>;
-  }): string[] {
-    return generateZephyrLogpointCode(params.fileName, params.lineNum, params.parts, params.variables);
   }
 }

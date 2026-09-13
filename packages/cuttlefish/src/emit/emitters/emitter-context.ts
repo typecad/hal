@@ -167,10 +167,10 @@ export interface EmitterContext {
   // ── GDB debug mode (line directives) ──────────────────────────────────────
   /**
    * Active debug mode. When 'gdb', appendSourceLine emits `#line` markers
-   * before lines whose TS source span transitions. 'printf' = no markers.
+   * before lines whose TS source span transitions. 'none' = no markers.
    * Resolved once from strategy.debugMode(buildTarget) during setup.
    */
-  debugMode: 'gdb' | 'printf';
+  debugMode: 'gdb' | 'none';
   /**
    * The {filePath, line} of the most recently emitted linemarker, or null if
    * none yet. Used by appendSourceLine for transition detection.

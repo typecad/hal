@@ -14,6 +14,7 @@
 import type { BoardConstants } from './board-resolver.js';
 import type { Diagnostic } from './types.js';
 import type { RegisteredCallback } from '../../ir/build-ir-state.js';
+import type { HALOpIR } from './hal-op-ir.js';
 
 // Re-export everything from sub-modules so existing imports keep working.
 export type {
@@ -212,4 +213,16 @@ export interface ProgramIR {
   isrHandlerFunctions?: string[];
   /** Map of function names to their rest parameter element types (e.g., "sum" -> "int") */
   restParamFunctions?: Map<string, string>;
+  /**
+   * HAL ops the transpiler resolved to C++ text while inlining one HAL call
+   * into another (e.g. `${gps.available()}` inside a `USB0.writeLine(...)`
+   * template literal). Such ops never become hal-op/hal-expr IR nodes — their
+   * lowered text is baked into `__EMIT__` snprintf preludes and op data
+   * fields — so IR walks alone cannot see them. Recorded during this file's
+   * IR build (markHalOpResolved); framework strategies fold them into the
+   * same per-peripheral scans that walk the IR tree, or shims keyed on those
+   * scans (UART RX rings, sensor handles, per-controller bus state, dt
+   * specs) go undeclared and the build fails.
+   */
+  resolvedHalOps?: HALOpIR[];
 }
