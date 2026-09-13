@@ -5,6 +5,7 @@ dist/
 .typecad-hal/
 .cuttlefish/
 **/.typehal-cache.json
+.typecad-hal-cache.json
 
 # Hardware-test rigs: transpiled + west build output (regenerated per run)
 hal/*/out/
