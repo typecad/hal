@@ -16,28 +16,37 @@
 import { threadStart, threadJoin } from './emit.js';
 import { callback } from './callback.js';
 
+/**
+ * A separate thread of execution: `const t = new Thread(0, { stackKb: 2 });
+ * t.start(() => { ... }); t.join();`. The entry function runs concurrently
+ * with the main program from the moment `start()` is called; `join()`
+ * blocks until it returns. The index (0, 1, 2…) is the thread's slot —
+ * use each index at most once.
+ */
 export class Thread {
   private readonly _index: number;
   private readonly _stackBytes: number;
   private readonly _priority: number;
 
-  /** Construct a thread handle. `stackKb` defaults to 2 (generous for
-   *  generated code); `priority` defaults to 5 — preemptive, below main. */
+  /** Construct a thread handle. `stackKb` defaults to 2 (ample for typical
+   *  code); `priority` defaults to 5 — a preemptible thread that yields to
+   *  the main program. Smaller numbers mean higher priority; negative
+   *  values create cooperative threads that cannot be preempted once
+   *  running. */
   constructor(index: number, opts?: { stackKb?: number; priority?: number }) {
     this._index = index;
     this._stackBytes = (opts?.stackKb ?? 2) * 1024;
     this._priority = opts?.priority ?? 5;
   }
 
-  /** Create the thread and schedule it immediately (k_thread_create with
-   *  K_NO_WAIT). The entry function runs concurrently with main from here. */
+  /** Create the thread and start it immediately — the entry function runs
+   *  concurrently with the main program from this call. */
   start(fn: () => void): void {
     threadStart(this._index, this._stackBytes, this._priority, callback(fn));
   }
 
-  /** Block until the thread exits (k_thread_join with K_FOREVER). Requires
-   *  a prior start() on the same index — an unstarted slot is a build
-   *  error naming the slot's symbol. */
+  /** Block until the thread's entry function returns. Requires a prior
+   * `start()` — joining an unstarted slot is a build error. */
   join(): void {
     threadJoin(this._index);
   }

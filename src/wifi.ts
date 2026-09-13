@@ -28,18 +28,25 @@ import {
 } from './emit.js';
 import { callback } from './callback.js';
 
+/**
+ * A Wi-Fi station connection. Credentials and connection policy are set
+ * at construction; `join()` connects and waits for an IP address (bounded
+ * by `timeoutMs`), `linked()`/`ip()`/`rssi()` report the link,
+ * `onUp()`/`onDrop()` fire on connect/disconnect, and `scan()` lists
+ * nearby networks.
+ */
 export class WiFi {
-  /** Security tokens — lowered to Zephyr's wifi_security_type enum. */
+  /** Security modes for `opts.security`. */
   static readonly OPEN = 0;
   static readonly WPA2 = 1;
   static readonly WPA3 = 2;
   static readonly WPA2_WPA3 = 3;
 
-  /** Band tokens. */
+  /** Radio bands for `opts.band`. */
   static readonly BAND_2_4 = 0;
   static readonly BAND_5 = 1;
 
-  /** Power-save token — pass PS_OFF to disable the radio's modem sleep. */
+  /** Pass as `opts.powerSave` to disable the radio's power saving. */
   static readonly PS_OFF = 0;
 
   private readonly _ssid: string;
@@ -53,9 +60,10 @@ export class WiFi {
   private readonly _gateway: string | undefined;
   private readonly _netmask: string | undefined;
 
-  /** Construct a station link policy. `psk` omitted → open network;
-   *  `security` defaults WPA2 when a psk is present, OPEN otherwise;
-   *  `channel` 0/omitted = any. `ipv4` opts out of DHCP with static facts. */
+  /** Construct a connection. `psk` omitted → open network; `security`
+   *  defaults to WPA2 when a psk is given, OPEN otherwise; `channel`
+   *  0/omitted = any; `timeoutMs` bounds join() (default 15 s); `ipv4`
+   *  supplies a static address instead of DHCP. */
   constructor(ssid: string, opts: {
     psk?: string;
     security?: number;
@@ -77,66 +85,67 @@ export class WiFi {
     this._netmask = opts.ipv4?.netmask;
   }
 
-  /** Join the network. Blocks (bounded by timeoutMs, pumping a mounted UI's
-   *  tick between polls); returns true once IP connectivity is up, false on
-   *  timeout or missing radio. Idempotent-ish: re-joining re-associates. */
+  /** Connect to the network and wait until traffic can flow (bounded by
+   *  `timeoutMs`, keeping a mounted UI responsive while waiting). Returns
+   *  true once the link and an IP address are up; false on timeout or
+   *  when the board has no radio. Calling join() again re-associates. */
   join(): boolean {
     return wifiJoin(this._ssid, this._psk, this._security, this._channel,
       this._band, this._timeoutMs, this._ps, this._ipAddr, this._gateway,
       this._netmask);
   }
 
-  /** Fire-and-forget join — poll linked() or await in an async function. */
+  /** Start connecting without waiting — poll linked(), or await join()
+   *  inside an async function. */
   joinStart(): void {
     wifiConnectStart(this._ssid, this._psk);
   }
 
-  /** Leave the network (NET_REQUEST_WIFI_DISCONNECT). */
+  /** Leave the network. */
   leave(): void {
     wifiDisconnect();
   }
 
-  /** True once IP connectivity is up (the L4 flag — post-DHCP, or after
-   *  static IPv4 facts are applied). */
+  /** True once the network link is up and an IP address is assigned. */
   linked(): boolean {
     return wifiIsConnected();
   }
 
-  /** Signal strength in dBm (iface-status query). */
+  /** Signal strength in dBm (more negative = weaker). */
   rssi(): number {
     return wifiRssi();
   }
 
-  /** The interface's global IPv4 address as text ("0.0.0.0" when down). */
+  /** The interface's IPv4 address as text ("0.0.0.0" when down). */
   ip(): string {
     return wifiLocalIp();
   }
 
-  /** The radio's BSSID packed into a number (iface-status query). */
+  /** The connected access point's MAC address, packed into a number. */
   mac(): number {
     return wifiMac();
   }
 
-  /** Fires once DHCP (or static config) assigns an address. */
+  /** Fires once the connection is up and an address is assigned. */
   onUp(handler: () => void): void {
     wifiOnEvent('connect', callback(handler));
   }
 
-  /** Fires on link loss (deferred off the net_mgmt event chain so the
-   *  callback may safely call join()). */
+  /** Fires when the connection drops. Safe to call join() from the
+   *  handler to reconnect. */
   onDrop(handler: () => void): void {
     wifiOnEvent('disconnect', callback(handler));
   }
 
-  /** One blocking scan; read the results through the returned handle.
-   *  Fixed pool of 16 — no heap. */
+  /** Scan for nearby networks (blocking). Read the results through the
+   *  returned handle — at most 16 networks are kept. */
   scan(): Scan {
     wifiScan();
     return new Scan();
   }
 }
 
-/** Read-only view over the last scan's fixed result pool. */
+/** Read-only view over the last scan's results (at most 16 networks). */
 export class Scan {
   /** Number of networks found. */
   count(): number {
@@ -164,7 +173,7 @@ export class Scan {
   }
 }
 
-/** SoftAP — the AP facts at construction, then start/stop. */
+/** An access point: broadcast `ssid` and accept stations that connect. */
 export class WiFiAP {
   private readonly _ssid: string;
   private readonly _psk: string | undefined;
@@ -177,12 +186,12 @@ export class WiFiAP {
     this._channel = opts.channel ?? 0;
   }
 
-  /** Bring the interface up as an AP (NET_REQUEST_WIFI_AP_ENABLE). */
+  /** Bring the access point up and start broadcasting. */
   start(): void {
     wifiApStart(this._ssid, this._psk, this._channel);
   }
 
-  /** Tear the AP down (NET_REQUEST_WIFI_AP_DISABLE). */
+  /** Stop broadcasting and tear the access point down. */
   stop(): void {
     wifiApStop();
   }

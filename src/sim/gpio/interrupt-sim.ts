@@ -11,7 +11,7 @@ type InterruptMode = 'rising' | 'falling' | 'change';
 /**
  * Tracks interrupt firings for test assertions.
  */
-export interface InterruptEvent {
+interface InterruptEvent {
   /** Timestamp (ms since simulation start) */
   timestamp: number;
   /** The trigger mode */

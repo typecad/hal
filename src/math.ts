@@ -8,7 +8,7 @@
 // every framework).
 // ---------------------------------------------------------------------------
 
-export class NumClass {
+class NumClass {
   // No __instance_name — Num methods must NOT be intercepted by the HAL
   // resolver. They pass through as bare C++ calls (Num.abs(-7)), which the
   // strategy's __tc_Num polyfill struct provides. The strategy post-processes

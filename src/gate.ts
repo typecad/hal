@@ -55,6 +55,7 @@ export const BOARD_UNGATED_TYPE_EXPORTS: readonly string[] = [
   'Bit',
   'Bits',
   'RequestOpts',
+  'MqttOpts',
   'GattCharacteristicDef',
   'CharValue',
 ];

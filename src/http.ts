@@ -26,6 +26,7 @@ import {
   httpBegin,
   httpSetHeader,
   httpSetTimeout,
+  httpSetMaxBody,
   httpSetBody,
   httpSetInsecure,
   httpSetCaCert,
@@ -41,6 +42,8 @@ import {
 export interface RequestOpts {
   /** Response timeout in ms (default 10_000). */
   timeoutMs?: number;
+  /** Response body cap in bytes (default 8_192; larger bodies truncate). */
+  maxBody?: number;
   /** Request body (raw). */
   body?: string;
   /** The body is JSON — sets the JSON content type. */
@@ -51,7 +54,16 @@ export interface RequestOpts {
   caCert?: string;
 }
 
+/**
+ * An HTTP/HTTPS client. Build the request, then send and read:
+ * `const req = new Request(Request.POST, url, { json: true, body: '{"v":1}' });
+ * req.header('X-Custom', 'v'); if (req.send()) console.log(req.text());`.
+ * `send()` blocks until the response arrives or the timeout passes. For
+ * HTTPS, `caCert` pins a trusted CA for verified TLS and `insecure: true`
+ * skips certificate verification (development only).
+ */
 export class Request {
+  /** HTTP method tokens — the first constructor argument. */
   static readonly GET = 'GET';
   static readonly POST = 'POST';
   static readonly PUT = 'PUT';
@@ -62,6 +74,7 @@ export class Request {
   private readonly _method: string;
   private readonly _url: string;
   private readonly _timeoutMs: number;
+  private readonly _maxBody: number;
   private readonly _body: string;
   private readonly _json: boolean;
   private readonly _insecure: boolean;
@@ -71,6 +84,7 @@ export class Request {
     this._method = method.toUpperCase();
     this._url = url;
     this._timeoutMs = opts.timeoutMs ?? 10_000;
+    this._maxBody = opts.maxBody ?? 8_192;
     this._body = opts.body ?? '';
     this._json = opts.json === true;
     this._insecure = opts.insecure === true;
@@ -83,16 +97,16 @@ export class Request {
     return this;
   }
 
-  /** Send the request (blocking). The construction facts lower into the
-   *  shim first (timeout/body/TLS mode), then the request performs.
-   *  Awaitable inside async functions — the async machinery splits the
-   *  send into a background request + done-poll. */
+  /** Send the request and wait for the response (bounded by `timeoutMs`).
+   *  Read the response through status()/text()/responseHeader() afterwards.
+   *  Awaitable inside async functions. */
   send(): boolean {
+    httpBegin(this._method, this._url);
     httpSetTimeout(this._timeoutMs);
+    httpSetMaxBody(this._maxBody);
     httpSetBody(this._body, this._json);
     httpSetInsecure(this._insecure);
     httpSetCaCert(this._caCert);
-    httpBegin(this._method, this._url);
     return httpSend();
   }
 

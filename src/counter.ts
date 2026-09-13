@@ -11,29 +11,36 @@
 import { counterOnAlarm, counterStart, counterStop } from './emit.js';
 import { callback } from './callback.js';
 
+/**
+ * A hardware timer with a repeating alarm: `const c = new Counter(0, { hz:
+ * 10 }); c.onAlarm(() => { ... }); c.start();` fires the handler 10 times
+ * per second. The instance index picks one of the chip's free hardware
+ * timers (0 = the first; a build error lists what the board has). For
+ * deterministic sub-millisecond timing this is the tool — Time's clocks
+ * are millisecond-resolution.
+ */
 export class Counter {
   private readonly _instance: number;
   private readonly _hz: number;
 
-  /** Construct a counter handle. `hz` is the alarm frequency — start()
-   *  realizes it as a top value of counter_freq / hz. */
+  /** Construct a timer handle. `hz` is the alarm frequency — how many
+   *  times per second the handler fires. */
   constructor(instance: number, opts: { hz: number }) {
     this._instance = instance;
     this._hz = opts.hz;
   }
 
-  /** Register the alarm handler (fires once per top-value wrap). */
+  /** Register the handler that fires on each alarm. */
   onAlarm(handler: () => void): void {
     counterOnAlarm(this._instance, callback(handler));
   }
 
-  /** Apply hz as the top value, arm the alarm, and start counting
-   *  (counter_set_top_value + counter_start). */
+  /** Start the timer — the handler fires at the constructed rate. */
   start(): void {
     counterStart(this._instance, this._hz);
   }
 
-  /** Stop counting (counter_stop). */
+  /** Stop the timer. */
   stop(): void {
     counterStop(this._instance);
   }

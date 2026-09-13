@@ -3,20 +3,6 @@
 // ---------------------------------------------------------------------------
 
 /**
- * Callback signature for pin state change events.
- * @param pinNumber - The pin number that changed
- * @param newValue - The new digital value (HIGH=1 or LOW=0)
- */
-export type PinChangeCallback = (pinNumber: number, newValue: number) => void;
-
-/**
- * Callback signature for interrupt events.
- * @param pinNumber - The interrupt pin number
- * @param mode - The trigger mode ('rising', 'falling', or 'change')
- */
-export type InterruptCallback = (pinNumber: number, mode: 'rising' | 'falling' | 'change') => void;
-
-/**
  * A simulated I2C device that responds to register reads and writes.
  * Tests register mock devices to simulate sensor behavior.
  */
@@ -82,13 +68,12 @@ export interface SimBoardConfig {
   uartCount?: number;
   /**
    * PWM-capable pin numbers. Defaults to empty (no PWM pins); declare the
-   * board's real PWM pins here, or use `createBoardFromDefinition()` to derive
-   * them from a board package.
+   * board's real PWM pins here.
    */
   pwmPins?: number[];
   /**
    * Interrupt-capable pin numbers. Defaults to empty; declare the board's real
-   * interrupt pins here, or use `createBoardFromDefinition()`.
+   * interrupt pins here.
    */
   interruptPins?: number[];
   /** RX buffer size for UART simulation (default: 256) */

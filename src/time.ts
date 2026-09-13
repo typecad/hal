@@ -11,37 +11,40 @@
 
 import { timeSleep, timeNow, timeNowUs, timeBusyWaitUs } from './emit.js';
 
-export class TimeClass {
+/**
+ * The timing surface: `Time.sleep()` pauses in milliseconds, `Time.now()` /
+ * `Time.nowUs()` report time since boot, and `Time.busyWaitUs()` spins for
+ * sub-millisecond protocol timing.
+ */
+class TimeClass {
   static readonly __instance_name = 'Time';
 
-  /** Yielding sleep in milliseconds (k_msleep). On the generated
-   *  single-threaded main this blocks the caller — the same semantics
-   *  delay() had, JS-spelled. Inside an async function, `await`-ed it
-   *  becomes cooperative: the async state machine arms a deadline and
-   *  yields (other tasks and timers run) until it passes — the same
-   *  machinery `await delay()` rides. */
+  /** Pause for `ms` milliseconds. In a plain (non-async) function this
+   *  blocks the whole program. Inside an async function, `await
+   *  Time.sleep(ms)` yields cooperatively — other tasks and timers keep
+   *  running until the pause elapses. */
   sleep(ms: number): Promise<void> {
     timeSleep(ms);
     return Promise.resolve();
   }
 
-  /** Milliseconds since boot as a double (k_uptime_get) — Date.now()-shaped:
-   *  milliseconds, monotonic, no uint32 wrap. */
+  /** Milliseconds since boot. Monotonic — the value never wraps or jumps
+   *  backwards, so differences and deadlines stay correct over long runs. */
   now(): number {
     return timeNow();
   }
 
-  /** Microseconds since boot as a double — uptime-derived
-   *  (k_uptime_get() * 1000) on every board: the cycle-counter form reads a
-   *  constant on SoCs without a free-running 64-bit counter, so the one
-   *  uniform, monotonic expression wins. Resolution is the uptime tick
-   *  (millisecond); for sub-ms determinism use Counter (hardware timer). */
+  /** Microseconds since boot. Monotonic like `now()`, but the resolution
+   *  is one millisecond — for sub-millisecond deterministic timing use a
+   *  hardware `Counter`. */
   nowUs(): number {
     return timeNowUs();
   }
 
-  /** Spin-wait the given microseconds (k_busy_wait) — no yield; for sub-ms
-   *  protocol timing where a schedule point would break the waveform. */
+  /** Busy-wait (spin) for `us` microseconds without yielding — for
+   *  sub-millisecond protocol timing where letting other code run would
+   *  break the waveform. Nothing else executes while spinning, so keep
+   *  these waits short. */
   busyWaitUs(us: number): void {
     timeBusyWaitUs(us);
   }

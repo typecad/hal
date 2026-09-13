@@ -16,8 +16,8 @@ export { include } from './include.js';
 export { board } from './board.js';
 export { callback } from './callback.js';
 export { rawCpp, rawCppExpr, boardResolve } from './emit.js';
-export { TimeClass, Time } from './time.js';
-export { abs, min, max, NumClass, Num } from './math.js';
+export { Time } from './time.js';
+export { abs, min, max, Num } from './math.js';
 
 export { Random } from './random.js';
 export { Pin } from './gpio.js';
@@ -45,6 +45,7 @@ export { register, bits } from './register.js';
 export { Store } from './preferences.js';
 export { File } from './fs.js';
 export { Mqtt } from './mqtt.js';
+export type { MqttOpts } from './mqtt.js';
 
 export { AsyncClass, Async } from './async.js';
 export { WiFi, Scan, WiFiAP } from './wifi.js';

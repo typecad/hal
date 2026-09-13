@@ -15,48 +15,51 @@
 
 import { i2cRegWrite, i2cRegRead, i2cRegUpdate, i2cDevWrite } from './emit.js';
 
+/**
+ * An I2C device at one bus address — register reads and writes plus raw
+ * byte transfers. Get one from a bus (`I2C0.device(0x44)`) or construct
+ * directly: `new I2CTarget('I2C0', 0x44)`.
+ */
 export class I2CTarget {
   private readonly _bus: string;
   private readonly _address: number;
   private readonly _hz: number;
 
-  /** Construct a device handle. `bus` is the bus instance (I2C0, I2C1, …);
-   *  `address` is the 7-bit I2C address; `hz` optionally sets the bus speed
-   *  once at first use (100k/400k/1M map to Zephyr's I2C_SPEED_* tiers). */
+  /** Construct a device handle. `address` is the 7-bit I2C address (the
+   *  number the datasheet prints, not the shifted read/write form); `hz`
+   *  optionally sets the bus speed once at first use (e.g. 400_000 for
+   *  fast mode) — the bus is left at its default speed when omitted. */
   constructor(bus: string, address: number, opts?: { hz?: number }) {
     this._bus = bus;
     this._address = address;
     this._hz = opts?.hz ?? 0;
   }
 
-  /** Write one register byte (i2c_reg_write_byte). */
+  /** Write one byte to register `reg`. */
   writeReg(reg: number, value: number): void {
     i2cRegWrite(this._bus, this._address, this._hz, reg, value);
   }
 
-  /** Read one register byte (i2c_reg_read_byte). */
+  /** Read one byte from register `reg`. */
   readReg(reg: number): number {
     return i2cRegRead(this._bus, this._address, this._hz, reg);
   }
 
-  /** Read-modify-write one register field (i2c_reg_update_byte): the bits in
-   *  `mask` are replaced by `value`. Atomic on the wire — no read-back race. */
+  /** Update one register field: the bits selected by `mask` are replaced
+   *  by `value` (in its low bits). Performed as a single bus transaction —
+   *  no window where another reader sees a half-updated register. */
   updateReg(reg: number, mask: number, value: number): void {
     i2cRegUpdate(this._bus, this._address, this._hz, reg, mask, value);
   }
 
-  /** Write raw bytes (i2c_write) — commands and data with no register
-   *  convention. */
+  /** Write raw bytes — for devices whose protocol isn't register-based. */
   write(data: number[] | Uint8Array): void {
     i2cDevWrite(this._bus, this._address, this._hz, data);
   }
 
-  /** The 7-bit I2C address this target addresses. Exposed so I2CTarget
-   *  structurally satisfies the II2CDeviceAccessor contract (@typecad/hal/sim)
-   *  contract (`readonly address`), letting the same driver function be
-   *  typed against the contract and accept either a real board device or a
-   *  simulated one. The transpiler strips HAL class bodies to IR, so this
-   *  getter carries no runtime cost in the generated C++. */
+  /** The 7-bit I2C address this target talks to — exposed so the same
+   *  code can accept a real device or a simulated one
+   *  (@typecad/hal/sim). */
   get address(): number {
     return this._address;
   }

@@ -13,33 +13,30 @@
 
 import { rawCpp } from './emit.js';
 
+/** Cooperative scheduling helpers, for use inside async functions:
+ *  `await Async.sleep(ms)` pauses the current task while others keep
+ *  running, `await Async.yield()` lets other tasks run once, and
+ *  `Async.currentTask()` names the running task for debug logging. */
 export class AsyncClass {
   static readonly __instance_name = "Async";
 
-  /**
-   * Non-blocking sleep for `ms` milliseconds.
-   * Returns a Promise<void> that resolves after the given delay. The async
-   * runtime resolves it cooperatively (the static state machine on
-   * heap-less targets polls the clock in the scheduler loop).
-   */
+  /** Pause for `ms` milliseconds without blocking other tasks — await it
+   *  inside an async function. Other tasks and timers keep running until
+   *  the pause elapses. */
   sleep(ms: number): Promise<void> {
     rawCpp(`__cuttlefish_async_sleep(${ms});`);
     return Promise.resolve();
   }
 
-  /**
-   * Cooperative yield — suspend the current task and allow other tasks
-   * (microtasks, timers) to run. Resumes on the next microtask pump cycle.
-   */
+  /** Let other tasks run once, then continue — resumes on the next
+   *  scheduler pass. */
   yield(): Promise<void> {
     rawCpp(`__cuttlefish_async_yield();`);
     return Promise.resolve();
   }
 
-  /**
-   * Return a human-readable description of the currently executing async task.
-   * Useful for debugging / logging in cooperative multitasking environments.
-   */
+  /** A short description of the currently running task — handy for
+   *  debug logging. */
   currentTask(): string {
     rawCpp(`return __cuttlefish_async_current_task();`);
     return "";

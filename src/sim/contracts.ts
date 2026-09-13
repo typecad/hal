@@ -88,7 +88,7 @@ export interface BasePin {
 }
 
 /** Configured output pin — mirrors HAL `OutputPin`. */
-export interface IOutputModePin {
+interface IOutputModePin {
   readonly number: number;
   readonly gpio: number;
   write(value: DigitalValue): void;
@@ -102,7 +102,7 @@ export interface IOutputModePin {
 }
 
 /** Configured input pin — mirrors HAL `InputPin`. */
-export interface IInputModePin {
+interface IInputModePin {
   readonly number: number;
   readonly gpio: number;
   read(): DigitalValue;
