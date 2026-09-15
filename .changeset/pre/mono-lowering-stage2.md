@@ -52,6 +52,16 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   `double % int`). Known remaining gap: TEXT bindings prerender outside the
   renderer, so modulo on doubles inside a text template still needs a
   node-value read (see the demo's sweepPct).
+- Hardware-verified fixes (SSD1309 rig): `:root` styling declarations now
+  apply to the screen root — parseCss previously kept only the custom
+  properties and silently dropped authored root backgrounds/colors, so the
+  UA's light screen defaults won the cascade and the panel rendered with a
+  fully-lit background (which read as white lines flanking the pressed
+  rect's border). The mono glyph bake threshold drops from 50% to ~31%
+  coverage (MONO_ALPHA_THRESHOLD 8→5): thin stems of a 10px bold face sat
+  under 50% coverage and dropped out, leaving ragged anti-alias-looking
+  edges; 5 keeps strokes connected without over-bolding (both the panel and
+  the preview render the same baked bits).
 
 Out of scope per the design: band renderer / scroll canvases / OSK on 1bpp.
 Raw display.* ops keep the direct-op runtime beneath the UI path.

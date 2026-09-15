@@ -76,6 +76,13 @@ interface Point {
 
 const FALLBACK_CHARS = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,:;!?+-*/=%()[]{}<>_#@&^~$'|";
 const SUPERSAMPLE = 4;
+// Stage 2 mono glyph threshold: a pixel keeps its bit when coverage alpha
+// reaches this (of 15). 8 (50%) reads as thin/patchy at small sizes — thin
+// strokes of a 10px bold face sit near 30-45% coverage and drop out, leaving
+// ragged "anti-aliased-looking" edges on the panel. 5 (~31%) keeps those
+// strokes connected; heavier faces just read bolder, which is the right bias
+// for emissive 1bpp panels.
+export const MONO_ALPHA_THRESHOLD = 5;
 
 export function normalizeFontFamily(value: string | undefined): string | undefined {
   if (!value) return undefined;
@@ -408,9 +415,9 @@ function rasterizeFontAsset(options: {
   font: any;
 }): UIFontAssetModel {
   // Stage 2 mono: glyphs pack as 1bpp bits (MSB-first, 8 pixels/byte), with
-  // dataOffset counting bits. The bit keeps exactly the coverage the AA-off
-  // runtime threshold would draw (alpha >= 8 of 15), so the panel shows the
-  // same glyph shapes the preview thresholds to.
+  // dataOffset counting bits. The bit keeps the coverage MONO_ALPHA_THRESHOLD
+  // selects — the single bake point; the runtime and preview both read the
+  // packed bits as 15/0 alpha, so the panel shows these exact glyph shapes.
   let monoPack = false;
   try { monoPack = getDisplayProfile().colorFormat === "mono"; } catch { /* no profile bound */ }
   const scale = options.px / options.font.unitsPerEm;
@@ -445,7 +452,7 @@ function rasterizeFontAsset(options: {
             }
           }
           const alpha = Math.round((covered * 15) / (SUPERSAMPLE * SUPERSAMPLE));
-          if (monoPack) monoBits.push(alpha >= 8 ? 1 : 0);
+          if (monoPack) monoBits.push(alpha >= MONO_ALPHA_THRESHOLD ? 1 : 0);
           else unpackedAlpha.push(alpha);
         }
       }

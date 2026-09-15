@@ -304,12 +304,30 @@ export function parseCss(src: string, diagnostics?: Diagnostic[]): CSSRule[] {
 
       // Capture CSS custom properties from :root declarations.
       if (selectorText === ":root") {
+        let hasStyleDecl = false;
+        const rootProps: CSSProperty = {};
         node.block.children.forEach((child: any) => {
-          if (child.type === "Declaration" && child.property.startsWith("--")) {
+          if (child.type !== "Declaration") return;
+          if (typeof child.property === "string" && child.property.startsWith("--")) {
             variables[child.property] = generate(child.value).trim();
+          } else {
+            // Non-variable declarations style the document root itself.
+            hasStyleDecl = true;
+            const prop = child.property.replace(/^-(?:webkit|moz|ms|o)-/, "");
+            assignProp(rootProps, prop, generate(child.value).trim(), diagnostics);
           }
         });
-        return; // :root is not a styling rule
+        // :root styling (background, color, flex-direction, ...) applies to the
+        // document root — the <screen> element. Emit it as an author rule on
+        // `screen` so it reaches the tree; before, only the custom properties
+        // were kept and authored root backgrounds/colors were silently dropped
+        // (the UA screen defaults then won the cascade). Author rules beat the
+        // UA sheet regardless of specificity, matching browser :root semantics.
+        if (hasStyleDecl) {
+          const rootSel = parseSelector("screen");
+          if (rootSel) rules.push({ selector: rootSel, properties: rootProps });
+        }
+        return;
       }
 
       // Class-scoped variables: `.dark { --x: ... }`. Extract into scopedVars
