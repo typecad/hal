@@ -685,9 +685,15 @@ export const zephyrDisplayAdapterGenerator: DisplayAdapterGenerator = (display) 
   // Drop-in path: a DT compatible as the driver id (no registry profile)
   // synthesizes a native-transport profile — the in-tree driver bound by the
   // overlay's node owns the panel, the config's quirk flags carry the rest.
+  // Mono compatibles (ssd1306/1309-class via the compatible table or an
+  // explicit colorFormat) take the full-frame 1bpp adapter, NOT the rgb565
+  // display-API one.
   if (!profile) {
     const synth = synthesizeZephyrProfile(display);
-    if (synth) return zephyrDisplayApiAdapter(synth);
+    if (synth) {
+      if (synth.colorFormat === 'mono') return zephyrMonoDisplayAdapter(synth);
+      return zephyrDisplayApiAdapter(synth);
+    }
     return undefined as unknown as DisplayAdapterCode;
   }
   // Mono panels (Stage 2): the full-frame 1bpp adapter — a vtiled MONO01

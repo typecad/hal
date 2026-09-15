@@ -520,6 +520,12 @@ export class ExpressionRenderer {
         if (helper) return "std::string";
         if (/^__tc_(?:startsWith|endsWith|includes)\b/.test(expr.callee)) return "bool";
         if (/^__tc_(?:charCodeAt|indexOf|lastIndexOf)\b/.test(expr.callee)) return "int";
+        // Math.* members lower with the callee text already mapped to
+        // `std::<fn>` — type them double so the modulo→fmod promotion and
+        // other double-aware rendering fire (`Math.floor(x) % n`).
+        if (/^(?:std::)?(?:floor|ceil|round|abs|sqrt|sin|cos|tan|atan2|log|exp|pow|fmod)\b/.test(expr.callee)) {
+          return "double";
+        }
         if (expr.cppType) return expr.cppType;
         // Look up the method's return type. The callee text may be a full
         // receiver chain (`this->methodName`, `obj->methodName`), so strip
@@ -528,6 +534,18 @@ export class ExpressionRenderer {
         const bareName = expr.callee.replace(/^.*->|^.*\./, "");
         return this.knownFunctionReturnTypes?.get(expr.callee)
           ?? this.knownFunctionReturnTypes?.get(bareName);
+      }
+      case "call": {
+        // Receiverless call. `Math.floor(x)` and friends lower to a call
+        // whose callee text is already the mapped `std::floor` — without this
+        // arm they inferred undefined, so the modulo→fmod promotion (and any
+        // other double-aware rendering) never fired (`std::floor(...) % 100`
+        // failed to compile). The renderer's own nested `fmod`/`pow` results
+        // are bare names, so both spellings count.
+        if (/^(?:std::)?(?:floor|ceil|round|abs|sqrt|sin|cos|tan|atan2|log|exp|pow|fmod)\b/.test(expr.callee)) {
+          return "double";
+        }
+        return this.knownFunctionReturnTypes?.get(expr.callee);
       }
       case "raw": {
         if (/^std::string\(/.test(expr.value) || /^__tc_(?:toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|repeat|jsonStringify)\b/.test(expr.value)) {

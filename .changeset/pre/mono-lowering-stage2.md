@@ -38,6 +38,20 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   demos/demo-mono-sim west-compiles the whole lowering on Linux runners.
   demos/demo-mono-oled west-compiles on esp32s3 (verified: ssd1306@3c node,
   CONFIG_SSD1306 + CONFIG_I2C self-build, zephyr.elf links).
+- Rig path (demos/demo-mono-rig): drop-in `solomon,ssd1309` over I2C with
+  `display.i2cPins { sda, scl }` — the overlay remuxes i2c0's pinctrl to the
+  wired pins (mirroring the touch remux) and names the DT node from the
+  compatible's panel segment. The drop-in mono dispatch now routes the 1bpp
+  adapter (it previously fell through to the rgb565 display-API adapter).
+  The demo self-drives from Time-based bindings (uptime, sweeping progress,
+  a 1 Hz :pressed face-inversion toggle) — no input wiring needed.
+- Engine fixes the rig demo surfaced: Math.* calls in ui.bind callbacks now
+  pull the math header (the include scan never saw binding-table bodies),
+  and Math.* method/call expressions infer as double so the renderer's
+  modulo→fmod promotion fires (`Math.floor(x) % n` used to emit
+  `double % int`). Known remaining gap: TEXT bindings prerender outside the
+  renderer, so modulo on doubles inside a text template still needs a
+  node-value read (see the demo's sweepPct).
 
 Out of scope per the design: band renderer / scroll canvases / OSK on 1bpp.
 Raw display.* ops keep the direct-op runtime beneath the UI path.

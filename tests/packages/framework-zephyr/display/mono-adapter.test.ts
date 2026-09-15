@@ -92,6 +92,41 @@ describe("mono dispatch (the decline is gone)", () => {
     expect(state.profile.width).toBe(128);
   });
 
+  it("drop-in mono compatibles dispatch the mono adapter (not the rgb565 one)", () => {
+    // The rig path: driver = DT compatible, engine profile mono (via
+    // colorFormatForDriver) — the synthesized profile must take the 1bpp
+    // full-frame adapter, never the display-API rgb565 one.
+    const code = zephyrDisplayAdapterGenerator({ driver: "solomon,ssd1309", colorFormat: "mono" } as never);
+    expect((code as { includes: string }).includes).toContain("ZephyrMonoTarget");
+  });
+
+  it("the overlay remuxes i2c0 to the wired sda/scl pins", async () => {
+    const { generateOverlay } = await import("../../../../packages/framework-zephyr/src/dt-config/overlay");
+    const { TEST_CHIP } = await import("../helpers/test-chip");
+    const synth = synthesizeZephyrProfile({ driver: "solomon,ssd1309", width: 128, height: 64, colorFormat: "mono" })!;
+    const txt = generateOverlay(
+      TEST_CHIP,
+      { usesDisplay: true } as never,
+      synth,
+      { sda: 17, scl: 16, address: 0x3c } as never,
+    );
+    // Pinctrl group with the named macros for the wired pins, assigned on i2c0.
+    expect(txt).toContain("pinmux = <I2C0_SDA_GPIO17>, <I2C0_SCL_GPIO16>;");
+    expect(txt).toContain("pinctrl-0 = <&i2c0_display>;");
+    expect(txt).toContain("bias-pull-up;");
+    expect(txt).toContain("drive-open-drain;");
+    // The node names the panel segment of the compatible, at the address.
+    expect(txt).toContain("ssd1309@3c");
+    expect(txt).toContain('compatible = "solomon,ssd1309"');
+    // Default-free required props get upstream-standard values.
+    expect(txt).toContain("multiplex-ratio = <63>");
+    expect(txt).toContain("prechargep = <0x22>");
+    // No remux when no pins are wired.
+    const bare = generateOverlay(TEST_CHIP, { usesDisplay: true } as never, synth);
+    expect(bare).not.toContain("I2C0_SDA_GPIO");
+    expect(bare).not.toContain("pinctrl-0 = <&i2c0_display>");
+  });
+
   it("registered mono profiles keep their registry entry (no synthesis)", () => {
     const state = newDisplayState();
     resolveZephyrDisplayOp(

@@ -975,6 +975,8 @@ export const Toolchain = {
       const dispCfg = o.display as Record<string, unknown> | undefined;
       const spiPins = (dispCfg?.spiPins ?? undefined) as
         { sck?: unknown; mosi?: unknown; miso?: unknown } | undefined;
+      const i2cPins = (dispCfg?.i2cPins ?? undefined) as
+        { sda?: unknown; scl?: unknown } | undefined;
       const wiring: DisplayWiring | undefined = dispCfg
         ? {
             cs: typeof dispCfg.cs === 'number' ? dispCfg.cs : undefined,
@@ -984,6 +986,8 @@ export const Toolchain = {
             sck: typeof spiPins?.sck === 'number' ? spiPins.sck : undefined,
             mosi: typeof spiPins?.mosi === 'number' ? spiPins.mosi : undefined,
             miso: typeof spiPins?.miso === 'number' ? spiPins.miso : undefined,
+            sda: typeof i2cPins?.sda === 'number' ? i2cPins.sda : undefined,
+            scl: typeof i2cPins?.scl === 'number' ? i2cPins.scl : undefined,
             backlightPin: typeof dispCfg.backlightPin === 'number' ? dispCfg.backlightPin : undefined,
             tearingEffectPin: typeof dispCfg.tearingEffectPin === 'number' ? dispCfg.tearingEffectPin : undefined,
             address: typeof dispCfg.address === 'number' ? dispCfg.address : undefined,

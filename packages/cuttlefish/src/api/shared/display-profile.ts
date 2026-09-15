@@ -165,6 +165,10 @@ export interface DisplayConfig {
   backlightPin?: number;
   spiFrequency?: number;
   spiPins?: { mosi: number; sck: number; miso: number };
+  /** I2C bus pins for i2c-family panels (mono OLEDs, ssd1306-class) — the
+   *  Zephyr overlay remuxes the I2C controller's pinctrl to these pins; the
+   *  board's default I2C pins rarely match a breakout's wiring. */
+  i2cPins?: { sda: number; scl: number };
   /** Pixel color channel order expected by the panel module. Default: rgb. */
   colorOrder?: "rgb" | "bgr";
   /** Optional explicit display inversion override. */

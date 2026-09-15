@@ -87,6 +87,14 @@ export interface DisplayWiring {
   spiFrequency?: number;
   /** I2C address for i2c-family panels (mono OLEDs, ssd1306-class). */
   address?: number;
+  /** I2C bus pins for i2c-family panels. When present, the overlay remuxes
+   *  the I2C controller's pinctrl to these pins — the board's default I2C
+   *  pins rarely match a breakout's wiring (same rationale as the SPI pins
+   *  below; the ESP32 pinctrl headers carry the named I2C0_*_GPIOn macros).
+   *  Shared bus: when touch wiring also remuxes, the last assignment wins —
+   *  wire both to the same pins. */
+  sda?: number;
+  scl?: number;
   /** SPI bus pins. When present, the overlay remuxes the SPI controller's
    *  pinctrl to these pins (the board defaults rarely match a breakout's
    *  wiring — e.g. demo-st's panel is on SCK=18/MOSI=23, not the devkitc
@@ -1069,9 +1077,35 @@ function emitDisplayNode(
   // touch wiring's remux (shared bus) or the board's default I2C pins.
   if (readDisplayBinding(display.dtCompatible ?? (isDtCompatible(display.driver) ? display.driver : ''))?.busFamily === 'i2c') {
     const addr = wiring?.address ?? 0x3c;
+    // Optional I2C pin remux — mirrors the touch path's remux (the board's
+    // default I2C pins rarely match a breakout's wiring). Named macros from
+    // the SoC pinctrl header; the group lives under &pinctrl and overrides
+    // i2c0's default group via pinctrl-0.
+    const sda = wiring?.sda;
+    const scl = wiring?.scl;
+    if (sda !== undefined && scl !== undefined) {
+      lines.push('&pinctrl {');
+      lines.push('    i2c0_display: i2c0_display {');
+      lines.push('        group1 {');
+      lines.push(`            pinmux = <I2C0_SDA_GPIO${sda}>, <I2C0_SCL_GPIO${scl}>;`);
+      lines.push('            bias-pull-up;');
+      lines.push('            drive-open-drain;');
+      lines.push('        };');
+      lines.push('    };');
+      lines.push('};');
+      lines.push('');
+    }
+    // Node name from the compatible's panel segment (ssd1306/ssd1309/sh1106);
+    // DT node names are labels, not compatibles — but matching the panel
+    // keeps the built zephyr.dts readable.
+    const panel = (display.dtCompatible ?? display.driver).split(',')[1] ?? 'ssd1306';
     lines.push('&i2c0 {');
     lines.push('    status = "okay";');
-    lines.push(`    ${display.dtLabel}: ssd1306@${addr.toString(16)} {`);
+    if (sda !== undefined && scl !== undefined) {
+      lines.push('    pinctrl-0 = <&i2c0_display>;');
+      lines.push('    pinctrl-names = "default";');
+    }
+    lines.push(`    ${display.dtLabel}: ${panel}@${addr.toString(16)} {`);
     lines.push(`        compatible = "${display.dtCompatible ?? display.driver}";`);
     lines.push(`        reg = <0x${addr.toString(16)}>;`);
     lines.push(`        width = <${display.nativeWidth ?? display.width}>;`);

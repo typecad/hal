@@ -1,0 +1,16 @@
+{
+  "name": "demo-mono-rig",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SSD1309 128x64 mono OLED rig test (ESP32-S3, SCL=16 SDA=17) — visual verification of the Stage 2 mono lowering",
+  "type": "module",
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload"
+  },
+  "dependencies": {
+    "@typecad/framework-zephyr": "*",
+    "@typecad/ui": "*"
+  }
+}

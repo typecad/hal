@@ -1,0 +1,139 @@
+<script lang="ts">
+  // app.ui — Stage 2 mono rig test (SSD1309 128x64, self-driving).
+  //
+  // Everything on screen animates from BINDINGS only (they re-evaluate every
+  // ui_tick), so the panel shows motion with no wiring beyond power + I2C:
+  //
+  //   ┌────────────────────┐  What to verify visually:
+  //   │ SSD1309 · MONO RIG │  1. Crisp 1bpp text (subset font, no AA)
+  //   │ t=12.5s            │  2. Uptime counts ~2x/s → full-frame redraw
+  //   │ ▓▓▓▓▓▓░░░░░░  47%  │  3. Bar sweeps 0→100% every 5s
+  //   │ ██ INVERT ██       │  4. Button face inverts every second
+  //   │ alternating line   │  5. Second line alternates text
+  //   └────────────────────┘
+  //
+  // If the display shows transposed snow instead of this layout, the vtiled
+  // MONO01 packing regressed. If nothing shows: wiring/address (scope the
+  // build's TC_DISPLAY lines on the console).
+
+  import { ui } from '@typecad/ui';
+  import { Time } from '@typecad/hal';
+
+  ui.mount(screen);
+
+  // Seconds since boot, one decimal.
+  ui.bind(screen.uptime, 'text', () => `t=${Math.floor(Time.now() / 100) / 10}s`);
+  // Progress sweeps 0..99 every 5 seconds.
+  ui.bind(screen.sweep, 'value', () => Math.floor(Time.now() / 50) % 100);
+  // Read the bound node's own int value for the text renderings — node state
+  // is int-typed, so `%`/ternaries stay integer C++.
+  ui.bind(screen.sweepPct, 'text', () => `${screen.sweep.value}%`);
+  // 1 Hz square wave drives the button's :pressed value → face inversion.
+  ui.bind(screen.invert, 'value', () => Math.floor(Time.now() / 1000) % 2);
+  // Alternating status line keyed off the same square wave.
+  ui.bind(screen.alt, 'text', () => screen.invert.value ? 'colors: 0/1 only' : 'frame: full redraw');
+</script>
+
+<style>
+  @font-face {
+    font-family: "RigMono";
+    src: url("../../../packages/ui/assets/fonts/dejavu/DejaVuSans-Bold.ttf");
+    font-weight: 700;
+    font-style: normal;
+  }
+
+  :root {
+    background: #000000;
+    color: #ffffff;
+    flex-direction: column;
+  }
+
+  #titlebar {
+    background: #ffffff;
+    padding: 1px 3px;
+    height: 12px;
+  }
+  #title {
+    color: #000000;
+    font-family: "RigMono";
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  #row2 {
+    padding: 0 3px;
+    height: 11px;
+  }
+  #uptime {
+    font-family: "RigMono";
+    font-size: 10px;
+  }
+
+  #row3 {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 0 3px;
+    height: 14px;
+  }
+  #sweep {
+    width: 90px;
+    height: 10px;
+    min-height: 0;
+    border: 1px solid #ffffff;
+  }
+  #sweepPct {
+    font-family: "RigMono";
+    font-size: 10px;
+    width: 30px;
+  }
+
+  #row4 {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    padding: 1px 3px;
+    height: 14px;
+  }
+  #invert {
+    font-family: "RigMono";
+    font-size: 10px;
+    width: 90px;
+    min-height: 0;
+    height: 12px;
+    padding: 0 4px;
+    border: 1px solid #ffffff;
+    color: #ffffff;
+  }
+  #invert:pressed {
+    background: #ffffff;
+    color: #000000;
+  }
+
+  #row5 {
+    padding: 0 3px;
+    height: 11px;
+  }
+  #alt {
+    font-size: 10px;
+  }
+</style>
+
+<screen>
+  <view id="titlebar">
+    <text id="title">SSD1309 · MONO RIG</text>
+  </view>
+  <view id="row2">
+    <text id="uptime">t=0s</text>
+  </view>
+  <view id="row3">
+    <progress id="sweep" value="0"></progress>
+    <text id="sweepPct">0%</text>
+  </view>
+  <view id="row4">
+    <button id="invert">INVERT</button>
+  </view>
+  <view id="row5">
+    <text id="alt">frame: full redraw</text>
+  </view>
+</screen>

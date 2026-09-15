@@ -15,6 +15,7 @@ import { resolveStrategy } from "../../platform/registry.js";
 import { buildCoopSchedulerPolyfill } from "../../platform/coop-scheduler-runtime.js";
 import { getLoadedFramework } from "../../framework-registry.js";
 import { entryHasUI } from "../../ui-hook.js";
+import { uiBindings } from "../../ir/transformers/ui-call-resolver.js";
 import { ComplianceContext } from "../compliance/compliance-context.js";
 import {
   createEmissionScopeState,
@@ -1172,6 +1173,20 @@ export function buildEmitterContext(
   // Gated on entryHasUI so non-UI files don't pull in stdio unnecessarily.
   if (entryHasUI() && !includes.includes("<stdio.h>")) {
     includes.push("<stdio.h>");
+  }
+  // UI binding callbacks lower to C++ the program-analysis math scan never
+  // sees (they live in the binding table, not the scanned statement IR) — a
+  // `Math.floor(...)` inside ui.bind(...) would emit std::floor with no
+  // <cmath>. Same pattern as the stdio push above: scan the lowered binding
+  // bodies here so the include lands before emission.
+  if (entryHasUI() && !includes.includes(strategy.mathHeader())) {
+    const mathCall = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|acos|atan|fmod|fabs)\b/;
+    const bindingsHaveMath = uiBindings().some(
+      (b) => (b.cppExpr !== undefined && mathCall.test(b.cppExpr)) || (b.cppBody !== undefined && mathCall.test(b.cppBody)),
+    );
+    if (bindingsHaveMath) {
+      includes.push(strategy.mathHeader());
+    }
   }
   // std::variant (from discriminated-union type aliases) needs <variant>.
   // Scan type aliases AND function signatures (params/return types) — a union
