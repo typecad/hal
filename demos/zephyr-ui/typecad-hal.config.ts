@@ -17,6 +17,8 @@ const config: TypecadConfig = {
 
   board: 'esp32s3_devkitc/esp32s3/procpu',
 
+  psram: 'opi',
+
   framework: '@typecad/framework-zephyr',
   output: {
     outDir: './out',
@@ -27,7 +29,13 @@ const config: TypecadConfig = {
   },
 
   display: {
-    profile: 'st7796-zephyr',
+    // Drop-in path (rotation fix verification): compatible + geometry only.
+    driver: 'sitronix,st7796s',
+    width: 480, height: 320,
+    nativeWidth: 320, nativeHeight: 480,
+    rotation: 1,
+    rgbInverted: true,   // clone panel: 565 wire byte order (see profile notes)
+    csHold: true,        // clone panel: stock bridge CS toggling corrupts bursts
     cs: 5,
     dc: 17,
     rst: 16,
@@ -39,6 +47,11 @@ const config: TypecadConfig = {
     themeClass: 'dark',   // showcase.neobrutalism.css drives the look
     touch: {
       library: 'FT6336U',
+      // The module gates the touch controller's power/enable on this GPIO —
+      // driven LOW 10ms then HIGH (see the adapter's rig-verified sequence).
+      // Without it the controller half-powers off a floating line and the
+      // I2C bus dies within a second of boot.
+      resetPin: 4,
       i2cAddress: 0x38,
       i2cFrequency: 400000,
       sda: 8,
