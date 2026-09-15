@@ -35,17 +35,51 @@ describe('resolveKconfigFragments', () => {
     expect(m.get('CONFIG_DISPLAY')).toBe('y');
   });
 
+  it('force-disables the in-tree display drivers on the direct-spi transport (default)', () => {
+    const m = resolveKconfigFragments({ usesDisplay: true }, false);
+    expect(m.get('CONFIG_MIPI_DBI_SPI')).toBe('n');
+    expect(m.get('CONFIG_ILI9341')).toBe('n');
+    expect(m.get('CONFIG_ST7796S')).toBe('n');
+  });
+
+  it('binds the in-tree drivers on the zephyr-display transport', () => {
+    const m = resolveKconfigFragments(
+      { usesDisplay: true, displayTransport: 'zephyr-display', displayController: 'ili9341' },
+      false,
+    );
+    expect(m.get('CONFIG_MIPI_DBI_SPI')).toBe('y');
+    expect(m.get('CONFIG_ILI9341')).toBe('y');
+    // The =n disables from the direct path must not leak into prj.conf (an
+    // explicit =n would override the DT-driven default).
+    expect(m.has('CONFIG_ST7796S')).toBe(false);
+    // DMA still on — the display overlay pairs it with dma-enabled on the bus.
+    expect(m.get('CONFIG_DMA')).toBe('y');
+  });
+
+  it('st7796s native keeps the stock bridge off (app-local CS-hold host) + binds the panel driver', () => {
+    const m = resolveKconfigFragments(
+      { usesDisplay: true, displayTransport: 'zephyr-display', displayController: 'st7796s' },
+      false,
+    );
+    // The panel driver is in-tree; the mipi-dbi host is the adapter-emitted
+    // local CS-holding one (the stock bridge scrambles clone panels).
+    expect(m.get('CONFIG_ST7796S')).toBe('y');
+    expect(m.get('CONFIG_MIPI_DBI_SPI')).toBe('n');
+    expect(m.has('CONFIG_ILI9341')).toBe(false);
+  });
+
   it('routes touch to the right bus driver per controller', () => {
-    // Default/FT6336U: I2C.
+    // Default/FT6336U: the input subsystem — the in-tree focaltech driver
+    // owns the controller (polling mode); the adapter listens for events.
     const ft = resolveKconfigFragments({ usesTouch: true }, false);
+    expect(ft.get('CONFIG_INPUT')).toBe('y');
+    expect(ft.get('CONFIG_INPUT_FT5336')).toBe('y');
     expect(ft.get('CONFIG_I2C')).toBe('y');
-    expect(ft.has('CONFIG_SPI')).toBe(false);
-    // XPT2046 rides the display's SPI bus — no I2C needed.
+    // XPT2046 rides the display's SPI bus — the raw adapter owns the chip
+    // (the in-tree driver's DT scaling would double-apply calibration).
     const xpt = resolveKconfigFragments({ usesTouch: true, touchController: 'xpt2046' }, false);
     expect(xpt.get('CONFIG_SPI')).toBe('y');
     expect(xpt.has('CONFIG_I2C')).toBe(false);
-    // The adapters drive the controllers directly — the in-tree input drivers
-    // must not build against nodes they own.
     expect(xpt.has('CONFIG_INPUT')).toBe(false);
   });
 

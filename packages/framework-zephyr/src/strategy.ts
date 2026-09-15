@@ -187,6 +187,57 @@ function collectPwmOverrideSpecs(program: ProgramIR | undefined): { pin: number;
  * -Wunused-variable (Zephyr builds with warnings-as-errors), the same
  * hygiene collectUsedPins enforces for per-channel ADC/PWM state.
  */
+/**
+ * Strips the program drives, keyed by SPI controller index → the
+ * construction chain length (the buffer size). Collected from strip.* ops.
+ */
+/** Which HID protocol the program drives — 'mixed' when verbs from BOTH
+ *  classes appear (one interface per program is the v1 ceiling; the caller
+ *  turns mixed into a #error so the build names it clearly). */
+function collectHidProtocol(program: ProgramIR | undefined): 'keyboard' | 'mouse' | 'mixed' | undefined {
+  if (!program) return undefined;
+  let kb = false;
+  let mouse = false;
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    const n = node as Record<string, unknown>;
+    const op = n.operation;
+    if (op && typeof op === 'object') {
+      const name = (op as Record<string, unknown>).operation;
+      if (typeof name === 'string') {
+        if (name.startsWith('hid.kb_')) kb = true;
+        if (name.startsWith('hid.mouse_')) mouse = true;
+      }
+    }
+    for (const v of Object.values(n)) if (v && typeof v === 'object') visit(v);
+  };
+  visit(program);
+  if (kb && mouse) return 'mixed';
+  return kb ? 'keyboard' : mouse ? 'mouse' : undefined;
+}
+
+function collectStrips(program: ProgramIR | undefined): Map<number, number> | undefined {
+  if (!program) return undefined;
+  const strips = new Map<number, number>();
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    const n = node as Record<string, unknown>;
+    const op = n.operation;
+    if (op && typeof op === 'object') {
+      const o = op as Record<string, unknown>;
+      if (o.operation === 'strip.set_pixel' || o.operation === 'strip.fill' || o.operation === 'strip.show') {
+        const m = String(o.bus ?? '').match(/(\d+)$/);
+        const idx = m ? parseInt(m[1]!, 10) : 0;
+        const count = Number(o.count ?? 1) || 1;
+        strips.set(idx, Math.max(strips.get(idx) ?? 0, count));
+      }
+    }
+    for (const v of Object.values(n)) if (v && typeof v === 'object') visit(v);
+  };
+  visit(program);
+  return strips;
+}
+
 function collectUsedBusIndices(program: ProgramIR | undefined): { i2c: Set<number>; spi: Set<number>; uart: Set<number> } | undefined {
   if (!program) return undefined;
   const indices = { i2c: new Set<number>(), spi: new Set<number>(), uart: new Set<number>() };
@@ -228,9 +279,9 @@ function collectUsedBusIndices(program: ProgramIR | undefined): { i2c: Set<numbe
  * constructed sensors emit state, and only sensors whose ops were emitted
  * get a DT node.
  */
-export function collectSensors(program: ProgramIR | undefined): Map<string, { part: string; bus: string; port: number | string; busKind: string; spiHz: number | string; spiMode: number | string; alertPin: number | string }> | undefined {
+export function collectSensors(program: ProgramIR | undefined): Map<string, { part: string; bus: string; port: number | string; busKind: string; spiHz: number | string; spiMode: number | string; alertPin: number | string; resolution: number | string }> | undefined {
   if (!program) return undefined;
-  const sensors = new Map<string, { part: string; bus: string; port: number | string; busKind: string; spiHz: number | string; spiMode: number | string; alertPin: number | string }>();
+  const sensors = new Map<string, { part: string; bus: string; port: number | string; busKind: string; spiHz: number | string; spiMode: number | string; alertPin: number | string; resolution: number | string }>();
   const visit = (node: unknown): void => {
     if (!node || typeof node !== 'object') return;
     const n = node as Record<string, unknown>;
@@ -245,8 +296,11 @@ export function collectSensors(program: ProgramIR | undefined): Map<string, { pa
         const spiHz = (o.spiHz as number | string) ?? 0;
         const spiMode = (o.spiMode as number | string) ?? 0;
         const alertPin = (o.alertPin as number | string) ?? -1;
+        const resolution = (o.resolution as number | string) ?? 12;
         const key = `${part}|${bus}|${port}|${busKind}`;
-        if (!sensors.has(key)) sensors.set(key, { part, bus, port, busKind, spiHz, spiMode, alertPin });
+        const existing = sensors.get(key);
+        if (!existing) sensors.set(key, { part, bus, port, busKind, spiHz, spiMode, alertPin, resolution });
+        else if (o.resolution !== undefined) existing.resolution = resolution;
       }
     }
     for (const v of Object.values(n)) {
@@ -257,6 +311,42 @@ export function collectSensors(program: ProgramIR | undefined): Map<string, { pa
   visit(program);
   visitResolvedHalOps(program, visit);
   return sensors;
+}
+
+/**
+ * The I2S construction facts the program's ops carry (the shim's slab and
+ * init helpers size from these) — first-seen wins, keyed by instance.
+ */
+export function collectI2s(program: ProgramIR | undefined): Map<number, { hz: number; channels: number; bits: number; blockFrames: number }> | undefined {
+  if (!program) return undefined;
+  const out = new Map<number, { hz: number; channels: number; bits: number; blockFrames: number }>();
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    const n = node as Record<string, unknown>;
+    const op = n.operation;
+    if (op && typeof op === 'object') {
+      const o = op as Record<string, unknown>;
+      const name = o.operation;
+      if (name === 'i2s.write' || name === 'i2s.read') {
+        const inst = Math.min(Number(o.instance ?? 0), 1);
+        if (!out.has(inst)) {
+          out.set(inst, {
+            hz: Number(o.hz ?? 16000),
+            channels: Number(o.channels ?? 2),
+            bits: Number(o.bits ?? 16),
+            blockFrames: Number(o.blockFrames ?? 64),
+          });
+        }
+      }
+    }
+    for (const v of Object.values(n)) {
+      if (Array.isArray(v)) { for (const item of v) visit(item); }
+      else if (v && typeof v === 'object') visit(v);
+    }
+  };
+  visit(program);
+  visitResolvedHalOps(program, visit);
+  return out;
 }
 
 /**
@@ -364,6 +454,12 @@ import { dacInitLines } from './lowering/dac.js';
 import { fsInitLines } from './lowering/fs.js';
 import { hwtimerInitLines } from './lowering/hwtimer.js';
 import { i2cInitLines } from './lowering/i2c.js';
+import { stripInitLines } from './lowering/strip.js';
+import { hidInitLines } from './lowering/hid.js';
+import { matrixInitLines } from './lowering/matrix.js';
+import { clockInitLines } from './lowering/clock.js';
+import { canInitLines } from './lowering/can.js';
+import { i2sInitLines } from './lowering/i2s.js';
 import { sensorStateLines } from './lowering/sensor.js';
 import { spiTargetStateLines } from './lowering/spi.js';
 import { threadStateLines } from './lowering/thread.js';
@@ -406,6 +502,7 @@ import { generateStaticAsyncRuntime } from '@typecad/cuttlefish/api/shared';
 import { resolveZephyrDisplayOp, newDisplayState, type DisplayState } from './display/index.js';
 import { buildDisplayRuntime } from './display/gfx.js';
 import { ZEPHYR_DISPLAY_PROFILES, BUILT_IN_PROFILES } from './display/profiles.js';
+import { listBoundDisplayCompatibles } from './display/bindings.js';
 import { zephyrDisplayAdapterGenerator } from './display/ui-adapter.js';
 import { zephyrTouchAdapter } from './display/touch-adapter.js';
 
@@ -496,6 +593,21 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesI2C')) inc.push('<zephyr/drivers/i2c.h>');
     if (uses('usesSensor')) inc.push('<zephyr/drivers/sensor.h>');
     if (uses('usesSPI')) inc.push('<zephyr/drivers/spi.h>');
+    if (uses('usesStrip')) inc.push('<zephyr/drivers/led_strip.h>');
+    if (uses('usesHid')) {
+      inc.push('<zephyr/usb/class/hid.h>');
+      inc.push('<zephyr/usb/class/usbd_hid.h>');
+      inc.push('<zephyr/usb/usbd.h>');
+      inc.push('<zephyr/drivers/usb/usb_buf.h>');
+    }
+    if (uses('usesMatrix')) inc.push('<zephyr/input/input.h>');
+    if (uses('usesPower')) inc.push('<zephyr/sys/poweroff.h>');
+    // esp_sleep.h exists only on the espressif HAL — gate on the harvested
+    // RTC wake-timer fact (the includes' uses() reads op flags, not src).
+    if (uses('usesPower') && chip.powerWakeTimer) inc.push('<esp_sleep.h>');
+    if (uses('usesClock')) inc.push('<zephyr/drivers/rtc.h>');
+    if (uses('usesCan')) inc.push('<zephyr/drivers/can.h>');
+    if (uses('usesI2s')) inc.push('<zephyr/drivers/i2s.h>');
     if (uses('usesUart')) inc.push('<zephyr/drivers/uart.h>');
     // USB CDC serial: the class instance is a UART device (uart.h); the
     // device context macros + usbd_* API live in the next-stack header.
@@ -860,6 +972,46 @@ export class ZephyrStrategy implements PlatformStrategy {
         guardBody.push(...spiInitLines(chip, i));
       }
     }
+    // LED strips — one buffer + device handle per driven SPI controller
+    // (chain length from the construction facts).
+    {
+      const strips = collectStrips(program);
+      if (uses('usesStrip') && strips) {
+        for (const [idx, count] of strips) {
+          guardBody.push(...stripInitLines(chip, idx, count));
+        }
+      }
+    }
+    // Key matrix — the input-subsystem trampoline (the DT node comes from
+    // the overlay generator, driven by the toolchain's matrix scan).
+    if (uses('usesMatrix')) {
+      guardBody.push(...matrixInitLines());
+    }
+    // Wall-clock shim — the epoch<->civil helpers + the rtc alias handle
+    // (the DT node comes from the overlay generator's shim synthesis).
+    if (uses('usesClock')) {
+      guardBody.push(...clockInitLines());
+    }
+    // CAN — per-controller device handle + the rx trampoline (the DT node
+    // is the board's own can@ node, enabled by the overlay).
+    if (uses('usesCan') && chip.can) {
+      for (let i = 0; i < chip.can.controllers.length; i++) {
+        guardBody.push(...canInitLines(chip, i));
+      }
+    }
+    // I2S — per-controller slab + block buffers + lazy direction inits,
+    // sized from the construction facts the ops carry.
+    if (uses('usesI2s') && chip.i2s) {
+      const i2sFacts = collectI2s(program);
+      const controllerCount = chip.i2s.controllers.length;
+      for (let i = 0; i < controllerCount; i++) {
+        const f = i2sFacts?.get(i);
+        const channels = f?.channels ?? 2;
+        const bits = f?.bits ?? 16;
+        const blockFrames = f?.blockFrames ?? 64;
+        guardBody.push(...i2sInitLines(chip, i, blockFrames * channels * (bits / 8)));
+      }
+    }
     if (uses('usesUart') && chip.uart) {
       for (let i = 0; i < chip.uart.controllers.length; i++) {
         if (usedBuses && !usedBuses.uart.has(i)) continue;
@@ -881,7 +1033,7 @@ export class ZephyrStrategy implements PlatformStrategy {
       const sensors = collectSensors(program);
       if (sensors) {
         for (const s of sensors.values()) {
-          guardBody.push(...sensorStateLines(s.part, s.bus, s.port, s.busKind, s.spiHz, s.spiMode, s.alertPin));
+          guardBody.push(...sensorStateLines(s.part, s.bus, s.port, s.busKind, s.spiHz, s.spiMode, s.alertPin, s.resolution));
         }
       }
     }
@@ -907,10 +1059,30 @@ export class ZephyrStrategy implements PlatformStrategy {
         }
       }
     }
-    if (uses('usesUsb') && chip.usb) {
-      guardBody.push(...usbdDeviceLines(chip));
-      for (let i = 0; i < chip.usb.cdcInstances; i++) guardBody.push(...usbInitLines(chip, i));
+    // The usbd context is shared by CDC and HID; the CDC per-instance
+    // state only emits when the program actually uses usb.* (an HID-only
+    // program would otherwise carry an unused __tc_usb0_dev).
+    if ((uses('usesUsb') || uses('usesHid')) && chip.usb) {
+      guardBody.push(...usbdDeviceLines(chip, { hid: uses('usesHid') }));
+      if (uses('usesUsb')) {
+        for (let i = 0; i < chip.usb.cdcInstances; i++) guardBody.push(...usbInitLines(chip, i));
+      }
     }
+    // USB HID — one interface per program; the protocol comes from which
+    // class's verbs the program used (keyboard vs mouse). Requires the USB
+    // device context (the same one CDC rides — the register helper calls
+    // __tc_usbd_start).
+    if (uses('usesHid') && chip.usb) {
+      const protocol = collectHidProtocol(program) ?? 'keyboard';
+      if (protocol === 'mixed') {
+        // One zephyr,hid-device interface per program (the v1 ceiling) —
+        // name it at compile time instead of an undefined-symbol error.
+        guardBody.push('#error "typecad-hal: one HID interface per program (v1) — Keyboard and Mouse cannot be mixed in one app"');
+      } else {
+        guardBody.push(...hidInitLines(protocol));
+      }
+    }
+
     // PWM init also fires (with alias vars for the override pins) when a
     // program drives ONLY inline-override channels on a chip with no pwm
     // facts — the lowered calls reference those aliases.
@@ -2178,17 +2350,30 @@ struct __tc_StaticArray {
   }
 
   supportedDisplayDrivers(): ReadonlySet<string> {
-    return new Set<string>(Object.keys(ZEPHYR_DISPLAY_PROFILES));
+    // Registry profiles plus every panel compatible with a display binding in
+    // the user's Zephyr tree — the drop-in path (display.driver = compatible)
+    // validates at mount like any curated profile. No tree discoverable →
+    // registry only.
+    const drivers = new Set<string>(Object.keys(ZEPHYR_DISPLAY_PROFILES));
+    try {
+      for (const compatible of listBoundDisplayCompatibles()) drivers.add(compatible);
+    } catch {
+      // Tree unreadable — the registry set stands.
+    }
+    return drivers;
   }
 
   // ── Strategy-owned display/touch adapter seam ────────────────────────────
   // Zephyr owns its display + touch adapters: the UI display adapter bridges
-  // the in-tree CuttlefishGFX class to the panel (per-controller init + wire
-  // format, see src/display/ui-adapter.ts), and the touch adapters drive the
-  // FT6336U (I2C capacitive) and XPT2046 (SPI resistive) controllers via
-  // Zephyr's bus APIs (src/display/touch-adapter.ts). Both live in this
-  // package so cuttlefish carries no Zephyr/Wiring-specific display or touch
-  // knowledge. Mirrors ArduinoStrategy's provides*/resolve* pattern.
+  // the in-tree CuttlefishGFX class to the panel via one of two transports
+  // (per profile — 'direct-spi': per-controller init + wire format over
+  // spi_write, see src/display/ui-adapter.ts; 'zephyr-display': Zephyr's
+  // display API with in-tree panel drivers, see src/display/ui-adapter-native.ts),
+  // and the touch adapters drive the FT6336U (I2C capacitive) and XPT2046
+  // (SPI resistive) controllers via Zephyr's bus APIs (src/display/touch-adapter.ts).
+  // Both live in this package so cuttlefish carries no Zephyr/Wiring-specific
+  // display or touch knowledge. Mirrors ArduinoStrategy's provides*/resolve*
+  // pattern.
 
   providesDisplayAdapter(): boolean { return true; }
 

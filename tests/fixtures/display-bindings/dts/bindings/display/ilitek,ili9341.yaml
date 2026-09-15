@@ -1,0 +1,11 @@
+description: Ilitek ILI9341 display driver
+compatible: "ilitek,ili9341"
+include:
+  - lcd-controller.yaml
+  - name: mipi-dbi-spi-device.yaml
+    property-blocklist:
+      - te-delay
+properties:
+  rotation:
+    type: int
+    required: false

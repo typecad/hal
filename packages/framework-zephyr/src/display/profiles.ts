@@ -29,6 +29,38 @@ export interface ZephyrDisplayProfile {
    *  Required for rgb565 profiles; mono profiles use the direct-op GFX
    *  runtime and ignore it. */
   readonly controller?: ZephyrPanelController;
+  /** How the UI adapter reaches the panel:
+   *  - 'direct-spi' (default): the emitted adapter drives the panel directly
+   *    over spi_write (Adafruit ST77xx protocol, CS held across command+data).
+   *    Required for panels the in-tree drivers cannot init (clone ST7796S —
+   *    the generic mipi-dbi-spi bridge deasserts CS between the command byte
+   *    and its parameters, which scrambles those panels).
+   *  - 'zephyr-display': the adapter calls Zephyr's display API
+   *    (display_write/display_get_capabilities) on the DT display device; an
+   *    in-tree panel driver (bound from the overlay's display node) owns the
+   *    init sequence, rotation, and wire format. */
+  readonly transport?: ZephyrDisplayTransport;
+  /** Which mipi-dbi host device backs the panel driver under the
+   *  'zephyr-display' transport:
+   *  - 'spi-bridge' (default): the stock zephyr,mipi-dbi-spi host
+   *    (CONFIG_MIPI_DBI_SPI). Fine for panels that tolerate per-transaction
+   *    CS (standard ILI9341 modules).
+   *  - 'local-hold-cs': an app-local host device the adapter emits — the
+   *    mipi-dbi-spi protocol with CS held across each command+data burst
+   *    (GPIO-managed, mirroring the hardware-verified direct transport).
+   *    Needed for clone ST77xx panels the stock bridge scrambles; implements
+   *    the mipi-hold-cs behavior the binding documents but 4.4.2 does not. */
+  readonly dbiHost?: ZephyrDbiHost;
+  /** The panel's R and B channels are crossed in 16-bit mode (verified clone
+   *  ST7796S quirk): the native adapter swaps R/B channels at pack time so
+   *  the in-tree driver's RGB565 stream renders with true colors (lossless —
+   *  the direct transport instead avoids it by driving 18-bit mode). */
+  readonly channelSwapRb?: boolean;
+  /** RGB565 wire byte-order inversion: the overlay emits the st7796s-family
+   *  rgb-is-inverted DT property, flipping the format the in-tree driver
+   *  reports (565 <-> 565X) so the adapter byte-swaps at pack time. Clone
+   *  SPI panels whose white reads purple / dark reads green need it. */
+  readonly rgbInverted?: boolean;
   /** DT compatible string for the display@0 node. Defaults per controller
    *  (see PANEL_CONTROLLER_DEFAULTS) — override only for a panel whose DT
    *  binding differs from its controller family. */
@@ -39,6 +71,91 @@ export interface ZephyrDisplayProfile {
   /** Nodelabel of the MIPI DBI bridge node carrying the dc/reset GPIOs.
    *  Default 'mipi_dbi' (the overlay emits the bridge under that label). */
   readonly bridgeLabel?: string;
+}
+
+/** How the UI adapter talks to the panel (see ZephyrDisplayProfile.transport). */
+export type ZephyrDisplayTransport = 'direct-spi' | 'zephyr-display';
+
+/** Which mipi-dbi host backs the panel driver (see ZephyrDisplayProfile.dbiHost). */
+export type ZephyrDbiHost = 'spi-bridge' | 'local-hold-cs';
+
+/** Resolve a profile's transport with the historical default. */
+export function transportFor(
+  profile: Pick<ZephyrDisplayProfile, 'transport'>,
+): ZephyrDisplayTransport {
+  return profile.transport ?? 'direct-spi';
+}
+
+/** Resolve a profile's mipi-dbi host. Clone-ST77xx panels need the local
+ *  CS-holding host; everything else defaults to the stock SPI bridge. */
+export function dbiHostFor(
+  profile: Pick<ZephyrDisplayProfile, 'dbiHost' | 'controller'>,
+): ZephyrDbiHost {
+  if (profile.dbiHost) return profile.dbiHost;
+  return profile.controller === 'st7796s' ? 'local-hold-cs' : 'spi-bridge';
+}
+
+/** Marker the display adapters stamp into the emitted source so the toolchain
+ *  can recover the exact profile that produced it (one source of truth — the
+ *  profile registry — instead of re-deriving geometry from emitted C). */
+export const DISPLAY_PROFILE_MARKER = 'typecad-display-profile:';
+
+/** Machine-readable facts line the adapters stamp beside the marker: JSON
+ *  carrying everything the toolchain needs to regenerate the DT overlay —
+ *  including synthesized (compatible-driven) profiles that have no registry
+ *  entry. */
+export function displayFactsLine(profile: ZephyrDisplayProfile): string {
+  const controller = panelControllerFor(profile);
+  const facts: Record<string, unknown> = {
+    driver: profile.driver,
+    transport: transportFor(profile),
+    width: profile.width,
+    height: profile.height,
+  };
+  if (profile.nativeWidth !== undefined) facts.nativeWidth = profile.nativeWidth;
+  if (profile.nativeHeight !== undefined) facts.nativeHeight = profile.nativeHeight;
+  if (controller !== undefined) facts.controller = controller;
+  if (profile.rotation !== undefined) facts.rotation = profile.rotation;
+  if (profile.channelSwapRb === true) facts.channelSwapRb = true;
+  if (profile.rgbInverted === true) facts.rgbInverted = true;
+  if (transportFor(profile) === 'zephyr-display') {
+    facts.dbiHost = dbiHostFor(profile);
+  }
+  return `// typecad-display-facts: ${JSON.stringify(facts)}`;
+}
+
+/** Recover the profile whose adapter emitted this source, or undefined when
+ *  no display adapter marker is present (no display in the program). Prefers
+ *  the JSON facts line (carries synthesized profiles); falls back to the
+ *  plain marker + registry lookup. */
+export function profileFromEmittedSource(src: string): ZephyrDisplayProfile | undefined {
+  const facts = src.match(/typecad-display-facts: (\{.*\})/);
+  if (facts) {
+    try {
+      const f = JSON.parse(facts[1]) as Record<string, unknown>;
+      const registered = ZEPHYR_DISPLAY_PROFILES[f.driver as string];
+      if (registered) return registered;
+      if (typeof f.driver === 'string' && isDtCompatible(f.driver)) {
+        const synth = synthesizeZephyrProfile({
+          driver: f.driver,
+          width: f.width as number,
+          height: f.height as number,
+          nativeWidth: f.nativeWidth as number | undefined,
+          nativeHeight: f.nativeHeight as number | undefined,
+          rotation: f.rotation as number | undefined,
+          channelSwapRb: f.channelSwapRb === true,
+          rgbInverted: f.rgbInverted === true,
+          csHold: f.dbiHost === 'local-hold-cs',
+        });
+        if (synth) return synth;
+      }
+    } catch {
+      // Malformed facts line — fall through to the plain marker.
+    }
+  }
+  const m = src.match(/typecad-display-profile: ([\w-]+)/);
+  if (!m) return undefined;
+  return ZEPHYR_DISPLAY_PROFILES[m[1]];
 }
 
 /** Panel controllers the direct-drive UI adapter knows how to init. */
@@ -55,13 +172,58 @@ export const PANEL_CONTROLLER_DEFAULTS: Record<
 };
 
 /** Resolve a profile's panel controller, inferring it from the driver id when
- *  the profile doesn't declare one (the '<controller>-zephyr' naming scheme). */
+ *  the profile doesn't declare one (the '<controller>-zephyr' naming scheme).
+ *  Synthesized (compatible-driven) profiles carry no controller — undefined
+ *  routes them to the binding-driven generic paths. */
 export function panelControllerFor(
   profile: Pick<ZephyrDisplayProfile, 'driver' | 'controller'>,
-): ZephyrPanelController {
+): ZephyrPanelController | undefined {
   if (profile.controller) return profile.controller;
   if (profile.driver.startsWith('ili9341')) return 'ili9341';
-  return 'st7796s';
+  if (profile.driver.startsWith('st7796')) return 'st7796s';
+  return undefined;
+}
+
+/** A DT compatible string (vendor,name) — the drop-in driver id shape. */
+export function isDtCompatible(driver: string): boolean {
+  return /^[a-z0-9]+(-[a-z0-9]+)*,[a-z0-9-]+$/i.test(driver);
+}
+
+/** Synthesize a native-transport profile for a compatible-driven config
+ *  (display.driver = DT compatible, no registry profile). The in-tree driver
+ *  bound by the overlay's display node owns init/geometry/quirks; the
+ *  config's panel-quirk flags (channelSwapRb, csHold) carry what the
+ *  driver cannot know. Returns undefined unless the driver string is a
+ *  compatible shape. */
+export function synthesizeZephyrProfile(display: {
+  driver: string;
+  width: number;
+  height: number;
+  nativeWidth?: number;
+  nativeHeight?: number;
+  colorFormat?: string;
+  rotation?: number;
+  channelSwapRb?: boolean;
+  csHold?: boolean;
+  rgbInverted?: boolean;
+}): ZephyrDisplayProfile | undefined {
+  if (!isDtCompatible(display.driver)) return undefined;
+  return {
+    driver: display.driver,
+    dtLabel: 'display0',
+    width: display.width,
+    height: display.height,
+    nativeWidth: display.nativeWidth,
+    nativeHeight: display.nativeHeight,
+    colorFormat: display.colorFormat === 'mono' ? 'mono' : 'rgb565',
+    controller: undefined,
+    transport: 'zephyr-display',
+    dbiHost: display.csHold === true ? 'local-hold-cs' : undefined,
+    channelSwapRb: display.channelSwapRb === true ? true : undefined,
+    rgbInverted: display.rgbInverted === true ? true : undefined,
+    rotation: display.rotation ?? 0,
+    backlight: 'backlight',
+  };
 }
 
 /**
@@ -76,6 +238,28 @@ export const ZEPHYR_DISPLAY_PROFILES: Record<string, ZephyrDisplayProfile> = {
     height: 240,
     colorFormat: 'rgb565',
     controller: 'ili9341',
+    rotation: 90,
+    backlight: 'backlight',
+  },
+  // Same ILI9341 panel as 'ili9341-zephyr', but driven through Zephyr's
+  // display API: the overlay's display0 node (ilitek,ili9341 under the
+  // mipi-dbi-spi bridge) binds the in-tree driver with CONFIG_MIPI_DBI_SPI +
+  // CONFIG_ILI9341, and the emitted adapter speaks display_write instead of
+  // spi_write. The panel init sequence, rotation, and pixel wire format move
+  // upstream (the driver owns them). Per-transaction CS (the mipi-dbi-spi
+  // bridge's behavior) is fine on standard ILI9341 SPI modules — the
+  // CS-held-across-command+data requirement that forces 'direct-spi' is a
+  // clone-ST7796S-class quirk. The sibling 'st7796-zephyr-display' profile
+  // is hardware-verified end-to-end; this one is compile/link-verified only
+  // (no ILI9341 module on the rig yet).
+  'ili9341-zephyr-display': {
+    driver: 'ili9341-zephyr-display',
+    dtLabel: 'display0',
+    width: 320,
+    height: 240,
+    colorFormat: 'rgb565',
+    controller: 'ili9341',
+    transport: 'zephyr-display',
     rotation: 90,
     backlight: 'backlight',
   },
@@ -108,6 +292,42 @@ export const ZEPHYR_DISPLAY_PROFILES: Record<string, ZephyrDisplayProfile> = {
     height: 64,
     colorFormat: 'mono',
     rotation: 0,
+  },
+  // The verified clone ST7796S on the demo rig, on the native display API:
+  // the in-tree sitronix,st7796s driver (CONFIG_ST7796S) owns init/gamma/
+  // geometry, backed by an app-local CS-holding mipi-dbi host the adapter
+  // emits (dbiHost 'local-hold-cs' — the stock bridge deasserts CS between
+  // command and data, which scrambles this clone; the local host implements
+  // the mipi-hold-cs behavior Zephyr documents but 4.4.2 does not ship).
+  // The clone's 16-bit color pipeline is handled at pack time (byte swap
+  // via the reported 565X format — see the color notes below); the direct
+  // transport avoids the question entirely by driving 18-bit mode.
+  // Color pipeline (hardware-verified on the rig, 16-bit mode, three knobs):
+  //   - rgb-is-inverted: byte-swap at pack time (565 wire order).
+  //   - NO R/B channel swap (the 18-bit BGR finding does not transfer).
+  //   - CS-hold (this profile's default local host): REQUIRED on this clone —
+  //     the stock mipi-dbi-spi bridge toggles CS per transaction and
+  //     corrupts pixel bursts (confirmed twice: the original bring-up, and
+  //     the drop-in path's first stock-bridge build showed the same
+  //     corruption until csHold was set). With all three, colors are
+  //     hardware-confirmed correct on the rig. Ladder testing observed a
+  //     slight uniform dimness vs the direct path's 18-bit mode; the direct
+  // profile remains the max-fidelity option for this panel.
+  // Touch: FT6336U on the input subsystem — its power enable must be driven
+  // (resetPin 4 on the rig; see touch-adapter.ts for the rig-verified
+  // sequence). Touch + UI interaction hardware-verified on the rig.
+  'st7796-zephyr-display': {
+    driver: 'st7796-zephyr-display',
+    dtLabel: 'display0',
+    width: 480,
+    height: 320,
+    nativeWidth: 320,
+    nativeHeight: 480,
+    colorFormat: 'rgb565',
+    controller: 'st7796s',
+    transport: 'zephyr-display',
+    rotation: 1,
+    backlight: 'backlight',
   },
 };
 

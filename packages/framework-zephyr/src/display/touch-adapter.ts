@@ -1,15 +1,29 @@
 // ---------------------------------------------------------------------------
 // Zephyr touch adapters for the TypeCAD UI rendering pipeline.
 //
-// Two controllers, both driven directly (polling, no in-tree driver):
-//   - FT6336U capacitive over I2C (i2c_write_read_dt)
-//   - XPT2046 resistive over SPI (spi_transceive_dt) — the Zephyr analog of
-//     Arduino's XPT2046_Touchscreen adapter. The DT node uses the in-tree
-//     xptek,xpt2046 binding; CONFIG_INPUT stays off, so the in-tree input
-//     driver does not build and this adapter owns the chip.
+//   - FT6336U capacitive: through Zephyr's INPUT subsystem — the in-tree
+//     focaltech,ft5336 driver owns the controller (polling mode: the node
+//     carries no int-gpios, so the driver samples on a k_timer/work cycle
+//     and no GPIO IRQ is registered — sidestepping the ESP32
+//     VECDESC_FL_SHARED crash the direct-IRQ path hit). The adapter listens
+//     for the device's INPUT events and serves the runtime's
+//     touch_init/isTouched/readRaw contract from the latest event state.
+//     Hardware-verified on the demo rig (ESP32-S3 + FT6336U, SDA8/SCL9).
+//   - XPT2046 resistive: raw SPI polling (spi_transceive_dt) — the Zephyr
+//     analog of Arduino's XPT2046_Touchscreen adapter. NOT yet on the input
+//     subsystem: the in-tree xpt2046 driver scales coordinates through its
+//     DT min-x/max-x props, which would double-apply the runtime's
+//     calibration math (touch_readRaw must stay in raw controller units for
+//     ui_poll_touch's calibration + rotation). Converting needs the DT
+//     scaling reconciled with the config calibration — and hardware to
+//     verify it on. CONFIG_INPUT stays off for xpt2046-only builds.
 //
 // The adapters emit touch_init / touch_isTouched / touch_readRaw — the three
-// symbols the runtime's ui_poll_touch body calls.
+// symbols the runtime's ui_poll_touch body calls. For FT6336U the raw
+// coordinate space is unchanged (X/Y controller registers, native portrait
+// panel units): the overlay's swapped-xy property makes the driver's ABS_X/
+// ABS_Y events carry the register values verbatim, so ui_poll_touch's
+// calibration + rotation math applies as before.
 //
 // EMIT BOUNDARY: emitted bytes land in user firmware. Covered by the TypeCAD
 // Runtime Exception (RUNTIME_EXCEPTION.md at the repo root).
@@ -135,69 +149,125 @@ function xpt2046Adapter(touch: TouchProfile): TouchAdapterCodegen {
 function ft6336uAdapter(_touch: TouchProfile): TouchAdapterCodegen {
   return {
     includes: [
+      `#include <zephyr/kernel.h>`,
+      `#include <zephyr/input/input.h>`,
+      // TEMPORARY DIAGNOSTIC (with __tc_touch_diag above).
       `#include <zephyr/drivers/i2c.h>`,
     ],
     declaration: [
-      `// Zephyr FT6336U touch — I2C device resolved via devicetree.`,
-      `// The board DT must define an 'ft6336u' nodelabel on an I2C bus.`,
-      `static const struct i2c_dt_spec __tc_touch = I2C_DT_SPEC_GET(DT_NODELABEL(ft6336u));`,
+      `// Zephyr FT6336U touch — INPUT subsystem listener. The in-tree`,
+      `// focaltech,ft5336 driver (CONFIG_INPUT_FT5336, polling mode — no`,
+      `// int-gpios on the node) owns the controller and reports events; this`,
+      `// adapter keeps the latest state and serves the runtime's per-frame`,
+      `// touch_isTouched/touch_readRaw poll. The overlay's swapped-xy DT prop`,
+      `// makes the driver's ABS_X/ABS_Y carry the controller's X/Y registers`,
+      `// verbatim — the same raw space the register-polling adapter reported,`,
+      `// so the runtime's calibration + rotation math is unchanged.`,
       `static int16_t __tc_touch_cached_x = 0;`,
       `static int16_t __tc_touch_cached_y = 0;`,
-      `static int16_t __tc_touch_cached_z = 0;`,
-      `static uint8_t __tc_touch_cached_valid = 0;`,
+      `static volatile bool __tc_touch_down = false;`,
     ].join("\n"),
     functions: [
-      `// Read N bytes starting from a register address. Returns 1 on success.`,
-      `// Uses i2c_write_read_dt for a combined write-read transaction (register`,
-      `// address write, then repeated-start read). The FT6336U is polled every`,
-      `// frame from ui_poll_touch, so a failed read (stuck SDA, no controller) is`,
-      `// non-fatal — returns 0 and touch_isTreated() returns false.`,
-      `static inline uint8_t __tc_touch_read_block(uint8_t reg, uint8_t* buf, uint8_t len) {`,
-      `  if (!device_is_ready(__tc_touch.bus)) return 0U;`,
-      `  int rc = i2c_write_read_dt(&__tc_touch, &reg, 1U, buf, len);`,
-      `  return (rc == 0) ? 1U : 0U;`,
+      `// Input listener: runs in the driver's work-handler context (poll mode`,
+      `// samples every CONFIG_INPUT_FT5336_PERIOD ms). Latest-value semantics —`,
+      `// plain int16 stores with no locking; the UI loop reads them once per`,
+      `// frame and a torn mid-write read only ever costs one sample of one axis.`,
+      `// The first events are logged once — a diagnostic that costs ten lines`,
+      `// ever and immediately answers "are events arriving, and in which space".`,
+      `static uint8_t __tc_touch_evt_logged = 0U;`,
+      `static void __tc_touch_input_cb(struct input_event* evt, void* /*user_data*/) {`,
+      `  if (__tc_touch_evt_logged < 10U) {`,
+      `    __tc_touch_evt_logged++;`,
+      `    printk("TC_TOUCH: evt type=%u code=%u value=%d sync=%u\\n",`,
+      `           static_cast<unsigned int>(evt->type),`,
+      `           static_cast<unsigned int>(evt->code),`,
+      `           static_cast<int>(evt->value),`,
+      `           static_cast<unsigned int>(evt->sync));`,
+      `  }`,
+      `  if (evt->type == INPUT_EV_ABS) {`,
+      `    if (evt->code == INPUT_ABS_X) {`,
+      `      __tc_touch_cached_x = static_cast<int16_t>(evt->value);`,
+      `    } else if (evt->code == INPUT_ABS_Y) {`,
+      `      __tc_touch_cached_y = static_cast<int16_t>(evt->value);`,
+      `    }`,
+      `  } else if ((evt->type == INPUT_EV_KEY) && (evt->code == INPUT_BTN_TOUCH)) {`,
+      `    __tc_touch_down = (evt->value != 0);`,
+      `  }`,
       `}`,
       ``,
+      `// Registered for the ft6336u device's events only (the _dev filter) —`,
+      `// other input devices on the system never reach the UI touch state.`,
+      `INPUT_CALLBACK_DEFINE(DEVICE_DT_GET(DT_NODELABEL(ft6336u)), __tc_touch_input_cb, NULL);`,
+      ``,
       `static inline void touch_init() {`,
-      `  // The I2C bus + device are configured by devicetree. The FT6336U needs a`,
-      `  // hardware reset (reset pin low → high) to enter normal mode after power-on.`,
+      `  // Power/reset enable — rig-verified sequence, matching the Arduino`,
+      `  // pin order this module needs (GPIO driven LOW 10ms, then HIGH, then`,
+      `  // 500ms settle before the controller answers). Without the drive the`,
+      `  // enable floats: the controller half-powers, ACKs briefly, then`,
+      `  // browns out — the 0xFF-then-NAK bus death reproduced identically on`,
+      `  // every firmware variant until this was wired. The in-tree driver`,
+      `  // pulses its own (shorter) reset at init; this re-drive with the`,
+      `  // verified timing runs from main before the UI starts polling.`,
       `#if DT_NODE_HAS_STATUS(DT_NODELABEL(ft6336u), okay) && DT_NODE_HAS_PROP(DT_NODELABEL(ft6336u), reset_gpios)`,
-      `  static const struct gpio_dt_spec __tc_touch_rst = GPIO_DT_SPEC_GET(DT_NODELABEL(ft6336u), reset_gpios);`,
-      `  if (device_is_ready(__tc_touch_rst.port)) {`,
-      `    gpio_pin_configure_dt(&__tc_touch_rst, GPIO_OUTPUT_ACTIVE);    // assert reset (active=low)`,
+      `  static const struct gpio_dt_spec __tc_touch_en = GPIO_DT_SPEC_GET(DT_NODELABEL(ft6336u), reset_gpios);`,
+      `  if (device_is_ready(__tc_touch_en.port)) {`,
+      `    gpio_pin_configure_dt(&__tc_touch_en, GPIO_OUTPUT_ACTIVE);   // drive LOW (active-low spec)`,
       `    k_msleep(10);`,
-      `    gpio_pin_set_dt(&__tc_touch_rst, 0);                            // release reset (inactive=high)`,
-      `    k_msleep(200);  // FT6336U needs ~50ms after reset before responding`,
+      `    gpio_pin_set_dt(&__tc_touch_en, 0);                          // drive HIGH`,
+      `    k_msleep(500);`,
       `  }`,
       `#endif`,
-      `  (void)device_is_ready(__tc_touch.bus);`,
+      `  const struct device* __tc_touch_dev = DEVICE_DT_GET(DT_NODELABEL(ft6336u));`,
+      `  if (!device_is_ready(__tc_touch_dev)) {`,
+      `    printk("TC_TOUCH: ft6336u device not ready\\n");`,
+      `    return;`,
+      `  }`,
+      `  // Self-test: dispatch one synthetic release event through the input`,
+      `  // core. If the listener is registered and dispatch works, the event`,
+      `  // logger above prints it; rc=-EAGAIN means the input queue is full`,
+      `  // (input thread wedged). K_NO_WAIT so a dead queue can never block`,
+      `  // boot.`,
+      `  int __rc = input_report_key(__tc_touch_dev, INPUT_BTN_TOUCH, 0, true, K_NO_WAIT);`,
+      `  printk("TC_TOUCH: ft6336u ready, self-test report rc=%d\\n", __rc);`,
+      `}`,
+      ``,
+      `// Boot-time bus diagnostic (self-limiting): reads TD_STATUS directly`,
+      `// over I2C — the register path the raw adapter proved on this rig —`,
+      `// dense (300ms) for the first 5s, sparse (3s) until 60s, then silent.`,
+      `// On the demo rig this caught a failing touch module: the controller`,
+      `// ACKs for the first ~700ms after every reset, returns 0xFF once, then`,
+      `// NAKs permanently — a power/connection fault, independent of firmware`,
+      `// (reproduced identically on the committed pre-migration build).`,
+      `static const struct i2c_dt_spec __tc_touch_probe = I2C_DT_SPEC_GET(DT_NODELABEL(ft6336u));`,
+      `static int32_t __tc_touch_probe_next = 0;`,
+      `static void __tc_touch_diag() {`,
+      `  int32_t __now = static_cast<int32_t>(k_uptime_get_32());`,
+      `  if (__now >= 60000) return;`,
+      `  int32_t __gap = (__now < 5000) ? 300 : 3000;`,
+      `  if (__now < __tc_touch_probe_next) return;`,
+      `  __tc_touch_probe_next = __now + __gap;`,
+      `  uint8_t __td = 0U;`,
+      `  uint8_t __reg = 0x02U;`,
+      `  int __rc = i2c_write_read_dt(&__tc_touch_probe, &__reg, 1U, &__td, 1U);`,
+      `  if ((__rc != 0) || (__td != 0U)) {`,
+      `    printk("TC_TOUCH: diag td_status=0x%02x rc=%d down=%d\\n",`,
+      `           static_cast<unsigned int>(__td), __rc,`,
+      `           __tc_touch_down ? 1 : 0);`,
+      `  }`,
       `}`,
       ``,
       `static inline bool touch_isTouched() {`,
-      `  __tc_touch_cached_valid = 0;`,
-      `  __tc_touch_cached_z = 0;`,
-      `  // Read TD_STATUS (0x02) + P1_XH/XL/YH/YL — 5 bytes in one transaction.`,
-      `  uint8_t buf[5] = {0, 0, 0, 0, 0};`,
-      `  if (!__tc_touch_read_block(0x02, buf, 5U)) return false;`,
-      `  uint8_t count = buf[0] & 0x0F;`,
-      `  if (count == 0U) return false;`,
-      `  __tc_touch_cached_x = static_cast<int16_t>((static_cast<uint16_t>(buf[1] & 0x0F) << 8) | buf[2]);`,
-      `  __tc_touch_cached_y = static_cast<int16_t>((static_cast<uint16_t>(buf[3] & 0x0F) << 8) | buf[4]);`,
-      `  __tc_touch_cached_z = 255;`,
-      `  __tc_touch_cached_valid = 1;`,
-      `  return true;`,
+      `  __tc_touch_diag();`,
+      `  return __tc_touch_down;`,
       `}`,
       ``,
       `static inline void touch_readRaw(int16_t* x, int16_t* y, int16_t* z) {`,
-      `  // touch_isTouched() is polled each frame by ui_poll_touch; the cached`,
-      `  // values are fresh. If something calls readRaw before isTouched, probe now.`,
-      `  if (!__tc_touch_cached_valid) {`,
-      `    (void)touch_isTouched();`,
-      `  }`,
+      `  // Latest reported position in controller register units (native panel`,
+      `  // space); the runtime applies calibration + rotation. z is saturation`,
+      `  // for capacitive (the driver reports press/release, not pressure).`,
       `  if (x) *x = __tc_touch_cached_x;`,
       `  if (y) *y = __tc_touch_cached_y;`,
-      `  if (z) *z = __tc_touch_cached_z;`,
-      `  __tc_touch_cached_valid = 0;`,
+      `  if (z) *z = 255;`,
       `}`,
     ].join("\n"),
   };

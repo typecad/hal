@@ -12,6 +12,7 @@
 // ---------------------------------------------------------------------------
 
 import type { ZephyrDisplayProfile } from './profiles.js';
+import { displayFactsLine } from './profiles.js';
 
 export interface DisplayRuntimeResult {
   /** #include lines to force when the display is used. */
@@ -135,7 +136,10 @@ export function buildDisplayRuntime(profile: ZephyrDisplayProfile): DisplayRunti
 
   return {
     includes: ['<zephyr/drivers/display.h>'],
-    stateLines,
+    // Profile marker: lets the toolchain recover which profile emitted this
+    // runtime (profileFromEmittedSource in profiles.ts) instead of re-deriving
+    // geometry from the emitted C.
+    stateLines: [`// typecad-display-profile: ${profile.driver}`, displayFactsLine(profile), ...stateLines],
     helpers,
     fontTable,
   };

@@ -39,7 +39,7 @@ import { resolveChipFromBoard } from '../chips/resolve.js';
 import type { ZephyrChipDescriptor } from '../chips/types.js';
 import { pwmDtAliasToken } from '../lowering/pwm.js';
 import { detectZephyrVersion, checkZephyrCompat, resolveBoardTarget } from './compat.js';
-import { DEFAULT_ZEPHYR_DISPLAY_PROFILE } from '../display/profiles.js';
+import { DEFAULT_ZEPHYR_DISPLAY_PROFILE, profileFromEmittedSource } from '../display/profiles.js';
 
 /**
  * Resolve the chip for a build the same way the strategy does at emit time —
@@ -194,6 +194,35 @@ function scanPwmUsedPins(src: string, chip: ZephyrChipDescriptor): number[] {  c
   return pins;
 }
 
+export function scanMatrix(src: string): { rows: number[]; cols: number[] } | undefined {
+  // The on_key lowering's comment marker carries the construction lists.
+  const m = src.match(/cuttlefish-matrix: rows=([\d,]*) cols=([\d,]*)/);
+  if (!m) return undefined;
+  const rows = m[1] ? m[1].split(',').filter(Boolean).map(Number) : [];
+  const cols = m[2] ? m[2].split(',').filter(Boolean).map(Number) : [];
+  if (rows.length === 0 || cols.length === 0) return undefined;
+  return { rows, cols };
+}
+
+export function scanHid(src: string): 'keyboard' | 'mouse' | undefined {
+  // The shim's report buffer names are the presence signal.
+  if (src.includes('__tc_mouse_report')) return 'mouse';
+  if (src.includes('__tc_kb_report')) return 'keyboard';
+  return undefined;
+}
+
+export function scanStrips(src: string): Array<{ index: number; count: number }> {
+  // The shim's buffer declaration is the presence signal:
+  // `static struct led_rgb __tc_strip<N>_buf[<COUNT>];`
+  const out = new Map<number, number>();
+  for (const m of src.matchAll(/__tc_strip(\d+)_buf\[(\d+)\]/g)) {
+    const idx = Number(m[1]);
+    const count = Number(m[2]);
+    out.set(idx, Math.max(out.get(idx) ?? 0, count));
+  }
+  return [...out.entries()].map(([index, count]) => ({ index, count }));
+}
+
 /**
  * Bus controller indexes the emitted sources actually reference — the shim
  * declares one `__tc_<bus><N>_dev` state block per used instance (gated by
@@ -226,8 +255,10 @@ function scanUsedBusInstances(
  * compatible containing '_i2c<N>_' still resolves to the longest part match.
  */
 export interface ScannedSensorPart {
-  part: string; busIndex: number; port: number; busKind: 'i2c' | 'spi';
+  part: string; busIndex: number; port: number; busKind: 'i2c' | 'spi' | 'w1';
   spiHz: number; spiMode: number; alertPin: number;
+  /** 1-Wire parts: the converter resolution in bits. */
+  resolution: number;
 }
 
 export interface ScannedSpiTarget {
@@ -248,13 +279,22 @@ export function scanSpiTargets(src: string): ScannedSpiTarget[] {
 
 export function scanSensorParts(src: string): ScannedSensorPart[] {
   const out = new Map<string, ScannedSensorPart>();
+  // 1-Wire sensors: the stem carries the data pin (w1 master's GPIO).
+  for (const m of src.matchAll(/__tc_sensor_([a-z0-9_]+)_w1_p(\d+)_dev\b/g)) {
+    out.set(`${m[1]}|w1|${m[2]}`, { part: m[1], busIndex: 0, port: parseInt(m[2], 10), busKind: 'w1', spiHz: 0, spiMode: 0, alertPin: -1, resolution: 12 });
+  }
   for (const m of src.matchAll(/__tc_sensor_([a-z0-9_]+)_(i2c|spi)(\d+)_(0x[0-9a-f]+|cs[0-9]+)_dev\b/g)) {
     const port = m[4].startsWith('0x') ? parseInt(m[4], 16) : parseInt(m[4].slice(2), 10);
-    const ref: ScannedSensorPart = { part: m[1], busIndex: parseInt(m[3], 10), port, busKind: m[2] as 'i2c' | 'spi', spiHz: 0, spiMode: 0, alertPin: -1 };
+    const ref: ScannedSensorPart = { part: m[1], busIndex: parseInt(m[3], 10), port, busKind: m[2] as 'i2c' | 'spi', spiHz: 0, spiMode: 0, alertPin: -1, resolution: 12 };
     out.set(`${ref.part}|${ref.busKind}${ref.busIndex}|${ref.port}`, ref);
   }
   // Construction facts ride the state block's config comment — merge by
   // nodelabel so the scanner stays the single source for the overlay.
+  for (const m of src.matchAll(/tc-sensor-cfg: tc_([a-z0-9_]+)_w1_p(\d+) res=(\d+)/g)) {
+    const key = `${m[1]}|w1|${m[2]}`;
+    const existing = out.get(key);
+    if (existing) existing.resolution = parseInt(m[3], 10);
+  }
   for (const m of src.matchAll(/tc-sensor-cfg: tc_([a-z0-9_]+)_(i2c|spi)(\d+)_(0x[0-9a-f]+|cs[0-9]+) hz=(\d+) mode=(\d+) alert=(-?\d+)/g)) {
     const port = m[4].startsWith('0x') ? parseInt(m[4], 16) : parseInt(m[4].slice(2), 10);
     const key = `${m[1]}|${m[2]}${m[3]}|${port}`;
@@ -765,11 +805,13 @@ export const Toolchain = {
     const usesDisplay = uses('display_write') || uses('display_init')
       || uses('display_fill_rect') || uses('__tc_display_dev')
       || uses('CuttlefishDisplayTarget');
-    // Both registered Zephyr display profiles use dtLabel 'display0', so the
-    // default profile's overlay block (&display0 { status="okay" }) is correct
-    // for either driver. Thread a non-default profile here only if a future
-    // board carries a display node under a different nodelabel.
-    const displayProfile = usesDisplay ? DEFAULT_ZEPHYR_DISPLAY_PROFILE : undefined;
+    // Recover the exact display profile from the marker the adapter stamped
+    // into the emitted source (the registry is the single source of truth).
+    // Fall back to the default profile only when a display is used but no
+    // marker matched (e.g. hand-written source).
+    const displayProfile = usesDisplay
+      ? (profileFromEmittedSource(src) ?? DEFAULT_ZEPHYR_DISPLAY_PROFILE)
+      : undefined;
     // Touch controller kind comes from which DT nodelabel the emitted adapter
     // references (FT6336U on I2C, XPT2046 on the display's SPI bus).
     const usesTouch = uses('ft6336u') || uses('touch_');
@@ -788,12 +830,29 @@ export const Toolchain = {
       spiTargets: spiTargetParts,
       usesSpi: uses('spi_') || uses('__tc_spi') || spiTargetParts.length > 0,
       usesUart: uses('__tc_uart'),
-      usesUsb: uses('__tc_usb'),
+      usesUsb: uses('__tc_usb0'),
       usesPwm: uses('pwm_'),
       usesAdc: uses('adc_'),
       adcReadPins: scanAdcReadPins(src, chip),
       dacWritePins: scanDacWritePins(src),
       pwmUsedPins: scanPwmUsedPins(src, chip),
+      usesStrip: uses('led_strip'),
+      strips: scanStrips(src),
+      usesClock: uses('__tc_rtc'),
+      usesCan: uses('can_'),
+      canLoopback: uses('CAN_MODE_LOOPBACK'),
+      usesI2s: uses('i2s_'),
+      clockShimCounter: chip.hwtimer && chip.hwtimer.controllers.length > 0
+        ? {
+            label: chip.hwtimer.controllers[0].nodeLabel,
+            ...(chip.hwtimer.controllers[0].counterParent ? { parent: chip.hwtimer.controllers[0].counterParent } : {}),
+          }
+        : undefined,
+      usesHid: uses('__tc_hid_'),
+      hidProtocol: scanHid(src),
+      usesMatrix: uses('__tc_matrix'),
+      matrix: scanMatrix(src),
+      usesPower: uses('sys_poweroff'),
       i2cUsedInstances: scanUsedBusInstances(src, chip.i2c?.controllers, 'i2c'),
       spiUsedInstances: scanUsedBusInstances(src, chip.spi?.controllers, 'spi'),
       uartUsedInstances: scanUsedBusInstances(src, chip.uart?.controllers, 'uart'),
@@ -900,23 +959,16 @@ export const Toolchain = {
       const usesDisplay = uses('display_write') || uses('display_init')
         || uses('display_fill_rect') || uses('__tc_display_dev')
         || uses('CuttlefishDisplayTarget');
-      // Derive the display dimensions from the emitted adapter code
-      // (display_width/height return the profile's w/h). This ensures the DT
-      // overlay's width/height match the panel the adapter targets, not the
-      // default profile — critical for drivers like ST7796S that initialize
-      // the panel geometry from the DT node.
-      let displayProfile = usesDisplay ? DEFAULT_ZEPHYR_DISPLAY_PROFILE : undefined;
-      if (usesDisplay) {
-        const wMatch = src.match(/display_width\(\)\s*\{\s*return\s+(\d+)\s*;\s*\}/);
-        const hMatch = src.match(/display_height\(\)\s*\{\s*return\s+(\d+)\s*;\s*\}/);
-        if (wMatch && hMatch) {
-          displayProfile = {
-            ...DEFAULT_ZEPHYR_DISPLAY_PROFILE,
-            width: parseInt(wMatch[1], 10),
-            height: parseInt(hMatch[1], 10),
-          };
-        }
-      }
+      // Recover the exact display profile from the marker the adapter emitted
+      // (`typecad-display-profile: <driver>`), so the DT overlay's compatible
+      // string, geometry, and rotation match the panel the adapter targets.
+      // The width/height regex this replaces could produce franken-profiles —
+      // e.g. an ST7796S build (480x320) on the default ILI9341 profile's
+      // controller/compatible, which emitted an ilitek,ili9341 DT node for a
+      // panel the ST7796S adapter drives.
+      const displayProfile = usesDisplay
+        ? (profileFromEmittedSource(src) ?? DEFAULT_ZEPHYR_DISPLAY_PROFILE)
+        : undefined;
       // Extract display pin wiring (cs/dc/rst/spiFrequency/spiPins) from the
       // config display section so the DT overlay wires the MIPI DBI bridge to
       // the correct GPIOs + SPI bus pins.
@@ -986,13 +1038,30 @@ export const Toolchain = {
         spiTargets: spiTargetParts,
         usesSpi: uses('spi_') || uses('__tc_spi') || spiTargetParts.length > 0,
         usesUart: uses('__tc_uart'),
-        usesUsb: uses('__tc_usb'),
+        usesUsb: uses('__tc_usb0'),
         usesPwm: uses('pwm_'),
         usesAdc: uses('adc_'),
         adcReadPins: scanAdcReadPins(src, chip),
         usesDac: uses('dac_') || uses('__tc_dac'),
         dacWritePins: scanDacWritePins(src),
         pwmUsedPins: scanPwmUsedPins(src, chip),
+      usesStrip: uses('led_strip'),
+      strips: scanStrips(src),
+      usesHid: uses('__tc_hid_'),
+      hidProtocol: scanHid(src),
+      usesMatrix: uses('__tc_matrix'),
+      matrix: scanMatrix(src),
+      usesPower: uses('sys_poweroff'),
+      usesClock: uses('__tc_rtc'),
+      usesCan: uses('can_'),
+      canLoopback: uses('CAN_MODE_LOOPBACK'),
+      usesI2s: uses('i2s_'),
+      clockShimCounter: chip.hwtimer && chip.hwtimer.controllers.length > 0
+        ? {
+            label: chip.hwtimer.controllers[0].nodeLabel,
+            ...(chip.hwtimer.controllers[0].counterParent ? { parent: chip.hwtimer.controllers[0].counterParent } : {}),
+          }
+        : undefined,
         i2cUsedInstances: scanUsedBusInstances(src, chip.i2c?.controllers, 'i2c'),
         spiUsedInstances: scanUsedBusInstances(src, chip.spi?.controllers, 'spi'),
         uartUsedInstances: scanUsedBusInstances(src, chip.uart?.controllers, 'uart'),

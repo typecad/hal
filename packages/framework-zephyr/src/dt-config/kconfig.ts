@@ -55,6 +55,16 @@ export interface KconfigUsage {
   usesWdt?: boolean;
   usesBle?: boolean;
   usesDisplay?: boolean;
+  /** How the UI adapter reaches the panel. 'zephyr-display' binds the
+   *  in-tree drivers (CONFIG_MIPI_DBI_SPI on); 'direct-spi' (default)
+   *  force-disables them — the adapter drives the panel itself. */
+  displayTransport?: 'direct-spi' | 'zephyr-display';
+  /** Panel controller for the display Kconfig symbol when the transport
+   *  needs one explicitly. Synthesized (compatible-driven) profiles carry
+   *  none — their driver symbol auto-defaults on from the DT node
+   *  (`default y depends on DT_HAS_<COMPATIBLE>_ENABLED`), so no symbol
+   *  is assigned at all. */
+  displayController?: 'st7796s' | 'ili9341';
   usesWifi?: boolean;
   usesHttp?: boolean;
   usesMqtt?: boolean;
@@ -68,10 +78,39 @@ export interface KconfigUsage {
    *  umbrella under which every driver sensor Kconfig lives (`if SENSOR`);
    *  the per-driver symbols default on from their DT node presence. */
   usesSensor?: boolean;
+  /** Addressable LED strip (strip.* ops → ws2812-spi child). */
+  usesStrip?: boolean;
+  /** Strips the program drives: SPI controller index → chain length.
+   *  Scanned from the emitted shim's buffer declarations. */
+  strips?: Array<{ index: number; count: number }>;
+  /** USB HID keyboard/mouse (hid.* ops → zephyr,hid-device node). */
+  usesHid?: boolean;
+  /** Which HID protocol the program drives — picks the DT node's
+   *  protocol-code and the report descriptor. */
+  hidProtocol?: 'keyboard' | 'mouse';
+  /** GPIO key matrix (matrix.* ops → gpio-kbd-matrix node). */
+  usesMatrix?: boolean;
+  /** The matrix's construction pad lists (from the lowering marker). */
+  matrix?: { rows: number[]; cols: number[] };
+  /** Explicit power-state entry (power.* ops → sys_poweroff). */
+  usesPower?: boolean;
+  /** Wall-clock time (clock.* ops → rtc alias). */
+  usesClock?: boolean;
+  /** CAN bus (can.* ops → the harvested can@ controller). */
+  usesCan?: boolean;
+  /** I2S audio (i2s.* ops → the harvested i2s@ controller). */
+  usesI2s?: boolean;
+  /** CAN loopback constructed (CAN_MODE_LOOPBACK in the emission) — the
+   *  overlay routes both TWAI functions onto one pad (no transceiver). */
+  canLoopback?: boolean;
+  /** The counter the rtc shim wraps (label + optional timer parent for
+   *  the child-form ESP32 counters). Omitted when the board ships its own
+   *  rtc alias — the lowering uses the hardware node. */
+  clockShimCounter?: { label: string; parent?: string };
   /** Distinct constructed sensors — only the overlay generator consumes this
    *  (one DT child node per entry, on the given I2C controller index); prj.conf
    *  ignores it. Same adcReadPins/pwmUsedPins pattern. */
-  sensorParts?: readonly { part: string; busIndex: number; port: number; busKind: 'i2c' | 'spi'; spiHz?: number; spiMode?: number; alertPin?: number }[];
+  sensorParts?: readonly { part: string; busIndex: number; port: number; busKind: 'i2c' | 'spi' | 'w1'; spiHz?: number; spiMode?: number; alertPin?: number; resolution?: number }[];
   /** Distinct thin SPI targets (hal/spi-target.ts) — one DT child node per
    *  entry (no compatible — a raw spi_dt_spec peer), appended after sensor
    *  CS entries in the controller's merged cs-gpios. */
@@ -141,6 +180,10 @@ export function resolveKconfigFragments(
   // Sensors: only the umbrella — each in-tree driver is `default y` on its
   // DT_HAS_<COMPAT>_ENABLED, so the overlay's child node enables the driver.
   if (usage.usesSensor) m.set('CONFIG_SENSOR', 'y');
+  // 1-Wire masters: the w1 core + the bit-banged GPIO driver (default-on
+  // via the synthesized node, but the core W1 menuconfig gates the
+  // drivers — set it explicitly so the menu default cannot hide it).
+  if ((usage.sensorParts ?? []).some((sp) => sp.busKind === 'w1')) m.set('CONFIG_W1', 'y');
   // The rare driver that is NOT DT-default-on: the catalog records its
   // Kconfig lines (from the driver's own Kconfig) and they are applied for
   // exactly the parts the program constructs. Empty for every in-tree part
@@ -154,6 +197,39 @@ export function resolveKconfigFragments(
     m.set('CONFIG_CBPRINTF_FP_SUPPORT', 'y');
   }
   if (usage.usesPwm) m.set('CONFIG_PWM', 'y');
+  if (usage.usesStrip) m.set('CONFIG_LED_STRIP', 'y');
+  // HID rides the same "next" device stack as CDC — the class is selected by
+  // the zephyr,hid-device node the overlay synthesizes.
+  if (usage.usesHid) {
+    m.set('CONFIG_USB_DEVICE_STACK_NEXT', 'y');
+    m.set('CONFIG_USBD_HID_SUPPORT', 'y');
+  }
+  if (usage.usesMatrix) {
+    m.set('CONFIG_INPUT', 'y');
+    m.set('CONFIG_INPUT_GPIO_KBD_MATRIX', 'y');
+  }
+  // sys_poweroff() only exists when the kernel builds the poweroff service
+  // (the SoC hook compiles under this symbol — without it the link fails
+  // with an undefined reference).
+  if (usage.usesPower) m.set('CONFIG_POWEROFF', 'y');
+  // The rtc subsystem; the counter shim driver defaults on when the
+  // synthesized zephyr,rtc-counter node exists. RTC_INIT_PRIORITY defaults
+  // to KERNEL_INIT_PRIORITY_DEVICE (=50) which is BELOW the counter driver
+  // (=60) — the shim asserts it inits after its parent counter, so raise
+  // it whenever the shim is in play.
+  if (usage.usesCan) m.set('CONFIG_CAN', 'y');
+  // I2S needs the DMA umbrella + the ESP32 GDMA driver (the controller
+  // DMA-runs through the gdma node the overlay enables — the driver is
+  // default-y once the node is on, but the umbrella needs the explicit
+  // set because nothing else pulls it in).
+  if (usage.usesI2s) {
+    m.set('CONFIG_I2S', 'y');
+    m.set('CONFIG_DMA', 'y');
+  }
+  if (usage.usesClock) {
+    m.set('CONFIG_RTC', 'y');
+    m.set('CONFIG_RTC_INIT_PRIORITY', '70');
+  }
   if (usage.usesDac) m.set('CONFIG_DAC', 'y');
   if (usage.usesI2c) m.set('CONFIG_I2C', 'y');
   if (usage.usesSpi) m.set('CONFIG_SPI', 'y');
@@ -198,29 +274,55 @@ export function resolveKconfigFragments(
     // configured SPI clock (~80MHz) and drops into the low tens of ms. The
     // display overlay pairs this with dma-enabled + dmas on the spi2 node.
     m.set('CONFIG_DMA', 'y');
-    // Disable the MIPI DBI SPI bridge + in-tree panel drivers (ILI9341,
-    // ST7796S). The display adapter drives the panel directly via spi_write.
-    // Binding these drivers would allocate a tearing-effect GPIO interrupt
-    // that conflicts with the SPI/I2C driver interrupts — the
-    // VECDESC_FL_SHARED assertion crashes on touch. ILI9341 matters as much
-    // as the bridge: the driver auto-defaults on from the overlay's
-    // ilitek,ili9341 node and references the (disabled) mipi-dbi-spi
-    // controller's device struct, failing at link time with
-    // "undefined reference to __device_dts_ord_N". (Assign the prompted
-    // ILI9341, not the hidden ILI9XXX — promptless symbols reject prj.conf
-    // assignments.)
-    m.set('CONFIG_MIPI_DBI_SPI', 'n');
-    m.set('CONFIG_ILI9341', 'n');
-    m.set('CONFIG_ST7796S', 'n');
+    if (usage.displayTransport === 'zephyr-display') {
+      // Native display-API transport: the mipi-dbi SPI bridge hosts the
+      // panel driver, which owns init/rotation/wire format. Controller-
+      // specific exceptions and the drop-in (compatible-driven) path:
+      //  - st7796s (registry profile): the stock bridge deasserts CS
+      //    between command and parameters (scrambles clone panels), so it
+      //    stays OFF — the adapter emits an app-local CS-holding host.
+      //  - ili9341 (registry profile): assign the prompted symbol explicitly
+      //    (survives DT-only probes; not the hidden ILI9XXX).
+      //  - synthesized profiles (no controller): assign NOTHING — panel
+      //    drivers are `default y depends on DT_HAS_<COMPATIBLE>_ENABLED`,
+      //    so the overlay's enabled node builds its own driver.
+      if (usage.displayController === 'st7796s') {
+        m.set('CONFIG_MIPI_DBI_SPI', 'n');
+        m.set('CONFIG_ST7796S', 'y');
+      } else if (usage.displayController === 'ili9341') {
+        m.set('CONFIG_MIPI_DBI_SPI', 'y');
+        m.set('CONFIG_ILI9341', 'y');
+      } else {
+        m.set('CONFIG_MIPI_DBI_SPI', 'y');
+      }
+    } else {
+      // Direct-spi transport (default): the display adapter drives the panel
+      // directly via spi_write. Disable the MIPI DBI SPI bridge + in-tree panel
+      // drivers (ILI9341, ST7796S) — binding them would allocate a
+      // tearing-effect GPIO interrupt that conflicts with the SPI/I2C driver
+      // interrupts — the VECDESC_FL_SHARED assertion crashes on touch.
+      // ILI9341 matters as much as the bridge: the driver auto-defaults on
+      // from the overlay's ilitek,ili9341 node and references the (disabled)
+      // mipi-dbi-spi controller's device struct, failing at link time with
+      // "undefined reference to __device_dts_ord_N".
+      m.set('CONFIG_MIPI_DBI_SPI', 'n');
+      m.set('CONFIG_ILI9341', 'n');
+      m.set('CONFIG_ST7796S', 'n');
+    }
   }
   if (usage.usesTouch) {
-    // FT6336U touch is on I2C; the XPT2046 shares the display's SPI bus.
-    // CONFIG_INPUT stays off either way: the adapters drive the controllers
-    // directly, and enabling it would build the in-tree input drivers
-    // (ft5336 / xpt2046) against nodes these adapters already own.
     if (usage.touchController === 'xpt2046') {
+      // XPT2046 rides the display's SPI bus — the raw adapter owns the chip
+      // (CONFIG_INPUT stays off: the in-tree driver's DT min/max scaling
+      // would double-apply the runtime calibration — see touch-adapter.ts).
       m.set('CONFIG_SPI', 'y');
     } else {
+      // FT6336U through the input subsystem: the in-tree focaltech driver
+      // owns the controller in polling mode (no int-gpios on the node — no
+      // GPIO IRQ is registered, sidestepping the ESP32 VECDESC_FL_SHARED
+      // crash the interrupt path hit). The adapter listens for its events.
+      m.set('CONFIG_INPUT', 'y');
+      m.set('CONFIG_INPUT_FT5336', 'y');
       m.set('CONFIG_I2C', 'y');
     }
   }

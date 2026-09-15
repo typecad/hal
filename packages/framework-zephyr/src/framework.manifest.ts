@@ -104,6 +104,91 @@ export default defineFrameworkManifest({
         'pwm.set_pulse': 'supported',
         'pwm.set_duty': 'supported',
         'pwm.set_period': 'supported',
+        // Servo (hal/servo.ts): calibrated 50 Hz sugar on the same channel —
+        // clamping and the angle→pulse mapping run in the lowered C++.
+        'pwm.servo_us': 'supported',
+        'pwm.servo_angle': 'supported',
+        'pwm.servo_idle': 'supported',
+      },
+    },
+
+    // ── Supported: LED strip (ws2812-spi over led_strip API) ───────────────
+    strip: {
+      // DAC discipline: lowers on every board with a wired SPI controller;
+      // a board with none lowers to a comment (profileDiagnostics flags it).
+      supported: true,
+      partialCoverage: true,
+      ops: {
+        // Strip (hal/strip.ts): buffer edits + one-wire-transaction show.
+        'strip.set_pixel': 'supported',
+        'strip.fill': 'supported',
+        'strip.show': 'supported',
+      },
+    },
+
+    // ── Board-gated: USB HID keyboard/mouse (zephyr,hid-device) ───────────
+    hid: {
+      // Same BOARD-GATED shape as usb below: the lowering only fires when
+      // the board's manifest carries zephyr.usb.* — the manifest probe runs
+      // with no board, so the honest declaration is unsupported here. The
+      // board module exports Keyboard/Mouse only on USB-capable boards
+      // (the module-resolution gate); one HID interface per program (the v1
+      // ceiling — mixing the two classes is a compile-time #error).
+      supported: false,
+      unsupportedReason: 'Board-gated: HID lowers only on boards whose DTS enables the USB device controller (boardgen emits zephyr.usb.* from the catalog).',
+      partialCoverage: false,
+      ops: unsupportedOps('hid.'),
+    },
+
+    // ── Supported: CAN bus (harvested can@ controllers) ────────────────────
+    can: {
+      supported: true,
+      partialCoverage: true,
+      ops: {
+        // Classic CAN (11/29-bit ids, ≤8-byte payloads). Partial: CAN-FD,
+        // bitrate data phase, and RTR frames are not surfaced in v1.
+        'can.begin': 'supported',
+        'can.send': 'supported',
+        'can.on_receive': 'supported',
+      },
+    },
+
+    // ── Supported: wall-clock time (rtc alias / counter shim) ─────────────
+    clock: {
+      supported: true,
+      partialCoverage: true,
+      ops: {
+        // set/now in Unix epoch seconds. Partial: v1 semantics are
+        // session-scoped on counter-backed boards — only hardware-calendar
+        // aliases persist across power loss.
+        'clock.set': 'supported',
+        'clock.now': 'supported',
+      },
+    },
+
+    // ── Supported: explicit power-state entry (sys_poweroff) ───────────────
+    power: {
+      supported: true,
+      partialCoverage: true,
+      ops: {
+        // Soft-off entry — never returns; wake by reset or a board wake
+        // source. Partial: the light states belong to the idle policy, not
+        // the app (no op surface for them in v1).
+        'power.off': 'supported',
+        // off_for arms the RTC wake timer before soft-off — ESP32 family
+        // (the harvested rtc_timer fact); boards without the fact lower
+        // to a comment naming the limitation (the DAC discipline).
+        'power.off_for': 'supported',
+      },
+    },
+
+    // ── Supported: GPIO key matrix (gpio-kbd-matrix, input subsystem) ─────
+    matrix: {
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        // Matrix (hal/matrix.ts): (row, col, pressed) trampoline.
+        'matrix.on_key': 'supported',
       },
     },
 
@@ -286,11 +371,25 @@ export default defineFrameworkManifest({
       partialCoverage: true,
       // Partial: mono profiles (ssd1306-zephyr) drive display.* ops via the
       // direct GFX runtime only — no CuttlefishGFX UI rendering path. The
-      // ILI9341 UI adapter shares the ST7796S direct-drive transport with a
-      // per-controller init table (16-bit RGB565 wire format); hardware-tuned
-      // on ST7796S only. E-ink panels are out of scope at this time.
-      unsupportedReason: 'Mono panels (ssd1306) are direct-op only (no UI rendering); ili9341 UI path is ported but not yet hardware-verified; e-ink is out of scope at this time.',
-      drivers: ['ili9341-zephyr', 'st7796-zephyr', 'ssd1306-zephyr'],
+      // direct-spi UI adapters (st7796-zephyr, ili9341-zephyr) drive the
+      // panel over spi_write with per-controller Adafruit init tables;
+      // st7796-zephyr is the full-fidelity path on the clone rig
+      // (18-bit mode, hardware-verified incl. colors + touch interaction;
+      // the demo needs psram:'opi' for full rendering and resetPin for the
+      // touch module's power enable). The zephyr-display transport rides
+      // in-tree panel drivers through Zephyr's display API: st7796s via an
+      // adapter-emitted CS-holding mipi-dbi host — colors hardware-confirmed
+      // correct on the rig with the byte-swap + CS-hold knobs (the stock
+      // bridge corrupts bursts on this clone; a ladder test observed slight
+      // uniform dimness vs the direct path's 18-bit mode, so direct remains
+      // the max-fidelity option there); ili9341 via the stock mipi-dbi-spi
+      // bridge is compile/link-verified only. Drop-in configs (display.driver
+      // = any bound compatible + geometry + quirk flags) ride the same path.
+      // Touch: FT6336U through the input subsystem (in-tree driver,
+      // polling mode, hardware-verified); XPT2046 stays on the raw adapter
+      // (the in-tree driver's DT scaling would double-apply calibration).
+      unsupportedReason: 'Mono panels (ssd1306) are direct-op only (no UI rendering); the direct-spi ili9341 UI path is not yet hardware-verified; the zephyr-display transport is hue-verified but 16-bit-brightness-limited on the clone st7796s (use direct-spi there) and compile-verified on ili9341; e-ink is out of scope at this time.',
+      drivers: ['ili9341-zephyr', 'ili9341-zephyr-display', 'st7796-zephyr', 'st7796-zephyr-display', 'ssd1306-zephyr'],
       colorFormat: 'rgb565',
       ops: {
         'display.init': 'supported',
@@ -403,10 +502,13 @@ export default defineFrameworkManifest({
       },
     },
     i2s: {
-      supported: false,
-      unsupportedReason: 'No I2S / digital audio lowering on Zephyr.',
-      partialCoverage: false,
-      ops: unsupportedOps('i2s.'),
+      supported: true,
+      partialCoverage: true,
+      ops: {
+        'i2s.write': 'supported',
+        'i2s.read': 'supported',
+        'i2s.read_at': 'supported',
+      },
     },
     twai: {
       supported: false,

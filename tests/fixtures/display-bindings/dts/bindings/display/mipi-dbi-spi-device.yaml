@@ -1,0 +1,5 @@
+description: Common fields for MIPI DBI devices using Mode C (SPI).
+properties:
+  mipi-max-frequency:
+    type: int
+    required: true

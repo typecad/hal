@@ -1,0 +1,5 @@
+description: Common I2C device properties.
+properties:
+  reg:
+    type: int
+    required: true

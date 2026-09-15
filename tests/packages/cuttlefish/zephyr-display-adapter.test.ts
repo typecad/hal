@@ -190,22 +190,17 @@ describe("Zephyr FT6336U touch adapter", () => {
     expect(code!.functions).toContain("touch_readRaw");
   });
 
-  it("emits i2c_write_read_dt for the I2C read", () => {
+  it("listens for the driver's input events (no raw bus traffic)", () => {
+    // The in-tree focaltech driver owns the I2C controller (polling mode);
+    // the adapter consumes its INPUT events. Raw register reads appear only
+    // in the bounded boot diagnostic probe.
     const code = zephyrTouchAdapter({
       library: "FT6336U",
       i2cAddress: 0x38,
       calibration: { xMin: 0, xMax: 320, yMin: 0, yMax: 480 },
     } as any)!;
-    expect(code.functions).toContain("i2c_write_read_dt");
-  });
-
-  it("resolves the touch device via I2C_DT_SPEC_GET(DT_NODELABEL(ft6336u))", () => {
-    const code = zephyrTouchAdapter({
-      library: "FT6336U",
-      i2cAddress: 0x38,
-      calibration: { xMin: 0, xMax: 320, yMin: 0, yMax: 480 },
-    } as any)!;
-    expect(code.declaration).toMatch(/I2C_DT_SPEC_GET\(DT_NODELABEL\(ft6336u\)\)/);
+    expect(code.functions).toContain("INPUT_CALLBACK_DEFINE(DEVICE_DT_GET(DT_NODELABEL(ft6336u)), __tc_touch_input_cb, NULL)");
+    expect(code.functions).toContain("evt->code == INPUT_ABS_X");
   });
 
   it("returns undefined for libraries the framework does not handle", () => {

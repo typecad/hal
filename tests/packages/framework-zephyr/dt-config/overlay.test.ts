@@ -63,6 +63,32 @@ describe('generateOverlay', () => {
     expect(without).not.toContain('te-gpios');
   });
 
+  it('withholds te-gpios on the zephyr-display transport (driver TE irq is the ESP32 crash path)', () => {
+    // te-gpios makes the bound in-tree driver allocate the tearing-effect
+    // GPIO interrupt — the VECDESC_FL_SHARED conflict documented in
+    // kconfig.ts. The direct-spi adapter owns its TE handling; the native
+    // transport stays TE-less until the driver path is re-verified.
+    const txt = generateOverlay(
+      TEST_CHIP, { usesDisplay: true }, ZEPHYR_DISPLAY_PROFILES['ili9341-zephyr-display'],
+      { tearingEffectPin: 21 },
+    );
+    expect(txt).toContain('display0: display@0');
+    expect(txt).not.toContain('te-gpios');
+  });
+
+  it('emits the mipi-dbi-spi bridge + ili9341 node for the zephyr-display profile', () => {
+    // The native transport's DT node is load-bearing: CONFIG_MIPI_DBI_SPI +
+    // CONFIG_ILI9341 bind this exact node, and its rotation/geometry feed the
+    // in-tree driver's init.
+    const txt = generateOverlay(
+      TEST_CHIP, { usesDisplay: true }, ZEPHYR_DISPLAY_PROFILES['ili9341-zephyr-display'],
+    );
+    expect(txt).toContain('compatible = "zephyr,mipi-dbi-spi"');
+    expect(txt).toContain('compatible = "ilitek,ili9341"');
+    expect(txt).toContain('rotation = <90>');
+    expect(txt).toContain('pixel-format = <0>');
+  });
+
   it('emits the ST7796S compatible + gamma for the st7796 profile', () => {
     const txt = generateOverlay(
       TEST_CHIP, { usesDisplay: true }, ZEPHYR_DISPLAY_PROFILES['st7796-zephyr'],
@@ -73,6 +99,10 @@ describe('generateOverlay', () => {
     expect(txt).toContain('madctl = <0x28>');
     expect(txt).toContain('pgc = [');
     expect(txt).toContain('ngc = [');
+    // pixel-format is declared by the lcd-controller binding only the ilitek
+    // family includes — the sitronix binding rejects it (DTC error, verified
+    // against Zephyr 4.4.2 when the truthful st7796 overlay first compiled).
+    expect(txt).not.toContain('pixel-format');
   });
 
   it('emits an FT6336U I2C touch node by default when touch is used', () => {
@@ -85,6 +115,13 @@ describe('generateOverlay', () => {
     );
     expect(txt).toContain('ft6336u: ft6336u@38');
     expect(txt).not.toContain('xpt2046');
+    // swapped-x-y normalizes the in-tree driver's axis swap so its ABS_X/
+    // ABS_Y events carry the controller registers verbatim — the raw space
+    // the runtime's calibration + rotation math expects.
+    expect(txt).toContain('swapped-x-y;');
+    // Polling mode: no int-gpios (the driver's IRQ path is the ESP32
+    // VECDESC_FL_SHARED crasher).
+    expect(txt).not.toContain('int-gpios');
   });
 
   it('emits an XPT2046 SPI touch node with the in-tree binding shape', () => {

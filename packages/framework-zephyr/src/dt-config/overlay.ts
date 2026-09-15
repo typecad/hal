@@ -12,10 +12,48 @@
 // ---------------------------------------------------------------------------
 
 import type { ZephyrChipDescriptor } from '../chips/types.js';
+import { controllerNodelabelForPin, controllerRawPinForPin } from '../chips/controllers.js';
 import type { ZephyrDisplayProfile } from '../display/profiles.js';
-import { PANEL_CONTROLLER_DEFAULTS, panelControllerFor } from '../display/profiles.js';
+import { PANEL_CONTROLLER_DEFAULTS, panelControllerFor, transportFor, isDtCompatible } from '../display/profiles.js';
+import { readDisplayBinding, type RequiredProp } from '../display/bindings.js';
+
+/** Format one binding-required property with its harvested default. Binding
+ *  props that are deliberately default-free ("panel specific" — e.g. the
+ *  sitronix gamma arrays) fall back to the rig-validated tuning the curated
+ *  profiles ship, so the generated node is always DT-valid. */
+function emitBindingProp(lines: string[], prop: string, info: RequiredProp | undefined): void {
+  const def = info?.default;
+  if (def?.kind === 'bytes' && def.value.length > 0) {
+    lines.push(`            ${prop} = [${def.value.map((b) => b.toString(16).padStart(2, '0')).join(' ')}];`);
+    return;
+  }
+  if (def?.kind === 'bool' && def.value) {
+    lines.push(`            ${prop};`);
+    return;
+  }
+  if (def?.kind === 'string') {
+    lines.push(`            ${prop} = "${def.value}";`);
+    return;
+  }
+  if (info?.type === 'uint8-array') {
+    // No binding default (panel-specific): emit the rig-validated gamma
+    // tuning the curated st7796 profile carries. Tune per panel from here.
+    lines.push(`            ${prop} = [f0 09 0b 06 04 2e 46 46 39 13 15 12 15 12];`);
+    return;
+  }
+  const v = def?.kind === 'int' ? def.value : 0;
+  lines.push(`            ${prop} = <${v}>;`);
+}
 import { SENSOR_PART_INFO } from '@typecad/hal';
 import type { KconfigUsage } from './kconfig.js';
+
+/** 1-Wire family codes (the high byte of the 64-bit ROM ID) for the parts
+ *  the catalog carries on the w1 bus — vendor silicon data, like the ESP32
+ *  DAC pin table. Unknown compatibles default to the DS18B20's 0x28. */
+const W1_FAMILY_CODES: Record<string, number> = {
+  'maxim,ds18b20': 0x28,
+  'maxim,ds18s20': 0x10,
+};
 
 /** Display panel CS default — shared by the display block and the SPI-sensor
  *  cs-gpios merge so both sites write the same entry. */
@@ -190,6 +228,35 @@ export function generateOverlay(
     lines.push('};');
     lines.push('');
   }
+  // One w1-gpio master + sensor child per constructed 1-Wire sensor. The
+  // master bit-bangs the data pin (open-drain, internal pull-up enabled —
+  // the binding recommends an external 4.7 kΩ, the internal one is weak);
+  // the child's family-code comes from the vendor table below (part of the
+  // 64-bit ROM ID), resolution from the construction opts. The nodelabels
+  // match lowering/sensor.ts sensorNames — the tc-pwm discipline.
+  for (const sp of sensorParts.filter((s) => s.busKind === 'w1')) {
+    const info = SENSOR_PART_INFO[sp.part.replace(/^SENSOR\./, '')];
+    const family = W1_FAMILY_CODES[info?.compatible ?? ''] ?? 0x28;
+    if (!info) continue; // the lowering already threw on unknown parts
+    const pinCtrl = controllerNodelabelForPin(chip, sp.port);
+    const pinBit = controllerRawPinForPin(chip, sp.port);
+    const nodeName = info.compatible.split(',')[1] ?? sp.part;
+    const stem = `${sp.part.replace(/^SENSOR\./, '')}_w1_p${sp.port}`;
+    lines.push('/ {');
+    lines.push(`    tc_w1_p${sp.port}: tc-w1-p${sp.port} {`);
+    lines.push('        compatible = "zephyr,w1-gpio";');
+    lines.push(`        gpios = <&${pinCtrl} ${pinBit} (GPIO_OPEN_DRAIN | GPIO_PULL_UP)>;`);
+    lines.push('        status = "okay";');
+    lines.push(`        tc_${stem}: ${nodeName} {`);
+    lines.push(`            compatible = "${info.compatible}";`);
+    lines.push(`            family-code = <0x${family.toString(16)}>;`);
+    lines.push(`            resolution = <${sp.resolution}>;`);
+    lines.push('            status = "okay";');
+    lines.push('        };');
+    lines.push('    };');
+    lines.push('};');
+    lines.push('');
+  }
   if (usage.usesSpi && chip.spi) {
     for (const [i, c] of chip.spi.controllers.entries()) {
       if (usage.spiUsedInstances && !usage.spiUsedInstances.includes(i)) continue;
@@ -284,6 +351,176 @@ export function generateOverlay(
         lines.push('');
       }
     }
+  }
+  // LED strips: one ws2812-spi child per driven SPI controller. The frame
+  // tuning (6.4 MHz, one=0xf0 / zero=0xc0 — 625 ns bit halves) is the
+  // Zephyr led_strip sample's canonical SPI encoding; the color-mapping
+  // matches the WS2812's native GRB order (the driver reorders). The
+  // controller is enabled here too — a strip-only program emits no spi_*
+  // calls, so the bus enable cannot ride the generic SPI usage path.
+  // `line-idle-low` keeps MOSI low between frames, the WS2812 reset level.
+  if (usage.usesStrip && usage.strips && usage.strips.length > 0) {
+    lines.splice(2, 0, '#include <zephyr/dt-bindings/led/led.h>', '');
+    for (const s of usage.strips) {
+      const ctrl = chip.spi?.controllers[s.index];
+      if (!ctrl) continue;
+      lines.push(`&${ctrl.nodeLabel} {`);
+      lines.push('    status = "okay";');
+      lines.push('    line-idle-low;');
+      lines.push(`    tc_strip${s.index}: ws2812@0 {`);
+      lines.push('        compatible = "worldsemi,ws2812-spi";');
+      lines.push('        reg = <0>;');
+      lines.push('        spi-max-frequency = <6400000>;');
+      lines.push(`        chain-length = <${s.count}>;`);
+      lines.push('        spi-cpha;');
+      lines.push('        spi-one-frame = <0xf0>;');
+      lines.push('        spi-zero-frame = <0xc0>;');
+      lines.push('        color-mapping = <LED_COLOR_ID_GREEN LED_COLOR_ID_RED LED_COLOR_ID_BLUE>;');
+      lines.push('    };');
+      lines.push('};');
+      lines.push('');
+    }
+  }
+  // I2S: enable the board's own i2s@ controllers — their pinctrl groups
+  // are board-authored (the devkitC wires i2s0_default/i2s1_default), so
+  // status is the only synthesis needed. The GDMA the ESP32 I2S driver
+  // DMA-runs through also ships disabled — enable it alongside.
+  // Full-duplex: the RX side's I_BCK/I_WS inputs must be routed in the
+  // GPIO matrix to the same pads the TX outputs drive (input-enable on
+  // the TX clock pads — the same-pad GPIO matrix trick the CAN loopback
+  // uses; the devkitC's i2s0 clock pads are WS=36, BCK=37).
+  if (usage.usesI2s && chip.i2s) {
+    lines.push('&dma {');
+    lines.push('    status = "okay";');
+    lines.push('};');
+    lines.push('');
+    for (const c of chip.i2s.controllers) {
+      const n = c.nodeLabel.replace(/[^0-9]/g, '') || '0';
+      lines.push(`&${c.nodeLabel} {`);
+      lines.push('    status = "okay";');
+      lines.push('};');
+      lines.push('');
+      lines.push('&pinctrl {');
+      lines.push('    tc_i2s_clock_loop: tc-i2s-clock-loop {');
+      lines.push('        group1 {');
+      lines.push(`            pinmux = <I2S${n}_I_BCK_GPIO37>,`);
+      lines.push(`                     <I2S${n}_I_WS_GPIO36>;`);
+      lines.push('        };');
+      lines.push('    };');
+      lines.push('};');
+      lines.push(`&${c.nodeLabel} {`);
+      lines.push(`    pinctrl-0 = <&${c.nodeLabel}_default>, <&tc_i2s_clock_loop>;`);
+      lines.push('    pinctrl-names = "default";');
+      lines.push('};');
+      lines.push('');
+    }
+  }
+  // CAN: enable the board's own can@ controller (the harvested node —
+  // boards that ship pinctrl groups keep them; the bitrate is the begin()
+  // default, overridden at runtime by can_set_bitrate). Classic CAN only.
+  // LOOPBACK: the SJA1000 self-test transmits on the TX pad and receives
+  // on the RX pad — with no transceiver the overlay routes BOTH TWAI
+  // functions onto the TX pad (the Zephyr test suite's own
+  // twai-enable.overlay shape: output-enable on the RX mux, input-enable
+  // on the TX mux, one shared pad).
+  if (usage.usesCan && chip.can) {
+    for (const c of chip.can.controllers) {
+      lines.push(`&${c.nodeLabel} {`);
+      lines.push('    status = "okay";');
+      lines.push('    bitrate = <500000>;');
+      lines.push('};');
+      lines.push('');
+      if (usage.canLoopback && c.txPad !== undefined) {
+        lines.push('&pinctrl {');
+        lines.push('    tc_can_loopback: tc-can-loopback {');
+        lines.push('        group1 {');
+        lines.push(`            pinmux = <TWAI_RX_GPIO${c.txPad}>;`);
+        lines.push('            output-enable;');
+        lines.push('        };');
+        lines.push('        group2 {');
+        lines.push(`            pinmux = <TWAI_TX_GPIO${c.txPad}>;`);
+        lines.push('            input-enable;');
+        lines.push('        };');
+        lines.push('    };');
+        lines.push('};');
+        lines.push(`&${c.nodeLabel} { pinctrl-0 = <&tc_can_loopback>; pinctrl-names = "default"; };`);
+        lines.push('');
+      }
+    }
+  }
+  // Wall-clock shim: a zephyr,rtc-counter child on the board's first free
+  // counter node + the `rtc` alias (Zephyr's own discovery convention —
+  // the api tests filter on dt_alias_exists("rtc")). The shim is a CHILD:
+  // the counter driver keeps the parent node, so Counter and Clock
+  // coexist. V1 always synthesizes the shim (uniform semantics, no driver
+  // conflicts); preferring a board's own hardware-calendar alias — and the
+  // backup-domain persistence it buys — is the follow-up.
+  if (usage.usesClock && usage.clockShimCounter) {
+    const c = usage.clockShimCounter;
+    if (c.parent) {
+      // Child-form counters (ESP32 timerN children): the shim's parent
+      // must be the counter DEVICE, so it nests INSIDE the counter child —
+      // DT_INST_PARENT in the shim driver resolves to the counter, not the
+      // timer (which carries no device of its own).
+      lines.push(`&${c.parent} {`);
+      lines.push('    status = "okay";');
+      lines.push(`    ${c.label}: counter {`);
+      lines.push('        status = "okay";');
+      lines.push('        tc_rtc: tc-rtc {');
+      lines.push('            compatible = "zephyr,rtc-counter";');
+      lines.push('        };');
+      lines.push('    };');
+      lines.push('};');
+    } else {
+      lines.push(`&${c.label} {`);
+      lines.push('    tc_rtc: tc-rtc {');
+      lines.push('        compatible = "zephyr,rtc-counter";');
+      lines.push('    };');
+      lines.push('};');
+    }
+    lines.push('/ {');
+    lines.push('    aliases {');
+    lines.push('        rtc = &tc_rtc;');
+    lines.push('    };');
+    lines.push('};');
+    lines.push('');
+  }
+  // USB HID: one zephyr,hid-device interface per program (the v1 ceiling —
+  // Keyboard OR Mouse, not both). protocol-code stays "none": the boot
+  // subclass/protocol codes (keyboard/mouse) made Windows bind the
+  // collections but silently discard every input report on this stack,
+  // while "none" (pure report-protocol device, like Zephyr's own samples)
+  // delivers input normally. The report descriptor carries the real
+  // keyboard/mouse semantics either way.
+  if (usage.usesHid) {
+    lines.push('/ {');
+    lines.push('    tc_hid: tc-hid {');
+    lines.push('        compatible = "zephyr,hid-device";');
+    lines.push('        protocol-code = "none";');
+    lines.push('        in-report-size = <8>;');
+    lines.push('        in-polling-period-us = <1000>;');
+    lines.push('    };');
+    lines.push('};');
+    lines.push('');
+  }
+  // Key matrix: the gpio-kbd-matrix node from the construction pad lists.
+  // Rows are pull-up inputs (active-low); columns are driven one at a time.
+  // Pin → controller/bit via the same mapping the gpio lowering uses.
+  if (usage.usesMatrix && usage.matrix && usage.matrix.rows.length > 0) {
+    // Same mapping the gpio lowering uses — the canonical controller
+    // resolution (single-controller fallback included). The port-relative
+    // bit comes from controllerRawPinForPin (split-SoC offsets).
+    const gpioRef = (pin: number): string => {
+      return `&${controllerNodelabelForPin(chip, pin)} ${controllerRawPinForPin(chip, pin)} (GPIO_PULL_UP | GPIO_ACTIVE_LOW)`;
+    };
+    lines.push('/ {');
+    lines.push('    tc_matrix: matrix {');
+    lines.push('        compatible = "gpio-kbd-matrix";');
+    lines.push(`        row-gpios = ${usage.matrix.rows.map((pin) => `<${gpioRef(pin)}>`).join(', ')};`);
+    lines.push(`        col-gpios = ${usage.matrix.cols.map((pin) => `<${gpioRef(pin)}>`).join(', ')};`);
+    lines.push('    };');
+    lines.push('};');
+    lines.push('');
   }
   if (display) {
     // Emit a full display DT node definition. Boards like the ESP32 devkit
@@ -807,7 +1044,12 @@ function emitDisplayNode(
 ): void {
   const bus = display.busLabel ?? 'spi2';
   const controller = panelControllerFor(display);
-  const compatible = display.dtCompatible ?? PANEL_CONTROLLER_DEFAULTS[controller].dtCompatible;
+  // Compatible resolution: explicit override → the registry controllers →
+  // the drop-in path (driver IS a compatible string) → a safe default.
+  const compatible = display.dtCompatible
+    ?? (controller !== undefined
+      ? PANEL_CONTROLLER_DEFAULTS[controller].dtCompatible
+      : (isDtCompatible(display.driver) ? display.driver : PANEL_CONTROLLER_DEFAULTS.ili9341.dtCompatible));
   const dc = wiring?.dc ?? 17;
   const rst = wiring?.rst ?? 16;
   const cs = wiring?.cs ?? DEFAULT_DISPLAY_CS;
@@ -874,19 +1116,19 @@ function emitDisplayNode(
   lines.push(`        ${display.dtLabel}: display@0 {`);
   lines.push(`            compatible = "${compatible}";`);
   lines.push('            reg = <0>;');
-            if (wiring?.tearingEffectPin !== undefined) {
+            if (wiring?.tearingEffectPin !== undefined && transportFor(display) === 'direct-spi') {
               const tePin = wiring.tearingEffectPin!;
               // Tearing-effect input on the display node: GPIO_DT_SPEC_GET(
-              // DT_NODELABEL(display0), te_gpios) in the adapter. Opt-in —
-              // most modules don't break the TE pad out.
+              // DT_NODELABEL(display0), te_gpios) in the direct-spi adapter.
+              // Opt-in — most modules don't break the TE pad out. NOT emitted
+              // on the zephyr-display transport: te-gpios makes the bound
+              // in-tree driver allocate the TE GPIO interrupt (the ESP32
+              // VECDESC_FL_SHARED conflict path) — the driver's TE handling
+              // needs re-verification before it can be wired there.
               lines.push(`            te-gpios = <&${gpioController(tePin)} ${tePin} GPIO_ACTIVE_HIGH>;`);
             }
             lines.push(`            mipi-max-frequency = <${freq}>;`);
             lines.push('            mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";');
-            // Required by the lcd-controller binding (Zephyr 4.x): 0 = RGB565,
-            // matching upstream ILI9341 boards (esp_wrover_kit) and the C++
-            // runtime, which drives these SPI TFTs as RGB565.
-            lines.push('            pixel-format = <0>;');
   lines.push(`            width = <${nativeW}>;`);
   lines.push(`            height = <${nativeH}>;`);
   if (controller === 'st7796s') {
@@ -896,11 +1138,66 @@ function emitDisplayNode(
     lines.push('            madctl = <0x28>;');
     lines.push('            pgc = [f0 09 0b 06 04 2e 46 46 39 13 15 12 15 12];');
     lines.push('            ngc = [f0 09 0b 06 04 2e 46 46 39 13 15 12 15 12];');
-  } else {
+    // rgb-is-inverted flips the format the driver REPORTS (565 <-> 565X).
+    // Zephyr RGB_565 is little-endian storage, but an 8-bit SPI panel clocks
+    // the LOW byte first — each pixel arrives byte-swapped, which mixes the
+    // green channel into red/blue (white text reads purple, dark backgrounds
+    // read green — verified on the rig). With the flag, the driver reports
+    // 565X and the adapter byte-swaps at pack time, restoring wire order.
+    // (The binding documents the prop for "buggy modules that display RGB as
+    // BGR" — same mechanism, byte order.)
+    lines.push('            rgb-is-inverted;');
+  } else if (controller === 'ili9341') {
     // ILI9341: the ilitek,ili9341 binding carries defaults for every register
     // (gamma, power, porch) and expresses orientation via `rotation` (degrees)
     // instead of a raw MADCTL — no panel-specific props are required.
     lines.push(`            rotation = <${display.rotation ?? 0}>;`);
+    // pixel-format is REQUIRED by the lcd-controller binding the ilitek
+    // ili9xxx family includes: 0 = RGB565 (dt-bindings/display/panel.h),
+    // matching upstream ILI9341 boards (esp_wrover_kit) and the C++ runtime.
+    // The sitronix,st7796s binding does NOT declare pixel-format (its branch
+    // omits the property — emitting it there is a DTC error, caught the hard
+    // way once the overlay stopped carrying the wrong ilitek compatible).
+    lines.push('            pixel-format = <0>;');
+  } else {
+    // Generic (drop-in) path: required properties come from the panel's own
+    // binding in the user's Zephyr tree — the harvest is the single source
+    // of truth, so the node is valid for ANY bound panel by construction.
+    // Geometry/frequency props above are already emitted; pixel-format is
+    // special (required by the lcd-controller family, value fixed to RGB565).
+    const binding = readDisplayBinding(compatible);
+    if (binding?.requiresPixelFormat) {
+      lines.push('            pixel-format = <0>;');
+    }
+    if (binding) {
+      for (const [prop, def] of binding.required) {
+        // Skip structural properties the generator emits itself.
+        if (prop === 'width' || prop === 'height' || prop === 'mipi-max-frequency'
+            || prop === 'pixel-format' || prop === 'reg' || prop === 'compatible'
+            || prop === 'status' || prop === 'mipi-mode') {
+          continue;
+        }
+        emitBindingProp(lines, prop, def);
+      }
+      // Rotation on madctl-style panels (st7796s family): the binding ships
+      // a neutral portrait default and the driver writes MADCTL verbatim, so
+      // the config's rotation MUST reach the node or the UI's landscape
+      // writes fall outside the portrait address window — half the screen
+      // scrambled, half fine (verified on the rig). Table = ST77xx rotation
+      // bits with BGR set (the verified clone convention; an R/B-swapped
+      // panel flips to the config's channelSwapRb flag instead).
+      // Byte-order quirk flag (clone panels): flips the format the driver
+      // reports so the adapter byte-swaps at pack time. Only bindings that
+      // declare the prop accept it — the DTC rejects it elsewhere, honestly.
+      if (display.rgbInverted === true) {
+        lines.push('            rgb-is-inverted;');
+      }
+      if (binding.props.has('madctl') && display.rotation !== undefined) {
+        const MADCTL_ROTATION = [0x08, 0x28, 0x48, 0xE8];
+        const r = ((display.rotation % 4) + 4) % 4;
+        lines.push(`            madctl = <0x${MADCTL_ROTATION[r]!.toString(16)}>;`);
+      }
+    }
   }
   lines.push('        };');
   lines.push('    };');
@@ -995,11 +1292,16 @@ function emitFt6336uNode(lines: string[], touch?: TouchWiring): void {
   lines.push('    ft6336u: ft6336u@38 {');
   lines.push('        compatible = "focaltech,ft5336";');
   lines.push('        reg = <0x38>;');
-  // NOTE: int-gpios is intentionally omitted. The ft5336 Zephyr driver
-  // registers a GPIO interrupt on int-gpios, which triggers an assertion
-  // failure in the ESP32 interrupt controller (VECDESC_FL_SHARED conflict).
-  // The cuttlefish touch adapter polls touch_isTouched() via I2C every frame
-  // — it never uses the IRQ pin, so the interrupt registration is unnecessary.
+  // NOTE: int-gpios is intentionally omitted. The driver's interrupt mode
+  // registers a GPIO IRQ (the ESP32 VECDESC_FL_SHARED crash); with no
+  // int-gpios the in-tree driver falls back to polling mode
+  // (CONFIG_INPUT_FT5336_PERIOD, default 10ms) — no IRQ is registered and
+  // the touch adapter consumes the driver's input events.
+  // swapped-x-y: the driver reports pos(col, row) — the Y-register value
+  // first. The swap makes its ABS_X/ABS_Y events carry the controller's
+  // X/Y registers verbatim, which is the raw coordinate space the runtime's
+  // calibration + rotation math (ui_poll_touch) expects from touch_readRaw.
+  lines.push('        swapped-x-y;');
   if (resetPin !== undefined) {
     lines.push(`        reset-gpios = <&${gpioController(resetPin)} ${resetPin} GPIO_ACTIVE_LOW>;`);
   }

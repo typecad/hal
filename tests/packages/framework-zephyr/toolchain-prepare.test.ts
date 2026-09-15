@@ -48,6 +48,28 @@ describe('Toolchain.prepare writes the DT overlay', () => {
     expect(txt).toContain('compatible = "ilitek,ili9341"');
   });
 
+  it('recovers the display profile from the adapter marker, not the default profile', () => {
+    // Regression: a st7796-zephyr build used to get the default ILI9341
+    // profile's DT node (wrong controller/compatible/geometry) because the
+    // toolchain never learned which profile the adapter emitted. The adapter
+    // now stamps `typecad-display-profile: <driver>` and prepare() looks it
+    // up in the profile registry.
+    const srcDir = join(dir, 'src');
+    mkdirSync(srcDir, { recursive: true });
+    writeFileSync(
+      join(srcDir, 'main.cpp'),
+      '// typecad-display-profile: st7796-zephyr\nint main(){ display_init(); return 0; }',
+    );
+    Toolchain.prepare(dir, join(srcDir, 'main.cpp'));
+    const txt = readFileSync(join(dir, 'boards', 'board.overlay'), 'utf8');
+    expect(txt).toContain('compatible = "sitronix,st7796s"');
+    expect(txt).toContain('madctl = <0x28>');
+    expect(txt).not.toContain('compatible = "ilitek,ili9341"');
+    // Native panel geometry (320x480 portrait raster), not the effective dims.
+    expect(txt).toContain('width = <320>');
+    expect(txt).toContain('height = <480>');
+  });
+
   it('omits the display node when the program does not use the display', () => {
     const srcDir = join(dir, 'src');
     mkdirSync(srcDir, { recursive: true });

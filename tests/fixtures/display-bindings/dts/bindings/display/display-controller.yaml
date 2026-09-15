@@ -1,0 +1,8 @@
+description: Common fields for display controllers.
+properties:
+  width:
+    type: int
+    required: true
+  height:
+    type: int
+    required: true

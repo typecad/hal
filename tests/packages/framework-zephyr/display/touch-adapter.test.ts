@@ -56,20 +56,48 @@ describe('zephyrTouchAdapter', () => {
     });
   });
 
-  describe('FT6336U (capacitive, I2C) regression', () => {
+  describe('FT6336U (capacitive) on the input subsystem', () => {
     const code = zephyrTouchAdapter({
       library: 'FT6336U',
       calibration: { xMin: 0, xMax: 320, yMin: 0, yMax: 240 },
     })!;
 
-    it('resolves through the I2C devicetree spec', () => {
-      expect(code.declaration).toContain('I2C_DT_SPEC_GET(DT_NODELABEL(ft6336u))');
-      expect(code.functions).toContain('i2c_write_read_dt(&__tc_touch');
+    it('emits the three ui_poll_touch symbols', () => {
+      expect(code.functions).toContain('touch_init()');
+      expect(code.functions).toContain('touch_isTouched()');
+      expect(code.functions).toContain('touch_readRaw(');
     });
 
-    it('does not emit SPI touch machinery', () => {
-      expect(code.declaration).not.toContain('xpt2046');
+    it('listens for the driver input events, owns no bus', () => {
+      // The in-tree focaltech driver polls the controller; this adapter only
+      // consumes its events (ABS position + BTN_TOUCH press state).
+      expect(code.functions).toContain('INPUT_CALLBACK_DEFINE(DEVICE_DT_GET(DT_NODELABEL(ft6336u)), __tc_touch_input_cb, NULL)');
+      expect(code.functions).toContain('evt->code == INPUT_ABS_X');
+      expect(code.functions).toContain('evt->code == INPUT_BTN_TOUCH');
+      // No raw I2C/SPI traffic in the emitted adapter anymore, except the
+      // TEMPORARY TD_STATUS diagnostic probe (removed after root-cause).
+      expect(code.functions).not.toContain('spi_transceive');
       expect(code.includes.join('\n')).not.toContain('zephyr/drivers/spi.h');
+    });
+
+    it('drives the touch power enable with the rig-verified sequence', () => {
+      // GPIO4 on the rig: LOW 10ms → HIGH → 500ms settle. Without it the
+      // controller half-powers off a floating enable and the bus dies.
+      expect(code.functions).toContain('GPIO_DT_SPEC_GET(DT_NODELABEL(ft6336u), reset_gpios)');
+      expect(code.functions).toContain('GPIO_OUTPUT_ACTIVE);   // drive LOW (active-low spec)');
+      expect(code.functions).toContain('k_msleep(10);');
+      expect(code.functions).toContain('k_msleep(500);');
+    });
+
+    it('keeps the raw register coordinate space for ui_poll_touch', () => {
+      // touch_readRaw hands through the event values untouched — the
+      // runtime's calibration + rotation math is unchanged from the raw
+      // register-polling adapter (the swapped-xy DT prop normalizes the
+      // driver's axis swap).
+      expect(code.functions).toContain('*x = __tc_touch_cached_x;');
+      expect(code.functions).toContain('*y = __tc_touch_cached_y;');
+      expect(code.functions).toContain('*z = 255;');
+      expect(code.functions).not.toContain('nativeWidth');
     });
   });
 });

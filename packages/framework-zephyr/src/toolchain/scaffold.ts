@@ -10,7 +10,8 @@
 import { writeFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveKconfigFragments, type KconfigUsage } from '../dt-config/kconfig.js';
-import { scanSensorParts } from './index.js';
+import { scanSensorParts, scanStrips, scanHid, scanMatrix } from './index.js';
+import { profileFromEmittedSource, transportFor, panelControllerFor } from '../display/profiles.js';
 import { readCuttlefishLibrarySidecar } from '@typecad/cuttlefish/library-packages';
 import { SENSOR_PART_INFO } from '@typecad/hal';
 
@@ -122,6 +123,22 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
   const usage: KconfigUsage = {
     usesAdc: uses('adc_'),
     usesPwm: uses('pwm_'),
+    usesStrip: uses('led_strip'),
+    strips: scanStrips(src),
+    // Sensor parts drive CONFIG_W1 (1-Wire masters) and the exception
+    // lines; the same scan the exception block below re-runs.
+    sensorParts: scanSensorParts(src),
+    usesHid: uses('__tc_hid_'),
+    hidProtocol: scanHid(src),
+    usesMatrix: uses('__tc_matrix'),
+    matrix: scanMatrix(src),
+    usesPower: uses('sys_poweroff'),
+    usesClock: uses('__tc_rtc'),
+    usesCan: uses('can_'),
+    canLoopback: uses('CAN_MODE_LOOPBACK'),
+    usesI2s: uses('i2s_'),
+    // No chip facts at scaffold time — the prepare overlay omits the shim;
+    // the chip-aware build path synthesizes it.
     usesDac: uses('dac_') || uses('__tc_dac'),
     usesFS: uses('__tc_fs'),
     usesHwtimer: uses('counter_') || uses('__tc_hw'),
@@ -138,12 +155,20 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     usesUart: uses('uart_') || uses('__tc_uart'),
     // USB CDC serial: every usb.* lowering calls into the __tc_usb<N>_* shim
     // (device + init helper emitted under usesUsb).
-    usesUsb: uses('__tc_usb'),
+    usesUsb: uses('__tc_usb0'),
     // STM32F4 DBGMCU keep-SWD-alive init present (emitted for stm32f4 socs).
     usesStm32DebugSleep: uses('__tc_stm32_dbgmcu'),
     usesWdt: uses('wdt_'),
     usesBle: uses('bt_') || uses('bt_gatt') || uses('bt_le_'),
     usesDisplay: uses('display_write') || uses('display_init') || uses('display_fill_rect') || uses('__tc_display_dev') || uses('CuttlefishDisplayTarget'),
+    // Display transport + controller: recovered from the profile marker the
+    // display adapters stamp into the emitted source (the profile registry is
+    // the single source of truth — no geometry re-derivation here).
+    ...((): Pick<KconfigUsage, 'displayTransport' | 'displayController'> => {
+      const profile = profileFromEmittedSource(src);
+      if (!profile || transportFor(profile) !== 'zephyr-display') return {};
+      return { displayTransport: 'zephyr-display', displayController: panelControllerFor(profile) };
+    })(),
     usesTouch: uses('ft6336u') || uses('touch_'),
     // (The power HAL is removed; its former pm_/k_sleep token scan is gone —
     // nothing here must match tx_power_dbm's `power` substring.)

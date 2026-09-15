@@ -1,0 +1,15 @@
+description: Sitronix ST7796S Display controller
+compatible: "sitronix,st7796s"
+include: [mipi-dbi-spi-device.yaml, display-controller.yaml]
+properties:
+  pgc:
+    type: uint8-array
+    default: [0xF0, 0x09, 0x0B, 0x06]
+    required: true
+  ngc:
+    type: uint8-array
+    required: true
+    default: [0xF0, 0x09]
+  madctl:
+    type: int
+    default: 0x0

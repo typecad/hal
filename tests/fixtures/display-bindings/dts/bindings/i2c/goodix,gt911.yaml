@@ -1,0 +1,7 @@
+description: Goodix GT911 capacitive touchscreen
+compatible: "goodix,gt911"
+include: [i2c-device.yaml]
+properties:
+  irq-gpios:
+    type: phandle
+    required: true
