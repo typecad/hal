@@ -96,9 +96,8 @@ function fontTableCpp(): string {
  *  - `'mono'` (OLED, e.g. SSD1306): a full framebuffer — the standard model
  *    for page-buffered monochrome panels (the AGENTS.md "no full framebuffer"
  *    guardrail targets RGB SPI TFTs, not mono OLEDs). draw ops set bits;
- *    display_flush pushes the whole framebuffer. The MONO01 packing is
- *    horizontal, MSB-first (Zephyr convention): byte = (y*rowBytes)+(x>>3),
- *    bit = 0x80>>(x&7).
+ *    display_flush pushes the whole framebuffer as VTILED MONO01 (the layout
+ *    the driver consumes; see monoHelpers).
  */
 export function buildDisplayRuntime(profile: ZephyrDisplayProfile): DisplayRuntimeResult {
   const w = profile.width;
@@ -117,8 +116,12 @@ export function buildDisplayRuntime(profile: ZephyrDisplayProfile): DisplayRunti
     ? [
         '// CUTTLEFISH_DISPLAY_BEGIN',
         `static const struct device* __tc_display = DEVICE_DT_GET(DT_NODELABEL(${profile.dtLabel}));`,
-        `// Mono framebuffer (Zephyr MONO01: horizontal, MSB-first). ${(w + 7) >> 3} bytes/row x ${h} rows.`,
-        `static uint8_t __tc_display_fb[((${w} * ${h}) + 7) / 8];`,
+        `// Mono framebuffer, vtiled MONO01 — the layout Zephyr's ssd1306-class`,
+        `// drivers expect from display_write (SCREEN_INFO_MONO_VTILED, matching`,
+        `// cfb's draw_point): byte = fb[(y>>3)*${w} + x], bit = 1<<(y&7).`,
+        `// pitch must equal width and (y, height) must be multiples of 8 — the`,
+        `// full-frame flush satisfies both by construction.`,
+        `static uint8_t __tc_display_fb[(${w} * ${h} + 7) / 8];`,
         '// CUTTLEFISH_DISPLAY_END',
       ]
     : [
@@ -148,16 +151,19 @@ export function buildDisplayRuntime(profile: ZephyrDisplayProfile): DisplayRunti
 /**
  * Mono (OLED) helpers: a full framebuffer + bit-packing. SSD1306-class panels
  * are page-buffered, so draw ops set bits in the framebuffer and display_flush
- * pushes the whole buffer. color != 0 ⇒ lit.
+ * pushes the whole buffer. color != 0 ⇒ lit. The packing is VTILED MONO01
+ * (byte = 8 vertical pixels, fb[(y>>3)*W + x], bit = 1<<(y&7)) because that
+ * is what the driver's display_write consumes — a horizontal-packed buffer
+ * with pitch = rowBytes fails the driver's pitch==width check (-EINVAL) and
+ * nothing reaches the panel.
  */
 function monoHelpers(w: number, h: number, blInit: string): string {
-  const rowBytes = (w + 7) >> 3; // bytes per row (w is byte-aligned for 128-wide panels)
   return `
-// MONO01 pixel packing: byte = (y * ${rowBytes}) + (x >> 3), bit = 0x80 >> (x & 7).
+// VTILED MONO01 pixel packing: byte = fb[(y>>3)*${w}] + x, bit = 1<<(y&7).
 static inline void __tc_set_pixel(uint16_t x, uint16_t y, uint8_t on) {
     if ((x >= ${w}U) || (y >= ${h}U)) { return; }
-    uint16_t idx = static_cast<uint16_t>((static_cast<uint32_t>(y) * ${rowBytes}U) + (x >> 3));
-    uint8_t mask = static_cast<uint8_t>(0x80U >> (x & 7U));
+    uint16_t idx = static_cast<uint16_t>((static_cast<uint32_t>(y) >> 3) * ${w}U + x);
+    uint8_t mask = static_cast<uint8_t>(1U << (y & 7U));
     if (on != 0U) {
         __tc_display_fb[idx] = static_cast<uint8_t>(__tc_display_fb[idx] | mask);
     } else {
@@ -220,11 +226,13 @@ static inline void display_draw_text(uint16_t x, uint16_t y, const char* text, u
 }
 
 static inline void display_flush(void) {
+    // Full-frame push. pitch = width and height a multiple of 8 are the
+    // ssd1306 driver's hard requirements — the full frame satisfies both.
     struct display_buffer_descriptor __desc;
-    __desc.buf_size = sizeof(__tc_display_fb);   // ${rowBytes} * ${h} bytes
+    __desc.buf_size = sizeof(__tc_display_fb);   // ${w} * ${h} / 8 bytes
     __desc.width = ${w}U;
     __desc.height = ${h}U;
-    __desc.pitch = ${rowBytes}U;                  // bytes per row
+    __desc.pitch = ${w}U;                        // vtiled: bytes per 8-pixel page row == width
     __desc.frame_incomplete = false;
     (void)display_write(__tc_display, 0, 0, &__desc, __tc_display_fb);
 }

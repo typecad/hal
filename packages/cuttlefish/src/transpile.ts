@@ -403,6 +403,9 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   resetDisplayProfile();
   resetThemeCss();
   const configDisplay = (options as any).display;
+  // Stage 2 drop-in driver-format diagnostics (filled during profile
+  // resolution below, merged into the shared list once it exists).
+  const displayFormatDiags: GeneratedOutputs["diagnostics"] = [];
   if (configDisplay) {
     const { resolveDisplayProfile } = await import("./api/shared/display-profile.js");
     // Build the named-profile registry. Prefer the strategy's hook (per-framework
@@ -425,8 +428,28 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       }
     }
     const resolved = resolveDisplayProfile(configDisplay, registry);
+    // Drop-in driver default (Stage 2): when the config names a driver with no
+    // explicit colorFormat and no registry profile, ask the framework which
+    // panel class that driver is — Zephyr's 1bpp OLED compatibles (ssd1306 et
+    // al) must lower mono engine-side too, or colors flatten at rgb565 while
+    // the framework dispatches the mono adapter (garbage on the panel, no
+    // diagnostic). Explicit config.colorFormat always wins.
+    let profile = resolved.profile;
+    if ((configDisplay as any).colorFormat === undefined && strategy.colorFormatForDriver) {
+      const fmt = strategy.colorFormatForDriver(profile.driver);
+      if (fmt && fmt !== profile.colorFormat) {
+        profile = { ...profile, colorFormat: fmt };
+        displayFormatDiags.push({
+          severity: "info",
+          code: "display-driver-format",
+          message: `Display driver "${profile.driver}" is a ${fmt === "mono" ? "1bpp monochrome" : fmt} panel — colorFormat defaults to ${fmt}; colors flatten at build time.`,
+          hint: `Set colorFormat explicitly in typecad-hal.config.ts to override.`,
+          source: path.basename(String(options.inputFile)),
+        });
+      }
+    }
     const buildTarget = (options.platformContext?.frameworkData?.buildTarget as string | undefined);
-    setDisplayProfile(resolved.profile, { cs: resolved.cs, dc: resolved.dc, rst: resolved.rst, bus: resolved.bus, address: resolved.address, reset: resolved.reset, buildTarget });
+    setDisplayProfile(profile, { cs: resolved.cs, dc: resolved.dc, rst: resolved.rst, bus: resolved.bus, address: resolved.address, reset: resolved.reset, buildTarget });
     // Apply theme CSS override if specified.
     if (configDisplay.themeCss) {
       setThemeCss(configDisplay.themeCss);
@@ -569,6 +592,10 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
 
   let entryOutputs: GeneratedOutputs | undefined;
   const diagnostics = [] as GeneratedOutputs["diagnostics"];
+  // Display driver-format defaults from the profile resolution above (Stage 2
+  // drop-in mono) — surfaced first so the panel-class note reads before any
+  // CSS/UI diagnostics that build on it.
+  diagnostics.push(...displayFormatDiags);
   const allRemovedSymbols: string[] = [];
 
   // themeCss is only honored on the .ui.html disk-read path (loadUIModule).

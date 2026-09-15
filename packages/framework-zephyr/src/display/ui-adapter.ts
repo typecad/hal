@@ -37,6 +37,7 @@ import { ZEPHYR_DISPLAY_PROFILES, panelControllerFor, transportFor, synthesizeZe
 import type { ZephyrDisplayProfile } from "./profiles.js";
 import { CANVAS_LIFECYCLE_SECTION, TARGET_FORWARDERS_SECTION, profileMarkerLine } from "./ui-adapter-shared.js";
 import { zephyrDisplayApiAdapter } from "./ui-adapter-native.js";
+import { zephyrMonoDisplayAdapter } from "./ui-adapter-mono.js";
 
 /**
  * Build the Zephyr UI display adapter for a profile. Emits the full
@@ -689,11 +690,13 @@ export const zephyrDisplayAdapterGenerator: DisplayAdapterGenerator = (display) 
     if (synth) return zephyrDisplayApiAdapter(synth);
     return undefined as unknown as DisplayAdapterCode;
   }
-  // The UI adapter is RGB565/SPI (TFT) only. Monochrome panels (OLED) use the
-  // direct display.* GFX runtime (gfx.ts mono branch) — there is no
-  // CuttlefishGFX UI rendering path for mono. Decline so cuttlefish does not
-  // emit an incompatible RGB565 adapter for a mono profile.
-  if (profile.colorFormat === 'mono') return undefined as unknown as DisplayAdapterCode;
+  // Mono panels (Stage 2): the full-frame 1bpp adapter — a vtiled MONO01
+  // backing store pushed whole each frame through display_write. No transport
+  // split: mono profiles ride the in-tree driver (zephyr-display); the
+  // ssd1306-class I2C node owns init/geometry.
+  if (profile.colorFormat === 'mono') {
+    return zephyrMonoDisplayAdapter(profile);
+  }
   // Transport switch: 'zephyr-display' profiles get the display-API adapter
   // (display_write on the DT device, in-tree panel driver); everything else
   // keeps the hardware-verified direct-SPI path.

@@ -164,6 +164,12 @@ static inline uint8_t ui_pixel_heavy_node(uint16_t nodeIdx) {
 }
 
 static inline uint8_t ui_should_buffer_paint(uint16_t nodeIdx, int16_t w, int16_t h) {
+#if defined(UI_FULL_FRAME_REDRAW)
+  // Mono: the backing store IS the composite surface — every draw already
+  // lands in RAM and the frame pushes once. Buffered paints are meaningless.
+  (void)nodeIdx; (void)w; (void)h;
+  return 0;
+#else
   if (w <= 0 || h <= 0) return 0;
   if (__ui_nodes[nodeIdx].kind == NODE_LIST) return 0;
   // <canvas> elements batch via __ui_node_canvas when drawing to the display.
@@ -187,6 +193,7 @@ static inline uint8_t ui_should_buffer_paint(uint16_t nodeIdx, int16_t w, int16_
       __ui_nodes[nodeIdx].outlineStyle == 0 &&
       __ui_nodes[nodeIdx].shadowCount == 0) return 0;
   return 1;
+#endif
 }
 
 static inline void ui_seed_paint_canvas_for_node(uint16_t nodeIdx, CuttlefishCanvas16* canvas, int16_t canvasX, int16_t canvasY, int16_t bandTop) {

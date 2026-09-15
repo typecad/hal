@@ -71,6 +71,13 @@ export interface ZephyrDisplayProfile {
   /** Nodelabel of the MIPI DBI bridge node carrying the dc/reset GPIOs.
    *  Default 'mipi_dbi' (the overlay emits the bridge under that label). */
   readonly bridgeLabel?: string;
+  /** The board's own devicetree already wires this display (native_sim's
+   *  built-in sdl_dc): the overlay emits NO display node — the dtLabel points
+   *  at the board's node. */
+  readonly boardProvidesDisplay?: boolean;
+  /** Extra Kconfig fragments the profile requires (e.g. the SDL panel's mono
+   *  pixel-format choice). Appended verbatim to the generated prj.conf. */
+  readonly kconfig?: readonly string[];
 }
 
 /** How the UI adapter talks to the panel (see ZephyrDisplayProfile.transport). */
@@ -189,6 +196,26 @@ export function isDtCompatible(driver: string): boolean {
   return /^[a-z0-9]+(-[a-z0-9]+)*,[a-z0-9-]+$/i.test(driver);
 }
 
+/** 1bpp mono panel compatibles (DATA, not code): the Zephyr drivers behind
+ *  these report PIXEL_FORMAT_MONO01/10 — the Stage 2 full-frame lowering
+ *  target. A drop-in config naming one of these synthesizes a mono profile
+ *  without an explicit colorFormat. Grows as mono drivers are verified; an
+ *  unlisted mono panel still works via display.init({ colorFormat: 'mono' }).
+ *  (ssd1320/ssd1327-class are L8/grayscale — Stage 3, not here.) */
+const MONO_PANEL_COMPATIBLES: ReadonlySet<string> = new Set([
+  'solomon,ssd1306',
+  'solomon,ssd1309',
+  'sinowealth,sh1106',
+]);
+
+/** True when a drop-in compatible (or explicit config) selects the mono
+ *  (1bpp) lowering target. */
+export function isMonoDisplay(display: { driver: string; colorFormat?: string }): boolean {
+  if (display.colorFormat === 'mono') return true;
+  if (display.colorFormat && display.colorFormat !== 'mono') return false;
+  return MONO_PANEL_COMPATIBLES.has(display.driver);
+}
+
 /** Synthesize a native-transport profile for a compatible-driven config
  *  (display.driver = DT compatible, no registry profile). The in-tree driver
  *  bound by the overlay's display node owns init/geometry/quirks; the
@@ -215,7 +242,7 @@ export function synthesizeZephyrProfile(display: {
     height: display.height,
     nativeWidth: display.nativeWidth,
     nativeHeight: display.nativeHeight,
-    colorFormat: display.colorFormat === 'mono' ? 'mono' : 'rgb565',
+    colorFormat: isMonoDisplay(display) ? 'mono' : 'rgb565',
     controller: undefined,
     transport: 'zephyr-display',
     dbiHost: display.csHold === true ? 'local-hold-cs' : undefined,
@@ -281,13 +308,15 @@ export const ZEPHYR_DISPLAY_PROFILES: Record<string, ZephyrDisplayProfile> = {
     backlight: 'backlight',
   },
   'ssd1306-zephyr': {
-    // Monochrome OLED (SSD1306-class, 128x64, 1bpp). Driven through Zephyr's
-    // generic display API (the ssd1306 driver + a DT display node). The GFX
-    // runtime (gfx.ts mono branch) keeps a full page-framebuffer and pushes it
-    // on display_flush — the standard model for page-buffered OLEDs. Direct
-    // display.* ops only (no @typecad/ui CuttlefishGFX rendering on mono).
+    // Monochrome OLED (SSD1306-class, 128x64, 1bpp) — Stage 2's mono
+    // lowering target. The full-frame adapter (ui-adapter-mono.ts) keeps a
+    // vtiled MONO01 backing store and pushes it whole each frame through
+    // display_write on the DT display node (the ssd1306 driver over I2C
+    // self-builds from the overlay's node). Raw display.* ops ride the same
+    // model through gfx.ts's mono branch.
     driver: 'ssd1306-zephyr',
     dtLabel: 'display0',
+    dtCompatible: 'solomon,ssd1306',
     width: 128,
     height: 64,
     colorFormat: 'mono',
@@ -328,6 +357,23 @@ export const ZEPHYR_DISPLAY_PROFILES: Record<string, ZephyrDisplayProfile> = {
     transport: 'zephyr-display',
     rotation: 1,
     backlight: 'backlight',
+  },
+  // Stage 2g — the no-hardware gate: the whole mono lowering on native_sim's
+  // built-in SDL panel (zephyr,sdl-dc, 320x240). The board's devicetree
+  // already wires sdl_dc, so the overlay emits no display node; the SDL
+  // panel's pixel-format choice flips to MONO01 so the 1bpp adapter's
+  // display_write flows render as black/white in the emulator window.
+  // Compile+link only in CI (Linux — the POSIX arch does not build on
+  // Windows); the SDL window needs libsdl2-dev on the runner to link.
+  'native-sim-mono': {
+    driver: 'native-sim-mono',
+    dtLabel: 'sdl_dc',
+    width: 320,
+    height: 240,
+    colorFormat: 'mono',
+    transport: 'zephyr-display',
+    boardProvidesDisplay: true,
+    kconfig: ['CONFIG_SDL_DISPLAY_DEFAULT_PIXEL_FORMAT_MONO01=y'],
   },
 };
 

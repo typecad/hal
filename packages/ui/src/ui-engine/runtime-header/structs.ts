@@ -14,7 +14,7 @@ struct UIFontGlyph {
   uint8_t width;
   uint8_t height;
   uint8_t advance;
-  uint16_t dataOffset; // 4-bit alpha pixel offset
+  uint16_t dataOffset; // 4-bit alpha pixel offset (mono format: bit offset — see UIFontFace.format)
 };
 struct UIFontFace {
   uint8_t id;
@@ -23,6 +23,13 @@ struct UIFontFace {
   uint8_t baseline;
   const UIFontGlyph* glyphs;
   const uint8_t* alpha;
+#if defined(UI_NATIVE_MONO)
+  // Stage 2 mono: 0 = 4-bit alpha nibbles (two pixels per byte, dataOffset in
+  // nibbles), 1 = 1bpp packed bits (eight pixels per byte, MSB-first, dataOffset
+  // in bits). Mono builds pack glyphs at build time via the same subsetting
+  // pipeline; the field exists only on mono targets so color output is unchanged.
+  uint8_t format;
+#endif
 };
 struct UINode {
   UIRect box;
@@ -137,6 +144,12 @@ struct UINode {
   int8_t flowAxis;  // visibility reflow: 0 none, 1 column, 2 row (ui_reflow_visibility)
   uint8_t flowGap;  // visibility reflow: main-axis gap between in-flow children
   uint8_t flowFlags;  // bit0 auto height, bit1 auto width, bit2 out-of-flow
+#if defined(UI_NATIVE_MONO)
+  // Stage 2 mono flattening: :pressed styling lowers to face inversion (mono's
+  // native highlight) instead of a color transition. Exists only on mono targets
+  // so color output stays byte-identical.
+  uint8_t monoPressInvert;
+#endif
 };
 // Rich-text run: one piece of styled inline text within a node's run list.
 struct UIRichRun {

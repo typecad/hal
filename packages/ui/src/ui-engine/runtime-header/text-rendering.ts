@@ -21,6 +21,21 @@ static inline const UIFontFace* ui_font_face(uint8_t id) {
 
 static inline uint8_t ui_font_alpha_at(const UIFontFace* face, const UIFontGlyph* glyph, uint16_t pixelIndex) {
    if (!face || !glyph || !face->alpha) return 0;
+#if defined(UI_NATIVE_MONO)
+   // Mono format 1: 1bpp packed bits (MSB-first, dataOffset counts bits).
+   // A set bit returns full alpha (15) so the AA-off threshold path draws the
+   // solid foreground — exactly the coverage the build-time threshold kept.
+   if (face->format == 1) {
+     uint32_t bit = static_cast<uint32_t>(glyph->dataOffset) + pixelIndex;
+     if ((bit >> 3) >= 65535) return 0;
+#if defined(__AVR__)
+     uint8_t byte = pgm_read_byte(&face->alpha[bit >> 3]);
+#else
+     uint8_t byte = face->alpha[bit >> 3];
+#endif
+     return (byte & static_cast<uint8_t>(0x80u >> (bit & 7))) ? 15 : 0;
+   }
+#endif
    uint16_t nibble = glyph->dataOffset + pixelIndex;
    // Bounds check to prevent reading past the alpha array
    if (nibble >> 1 >= 65535) return 0;

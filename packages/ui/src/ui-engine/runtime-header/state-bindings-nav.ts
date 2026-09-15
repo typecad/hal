@@ -55,7 +55,14 @@ static uint8_t __ui_active_screen = 0;   // which screen is visible/interactive
 extern const uint16_t __ui_screen_count;  // total number of screens (emitted by lowering)
 
 // ── Image assets ────────────────────────────────────────────────────────────
+// Mono (Stage 2): images flatten to 1bpp at build time (per-image threshold or
+// Floyd–Steinberg), packed MSB-first horizontal — byte = y*rowBytes + (x>>3),
+// bit = 0x80>>(x&7), the same layout as the mono glyph bitmaps.
+#if defined(UI_NATIVE_MONO)
+struct UIImage { uint16_t w; uint16_t h; const uint8_t* data; };
+#else
 struct UIImage { uint16_t w; uint16_t h; const UI_COLOR_T* data; };
+#endif
 extern const UIImage __ui_images[];
 extern const uint16_t __ui_image_count;
 

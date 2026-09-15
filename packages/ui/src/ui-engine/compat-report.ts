@@ -116,6 +116,69 @@ export function cssCompatDiagnostics(
       }
     }
 
+    // Mono flattening warnings (Stage 2): each construct the mono lowering
+    // degenerately flattens gets a warning so "they get what they get" is at
+    // least announced. The preview renders the same flattening, so what the
+    // author sees in the browser matches the panel.
+    if (mono) {
+      const shadow = style.boxShadow;
+      if (shadow && shadow !== "none") {
+        push(`mono-shadow:${label}:${shadow}`, {
+          severity: "warning",
+          code: "css-mono-shadow-dropped",
+          message: `${label}: box-shadow is dropped on monochrome displays ("${shadow}").`,
+          hint: `1bpp has no alpha to render a shadow; remove it or accept the flat look.`,
+          source: sourceFile,
+        });
+      }
+      const textShadow = style.textShadow;
+      if (textShadow && textShadow !== "none") {
+        push(`mono-tshadow:${label}:${textShadow}`, {
+          severity: "warning",
+          code: "css-mono-shadow-dropped",
+          message: `${label}: text-shadow is dropped on monochrome displays ("${textShadow}").`,
+          hint: `1bpp has no alpha to render a shadow.`,
+          source: sourceFile,
+        });
+      }
+      const bg = style.background;
+      if (bg && bg.includes("linear-gradient")) {
+        push(`mono-gradient:${label}:${bg}`, {
+          severity: "warning",
+          code: "css-mono-gradient-flattened",
+          message: `${label}: linear-gradient flattens to its first color stop on monochrome displays.`,
+          hint: `Pick a solid background, or make the first stop the color you want shown.`,
+          source: sourceFile,
+        });
+      }
+      const op = style.opacity;
+      if (op) {
+        const n = Number.parseFloat(op);
+        if (Number.isFinite(n) && n < 1) {
+          push(`mono-opacity:${label}:${op}`, {
+            severity: "warning",
+            code: "css-mono-opacity-dropped",
+            message: `${label}: opacity ${op} is dropped on monochrome displays — the element renders fully opaque.`,
+            hint: `1bpp has no blending; show/hide or restyle the element instead.`,
+            source: sourceFile,
+          });
+        }
+      }
+      const radius = style.borderRadius;
+      if (radius) {
+        const px = parseFloat(radius);
+        if (Number.isFinite(px) && px > 0) {
+          push(`mono-radius:${label}:${radius}`, {
+            severity: "warning",
+            code: "css-mono-radius-squared",
+            message: `${label}: border-radius ${radius} flattens to square corners on monochrome displays.`,
+            hint: `1bpp corner arcs render as stair-steps; squares are the honest flattening.`,
+            source: sourceFile,
+          });
+        }
+      }
+    }
+
     // Touch-target minimums that swallow half the screen.
     const mh = style.minHeight;
     if (mh) {

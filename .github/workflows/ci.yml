@@ -36,3 +36,44 @@ jobs:
 
       - name: Build all packages
         run: npm run build --workspaces
+
+  # Stage 2g (DISPLAY-TARGETS.md) — the standing no-hardware gate: the whole
+  # mono (1bpp) lowering — flattening, full-frame redraw adapter, 1bpp fonts
+  # and images — compiles and links on native_sim's built-in SDL panel
+  # (zephyr,sdl-dc, MONO01). Linux-only: the POSIX arch does not build on
+  # Windows runners. The SDL window needs libsdl2-dev at link time. The color
+  # lowering rides the same gate shape once a color native_sim profile lands.
+  native-sim-mono:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build engine packages
+        run: npm run build --workspaces
+
+      - name: Cache Zephyr workspace + SDK
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/zephyrproject
+            ~/micromamba
+          key: zephyr-x86-${{ hashFiles('packages/framework-zephyr/installer/versions.env') }}
+          restore-keys: zephyr-x86-
+
+      - name: Install SDL2 dev libraries
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+
+      - name: Install pinned Zephyr workspace (x86 toolchain)
+        run: npx --package @typecad/framework-zephyr zephyr-installer --platforms x86 --yes
+
+      - name: Compile the mono lowering on native_sim
+        run: cd demos/demo-mono-sim && npx typecad-hal build --compile

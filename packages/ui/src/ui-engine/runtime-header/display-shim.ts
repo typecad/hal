@@ -8,6 +8,14 @@ static inline CuttlefishDisplayTarget* ui_display_get_target() { return __ui_gfx
 static inline void ui_display_set_target(CuttlefishDisplayTarget* target) {
   __ui_gfx = target ? target : display_defaultTarget();
 }
+#if defined(UI_NATIVE_MONO)
+// Mono absorbing overload: rgb565 scratch canvases don't exist on a 1bpp
+// target (every canvas getter returns nullptr under UI_FULL_FRAME_REDRAW),
+// but the still-compiled optimization paths that redirect into a canvas keep
+// their signatures. If one ever executed it would land here as a no-op and
+// the full-frame redraw would restore correct output next tick.
+static inline void ui_display_set_target(CuttlefishCanvas16* canvas) { (void)canvas; }
+#endif
 static inline void ui_display_use_default_target() {
   __ui_gfx = display_defaultTarget();
 }

@@ -641,6 +641,7 @@ function resolveMountCall(
     spiFrequency: opts.spiFrequency !== undefined ? Number(opts.spiFrequency) : profile.spiFrequency,
     address: opts.address !== undefined ? Number(opts.address) : profile._mountAddress,
     reset: opts.reset !== undefined ? Number(opts.reset) : profile._mountReset,
+    colorFormat: profile.colorFormat,
   };
 
   // SPI-bus displays (ILI9341, ST7796, etc.) need bus/cs/dc/rst wiring. Host

@@ -79,6 +79,8 @@ export interface UINodeModel {
   rotateDeg: number;
   pressedOffsetX: number;
   pressedOffsetY: number;
+  /** Mono flattening: :pressed lowers to face inversion (mono targets only). */
+  monoPressInvert?: boolean;
   shadowCount: number;                    // 0-4 active shadows
   shadowOffsetX: number[];                // [4]
   shadowOffsetY: number[];
@@ -877,6 +879,7 @@ function flatten(
   screenId: number = 0,
   parentZIndex: number = 0,
   parentOpacity: number = 100,
+  mono: boolean = false,
 ): void {
   const index = cursor.i++;
   const box = boxes[index] ?? { x: 0, y: 0, w: 0, h: 0 };
@@ -892,8 +895,10 @@ function flatten(
   const zIndex = Math.max(-32768, Math.min(32767, parentZIndex + zIndexOf(node.style)));
   // Opacity compounds down the tree: a child's effective opacity is its own
   // value scaled by the parent's effective opacity (50% parent × 100% child = 50%).
+  // Mono flattening: opacity is DROPPED — no blending on 1bpp, so every node
+  // renders fully opaque and children clear against this node's own fill.
   const ownOpacity = opacityOf(node.style);
-  const effectiveOpacity = Math.round((parentOpacity * ownOpacity) / 100);
+  const effectiveOpacity = mono ? 100 : Math.round((parentOpacity * ownOpacity) / 100);
   out.push({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd: index + 1, screenId, zIndex, effectiveOpacity });
 
   // For opaque nodes, children clear/redraw against this node's own fill
@@ -911,7 +916,7 @@ function flatten(
   };
   const orderedChildren = node.children.slice().sort((a, b) => orderNum(a.style.order) - orderNum(b.style.order));
   for (const child of orderedChildren) {
-    flatten(child, boxes, out, cursor, childParentBg, index, screenId, zIndex, effectiveOpacity);
+    flatten(child, boxes, out, cursor, childParentBg, index, screenId, zIndex, effectiveOpacity, mono);
   }
   out[index].subtreeEnd = cursor.i;
 }
@@ -929,12 +934,16 @@ export function lowerUIToModel(
 ): UIProgram {
   const flat: FlatModelSource[] = [];
   const cursor = { i: 0 };
+  // Stage 2 mono flattening: the whole tree lowers through this flag —
+  // opacity drops, and the node mapping below squares radii, drops shadows,
+  // and folds gradients to their first stop.
+  const mono = colorFormat === "mono";
   if (allScreens.length > 0) {
     for (let s = 0; s < allScreens.length; s++) {
-      flatten(allScreens[s], boxes, flat, cursor, undefined, -1, s);
+      flatten(allScreens[s], boxes, flat, cursor, undefined, -1, s, 0, 100, mono);
     }
     } else {
-      flatten(root, boxes, flat, cursor, undefined);
+      flatten(root, boxes, flat, cursor, undefined, -1, 0, 0, 100, mono);
     }
 
   // Build a screen-id → screen-index map for resolving <a href="#screenId">
@@ -1093,7 +1102,8 @@ export function lowerUIToModel(
       borderRightWidth: perSideBorderWidth(node.style, node.style.borderRightWidth, node.style.borderRightStyle),
       borderBottomWidth: perSideBorderWidth(node.style, node.style.borderBottomWidth, node.style.borderBottomStyle),
       borderLeftWidth: perSideBorderWidth(node.style, node.style.borderLeftWidth, node.style.borderLeftStyle),
-      borderRadius: borderRadiusOf(node.style),
+      // Mono flattening: border-radius → square (no corner arcs on 1bpp).
+      borderRadius: mono ? 0 : borderRadiusOf(node.style),
       ...(() => {
         const padding = paddingOf(node.style);
         return {
@@ -1112,14 +1122,35 @@ export function lowerUIToModel(
       rotateDeg: clampInt16(baseTransform.rotateDeg),
       pressedOffsetX: pressedOffset.x,
       pressedOffsetY: pressedOffset.y,
+      // Mono flattening: :pressed lowers to face inversion (mono's native
+      // highlight) — buttons and any node with :pressed styling invert their
+      // fg/bg face at draw time instead of transitioning colors.
+      monoPressInvert: mono
+        ? (kind === "button" || (node.style as CSSProperty & { pressed?: CSSProperty }).pressed !== undefined)
+        : undefined,
       // Background gradient (if background is a linear-gradient).
+      // Mono flattening: gradients → first-stop fill (bg already carries
+      // grad.color1 above); the runtime gradient pass stays disabled.
       ...(() => {
         const grad = parseGradient(node.style.background, colorFormat);
+        if (mono) return { gradientEnabled: 0, gradientColor1: 0, gradientColor2: 0 };
         return grad
           ? { gradientEnabled: grad.dir, gradientColor1: grad.color1, gradientColor2: grad.color2 }
           : { gradientEnabled: 0, gradientColor1: 0, gradientColor2: 0 };
       })(),
+      // Box shadows. Mono flattening: shadows are dropped outright.
       ...(() => {
+        if (mono) {
+          return {
+            shadowCount: 0,
+            shadowOffsetX: [0, 0, 0, 0],
+            shadowOffsetY: [0, 0, 0, 0],
+            shadowBlur: [0, 0, 0, 0],
+            shadowColor: [0, 0, 0, 0],
+            shadowAlpha: [0, 0, 0, 0],
+            shadowInset: [false, false, false, false],
+          };
+        }
         const shadows = parseBoxShadow(node.style, colorFormat);
         const pad = <T>(arr: T[], val: T, n: number): T[] => {
           const out = [...arr];
@@ -1136,8 +1167,11 @@ export function lowerUIToModel(
           shadowInset: pad(shadows.map(s => s.inset), false, MAX_SHADOWS),
         };
       })(),
-      // Text shadow: reuse parseBoxShadow for the text-shadow value.
+      // Text shadow. Mono flattening: dropped (reuse parseBoxShadow otherwise).
       ...(() => {
+        if (mono) {
+          return { textShadowCount: 0, textShadowOffsetX: 0, textShadowOffsetY: 0, textShadowBlur: 0, textShadowColor: 0, textShadowAlpha: 0 };
+        }
         const tsShadows = parseBoxShadow({ boxShadow: node.style.textShadow } as CSSProperty, colorFormat);
         const ts = tsShadows[0];
         return ts
@@ -1262,25 +1296,30 @@ export function lowerUIToModel(
     });
   };
 
-  for (const { index, node } of flat) {
-    const nodeModel = nodes[index];
-    const pressedStyle = (node.style as CSSProperty & { pressed?: CSSProperty }).pressed;
-    const explicitProp = node.style.transition?.property === "background"
-      ? "background"
-      : node.style.transition?.property === "color" ? "color" : undefined;
+  // Mono flattening: :pressed color transitions are replaced by face
+  // inversion at draw time (monoPressInvert) — no transition entries, or the
+  // lerp would fight the invert with mid-luminance 565 values.
+  if (colorFormat !== "mono") {
+    for (const { index, node } of flat) {
+      const nodeModel = nodes[index];
+      const pressedStyle = (node.style as CSSProperty & { pressed?: CSSProperty }).pressed;
+      const explicitProp = node.style.transition?.property === "background"
+        ? "background"
+        : node.style.transition?.property === "color" ? "color" : undefined;
 
-    if (explicitProp) {
-      pushTransition(index, nodeModel, explicitProp, node.style.transition!.durationMs, pressedStyle);
-    }
+      if (explicitProp) {
+        pushTransition(index, nodeModel, explicitProp, node.style.transition!.durationMs, pressedStyle);
+      }
 
-    for (const prop of ["background", "color"] as const) {
-      if (prop === explicitProp) continue;
-      const pressedValue = prop === "background" ? pressedStyle?.background : pressedStyle?.color;
-      if (!pressedValue) continue;
-      const pressedTarget = resolveColorInternal(pressedValue, colorFormat);
-      const baseTarget = prop === "background" ? nodeModel.bg : nodeModel.fg;
-      if (pressedTarget === baseTarget) continue;
-      pushTransition(index, nodeModel, prop, 0, pressedStyle);
+      for (const prop of ["background", "color"] as const) {
+        if (prop === explicitProp) continue;
+        const pressedValue = prop === "background" ? pressedStyle?.background : pressedStyle?.color;
+        if (!pressedValue) continue;
+        const pressedTarget = resolveColorInternal(pressedValue, colorFormat);
+        const baseTarget = prop === "background" ? nodeModel.bg : nodeModel.fg;
+        if (pressedTarget === baseTarget) continue;
+        pushTransition(index, nodeModel, prop, 0, pressedStyle);
+      }
     }
   }
 

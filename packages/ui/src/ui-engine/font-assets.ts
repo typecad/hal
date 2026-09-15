@@ -12,11 +12,16 @@ export interface UIFontGlyphModel {
   width: number;
   height: number;
   advance: number;
-  /** Offset into the packed alpha stream, measured in 4-bit pixels. */
+  /** Offset into the packed alpha stream — 4-bit pixels (alpha4) or bits
+   *  (mono1), matching the asset's format. */
   dataOffset: number;
 }
 
 export type UIFontSubsetMode = "exact" | "fallback";
+
+/** Glyph bitmap storage: 4-bit alpha nibbles (color targets) or 1bpp packed
+ *  bits, MSB-first (mono targets — Stage 2). */
+export type UIFontBitmapFormat = "alpha4" | "mono1";
 
 export interface UIFontAssetModel {
   id: number;
@@ -30,6 +35,8 @@ export interface UIFontAssetModel {
   baseline: number;
   glyphs: UIFontGlyphModel[];
   alpha: number[];
+  /** Defaults to "alpha4"; mono builds pack 1bpp glyphs instead. */
+  format?: UIFontBitmapFormat;
 }
 
 interface FontAssetRequest {
@@ -351,22 +358,23 @@ function addNodeText(chars: Set<string>, node: StyledNode): void {
   if (node.text && node.text.includes("{")) {
     addText(chars, "0123456789.,-+/()%");
   }
-  // <input> nodes on the SDL desktop target (UI_HIDE_OSK) accept arbitrary
-  // real-keyboard text — the OSK grid isn't shown, so the user can type any
-  // character, not just the keys on the on-screen grid. Pack the full printable
-  // ASCII range so every typed character has a glyph (otherwise letters absent
-  // from static UI text render blank — ui_font_glyph returns null). Hardware
-  // targets keep the minimal subset: the OSK grid is the only input path and
-  // only carries the keys it shows.
-  if (node.tag === "input") {
-    let driver: string | undefined;
-    try { driver = getDisplayProfile().driver; } catch { /* no profile bound */ }
-    if (driver === "sdl") {
-      let ascii = "";
-      for (let cp = 0x20; cp <= 0x7e; cp++) ascii += String.fromCodePoint(cp);
-      addText(chars, ascii);
-    }
-  }
+      // <input> nodes on the SDL desktop target (UI_HIDE_OSK) accept arbitrary
+      // real-keyboard text — the OSK grid isn't shown, so the user can type any
+      // character, not just the keys on the on-screen grid. Pack the full printable
+      // ASCII range so every typed character has a glyph (otherwise letters absent
+      // from static UI text render blank — ui_font_glyph returns null). Mono
+      // targets (Stage 2) also hide the OSK — same real-keyboard rationale.
+      // Hardware TFT targets keep the minimal subset: the OSK grid is the only
+      // input path and only carries the keys it shows.
+      if (node.tag === "input") {
+        let hideOsk = false;
+        try { hideOsk = getDisplayProfile().driver === "sdl" || getDisplayProfile().colorFormat === "mono"; } catch { /* no profile bound */ }
+        if (hideOsk) {
+          let ascii = "";
+          for (let cp = 0x20; cp <= 0x7e; cp++) ascii += String.fromCodePoint(cp);
+          addText(chars, ascii);
+        }
+      }
 }
 
 function applyTextTransform(text: string | undefined, style: CSSProperty): string | undefined {
@@ -399,11 +407,18 @@ function rasterizeFontAsset(options: {
   chars: string[];
   font: any;
 }): UIFontAssetModel {
+  // Stage 2 mono: glyphs pack as 1bpp bits (MSB-first, 8 pixels/byte), with
+  // dataOffset counting bits. The bit keeps exactly the coverage the AA-off
+  // runtime threshold would draw (alpha >= 8 of 15), so the panel shows the
+  // same glyph shapes the preview thresholds to.
+  let monoPack = false;
+  try { monoPack = getDisplayProfile().colorFormat === "mono"; } catch { /* no profile bound */ }
   const scale = options.px / options.font.unitsPerEm;
   const baseline = Math.ceil((options.font.ascender ?? options.font.unitsPerEm) * scale) + 1;
   const lineHeight = Math.ceil(((options.font.ascender ?? options.font.unitsPerEm) - (options.font.descender ?? 0)) * scale) + 2;
   const glyphs: UIFontGlyphModel[] = [];
   const unpackedAlpha: number[] = [];
+  const monoBits: number[] = [];
 
   for (const ch of options.chars) {
     const glyph = options.font.charToGlyph(ch);
@@ -415,7 +430,7 @@ function rasterizeFontAsset(options: {
     const yOffset = empty ? 0 : Math.floor(bbox.y1) - 1;
     const width = empty ? 0 : Math.max(0, Math.ceil(bbox.x2) - xOffset + 1);
     const height = empty ? 0 : Math.max(0, Math.ceil(bbox.y2) - yOffset + 1);
-    const dataOffset = unpackedAlpha.length;
+    const dataOffset = monoPack ? monoBits.length : unpackedAlpha.length;
 
     if (width > 0 && height > 0) {
       const contours = flattenPath(path.commands as OpenTypePathCommand[]);
@@ -429,7 +444,9 @@ function rasterizeFontAsset(options: {
               if (pointInContours(x, y, contours)) covered++;
             }
           }
-          unpackedAlpha.push(Math.round((covered * 15) / (SUPERSAMPLE * SUPERSAMPLE)));
+          const alpha = Math.round((covered * 15) / (SUPERSAMPLE * SUPERSAMPLE));
+          if (monoPack) monoBits.push(alpha >= 8 ? 1 : 0);
+          else unpackedAlpha.push(alpha);
         }
       }
     }
@@ -456,7 +473,8 @@ function rasterizeFontAsset(options: {
     lineHeight,
     baseline,
     glyphs,
-    alpha: packNibbles(unpackedAlpha),
+    alpha: monoPack ? packBits(monoBits) : packNibbles(unpackedAlpha),
+    format: monoPack ? "mono1" : "alpha4",
   };
 }
 
@@ -541,5 +559,24 @@ function packNibbles(values: number[]): number[] {
     const lo = Math.max(0, Math.min(15, values[i + 1] ?? 0));
     out.push((hi << 4) | lo);
   }
+  return out;
+}
+
+/** Pack a 0/1 bit stream into bytes, MSB-first (matches the runtime's
+ *  ui_font_alpha_at mono1 unpack and the UIImage bit layout). */
+function packBits(bits: number[]): number[] {
+  const out: number[] = [];
+  let byte = 0;
+  let n = 0;
+  for (const b of bits) {
+    byte = (byte << 1) | (b ? 1 : 0);
+    n++;
+    if (n === 8) {
+      out.push(byte);
+      byte = 0;
+      n = 0;
+    }
+  }
+  if (n > 0) out.push(byte << (8 - n));
   return out;
 }

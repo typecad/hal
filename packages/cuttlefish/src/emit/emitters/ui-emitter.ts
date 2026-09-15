@@ -275,7 +275,9 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   // flag alone is not enough — that would silently re-enable a heavy code path
   // the author explicitly disabled with `antialias: false`. (The runtime still
   // honors fontAntialias=0 at the per-node level when AA is compiled in.)
-  const needsAntialias = profile.antialias === true;
+  // Mono targets force AA off — the flattening rule: glyph coverage thresholds
+  // to 1bpp at build time, so there are no intermediate alphas to blend.
+  const needsAntialias = profile.antialias === true && profile.colorFormat !== "mono";
   if (needsAntialias) {
     ctx.sourceLines.push("#define UI_AA 1");
   }
@@ -313,6 +315,17 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   }
   if (caps.requiresBackingStore) {
     ctx.sourceLines.push("#define UI_REQUIRES_BACKING_STORE 1");
+  }
+  // 1a-ter. Mono full-frame redraw (Stage 2): a 1KB frame composites entirely
+  //         in the panel's backing store and pushes once — incremental
+  //         compositing has nothing to optimize at that size. The runtime's
+  //         dirty/band/scroll-canvas machinery is BYPASSED under this define,
+  //         not ported; scroll works because every frame is a full repaint.
+  //         The OSK is hidden (porting the 6×4 grid to 1bpp is out of scope);
+  //         the editing session still runs, so real-keyboard targets type.
+  if (caps.nativeFormat === "mono") {
+    ctx.sourceLines.push("#define UI_FULL_FRAME_REDRAW 1");
+    ctx.sourceLines.push("#define UI_HIDE_OSK 1");
   }
   // NOTE: per-frame SPI-write batching via UI_BATCH_SPI_WRITES was investigated
   // and reverted — the Adafruit_GFX version in this repo does NOT reference-

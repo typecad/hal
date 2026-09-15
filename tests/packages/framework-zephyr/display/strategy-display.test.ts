@@ -65,14 +65,15 @@ describe('ZephyrStrategy display wiring', () => {
     expect(joined).toContain('__tc_display_line');
   });
 
-  it('resolveDisplayAdapter provides a TFT adapter but DECLINES mono (OLED)', () => {
-    // The UI adapter is RGB565/SPI (TFT) only. Mono OLEDs use the direct
-    // display.* GFX runtime; there is no CuttlefishGFX UI path for mono.
+  it('resolveDisplayAdapter provides TFT and mono adapters, declines unknown drivers', () => {
+    // Stage 2: mono is a first-class UI target — the full-frame 1bpp adapter
+    // (ui-adapter-mono.ts). The decline is gone.
     const tft = s.resolveDisplayAdapter({ driver: 'ili9341-zephyr' } as any);
     expect(tft).toBeDefined();
     const mono = s.resolveDisplayAdapter({ driver: 'ssd1306-zephyr' } as any);
-    expect(mono).toBeUndefined();
-    // An unknown driver is also declined.
+    expect(mono).toBeDefined();
+    expect((mono as unknown as { includes: string }).includes).toContain('ZephyrMonoTarget');
+    // An unknown driver is still declined.
     expect(s.resolveDisplayAdapter({ driver: 'nope' } as any)).toBeUndefined();
   });
 

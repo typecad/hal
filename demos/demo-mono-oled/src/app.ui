@@ -1,0 +1,131 @@
+<script lang="ts">
+  // app.ui — Stage 2 mono demo. Same authoring surface as the color demos;
+  // the mono lowering flattens it at build time ("they get what they get" —
+  // and the preview shows exactly that).
+  //
+  // Exercises the flattening rules on purpose:
+  //   - border-radius + box-shadow + opacity on #card  → square, shadowless,
+  //     opaque (each earns a build-time warning)
+  //   - linear-gradient on #titlebar                    → first-stop fill
+  //   - :pressed on the buttons                         → face inversion
+  //   - an overflowing scroll body                      → full-frame scroll
+  //   - @font-face subset                               → 1bpp glyph bitmaps
+
+  import { ui } from '@typecad/ui';
+
+  ui.mount(screen);
+
+  export const count = ui.signal(0);
+
+  export function bump() {
+    count.set(count() + 1);
+  }
+
+  export function reset() {
+    count.set(0);
+  }
+
+  ui.bind(screen.uptime, 'text', () => `count: ${count()}`);
+  ui.bind(screen.title, 'text', () => count() > 0 ? 'MONO · bumped' : 'MONO · SSD1306');
+</script>
+
+<style>
+  @font-face {
+    font-family: "MonoDemo";
+    src: url("../../../packages/ui/assets/fonts/dejavu/DejaVuSans-Bold.ttf");
+    font-weight: 700;
+    font-style: normal;
+  }
+
+  :root {
+    background: #000000;
+    color: #ffffff;
+    flex-direction: column;
+  }
+
+  #titlebar {
+    background: linear-gradient(to bottom, #ffffff, #888888);
+    padding: 1px 3px;
+    height: 12px;
+  }
+  #title {
+    font-family: "MonoDemo";
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  #card {
+    border-radius: 6px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    opacity: 0.9;
+    padding: 1px 3px;
+    height: 12px;
+  }
+
+  #uptime {
+    font-family: "MonoDemo";
+    font-size: 10px;
+  }
+
+  #body {
+    overflow: scroll;
+    flex-grow: 1;
+    flex-basis: 0;
+    min-height: 0;
+    margin: 0;
+  }
+
+  .row {
+    font-size: 10px;
+    line-height: 11px;
+    min-height: 0;
+    padding: 0 3px;
+  }
+
+  #btnrow {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 1px 3px;
+    height: 16px;
+  }
+
+  button {
+    font-family: "MonoDemo";
+    font-size: 10px;
+    padding: 1px 4px;
+    min-height: 0;
+    min-width: 0;
+    height: 14px;
+    width: 56px;
+    border: 1px solid #ffffff;
+    color: #ffffff;
+  }
+  button:pressed {
+    background: #ffffff;
+    color: #000000;
+  }
+</style>
+
+<screen>
+  <view id="titlebar">
+    <text id="title">MONO · SSD1306</text>
+  </view>
+  <view id="card">
+    <text id="uptime">count: 0</text>
+  </view>
+  <view id="body">
+    <text class="row">1. full-frame redraw</text>
+    <text class="row">2. 1bpp glyph subset</text>
+    <text class="row">3. :pressed inverts</text>
+    <text class="row">4. scroll repaints</text>
+    <text class="row">5. gradients flatten</text>
+    <text class="row">6. shadows drop</text>
+    <text class="row">7. radii square off</text>
+    <text class="row">8. opacity ignored</text>
+  </view>
+  <row id="btnrow">
+    <button onclick="bump">BUMP</button>
+    <button onclick="reset">RESET</button>
+  </row>
+</screen>

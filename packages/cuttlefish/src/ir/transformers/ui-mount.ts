@@ -18,6 +18,7 @@ export interface MountRequest {
   backlight?: number;
   spiFrequency?: number;
   address?: number;
+  colorFormat?: string;
   reset?: number;
 }
 
@@ -54,5 +55,6 @@ export function resolveMount(
     reset: req.reset,
     backlight: req.backlight,
     spiFrequency: req.spiFrequency,
+    colorFormat: req.colorFormat,
   };
 }

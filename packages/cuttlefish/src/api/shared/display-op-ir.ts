@@ -34,6 +34,10 @@ export interface DisplayInitOp {
   address?: number;
   /** Reset pin for I2C displays (separate from SPI rst). */
   reset?: number;
+  /** Target color format from the resolved profile ("rgb565" | "rgb666" |
+   *  "rgb888" | "mono") — lets framework resolvers seed format-aware state
+   *  for drop-in drivers (mono synthesis picks the 1bpp lowering). */
+  colorFormat?: string;
 }
 
 export interface DisplayFillRectOp {

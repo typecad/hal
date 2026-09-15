@@ -175,6 +175,44 @@ static inline int16_t ui_draw_y_for_node(uint16_t nodeIdx) {
   return ui_base_draw_y_for_node(nodeIdx) + ui_pressed_offset_y_for_node(nodeIdx);
 }
 
+#if defined(UI_FULL_FRAME_REDRAW)
+// Mono full-frame scroll clipping: intersect every scrollable ancestor's
+// viewport (display coords — the same chain ui_base_draw_y_for_node subtracts
+// scrollY through) so full-frame children can't paint outside their viewport.
+// The canvas compositors that clip on color targets don't exist on mono; the
+// adapter's mono clip rect takes this intersection. Returns 0 when the node
+// has no scrollable ancestor (no clip needed).
+static inline uint8_t ui_mono_scroll_clip(uint16_t nodeIdx, int16_t* cx, int16_t* cy, int16_t* cw, int16_t* ch) {
+  if (!cx || !cy || !cw || !ch) return 0;
+  int16_t x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+  uint8_t any = 0;
+  uint16_t p = __ui_nodes[nodeIdx].parent;
+  while (p != UI_NO_PARENT && p < __ui_node_count) {
+    if (__ui_nodes[p].scrollable) {
+      int16_t vx = ui_draw_x_for_node(p);
+      int16_t vy = ui_draw_y_for_node(p);
+      int16_t rx1 = static_cast<int16_t>(vx + __ui_nodes[p].box.w);
+      int16_t ry1 = static_cast<int16_t>(vy + __ui_nodes[p].box.h);
+      if (!any) {
+        x0 = vx; y0 = vy; x1 = rx1; y1 = ry1;
+        any = 1;
+      } else {
+        if (vx > x0) x0 = vx;
+        if (vy > y0) y0 = vy;
+        if (rx1 < x1) x1 = rx1;
+        if (ry1 < y1) y1 = ry1;
+      }
+    }
+    p = __ui_nodes[p].parent;
+  }
+  if (!any || x1 <= x0 || y1 <= y0) return 0;
+  *cx = x0; *cy = y0;
+  *cw = static_cast<int16_t>(x1 - x0);
+  *ch = static_cast<int16_t>(y1 - y0);
+  return 1;
+}
+#endif
+
 // Find the scrollable container (list or generic scroll view) whose box contains
 // a point, on the active screen, with content overflowing the viewport. Mirrors
 // the touch path's scroll-scan (ui_touch_down) so the wheel handler finds the

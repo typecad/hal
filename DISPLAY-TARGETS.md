@@ -6,7 +6,10 @@ Displays declare what they are; the build lowers accordingly. This file
 records the agreed design so implementation doesn't re-litigate it.
 
 Status: Stage 1 shipped (SSD I²C direct ops, commit history in git).
-Stage 2 is the mono lowering target. Stage 3 grayscale, Stage 4 e-ink.
+Stage 2 shipped (mono lowering — full-frame adapter, flattening rules with
+build warnings, 1bpp fonts/images, native_sim CI gate; demos/demo-mono-oled
+west-compiles on esp32s3, demos/demo-mono-sim is the CI target).
+Stage 3 grayscale, Stage 4 e-ink.
 
 ## Stage 2 — mono (same UI API, flattened)
 

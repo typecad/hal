@@ -120,7 +120,7 @@ struct UIFontGlyph {
   uint8_t width;
   uint8_t height;
   uint8_t advance;
-  uint16_t dataOffset; // 4-bit alpha pixel offset
+  uint16_t dataOffset; // 4-bit alpha pixel offset (mono format: bit offset — see UIFontFace.format)
 };
 struct UIFontFace {
   uint8_t id;
@@ -129,6 +129,13 @@ struct UIFontFace {
   uint8_t baseline;
   const UIFontGlyph* glyphs;
   const uint8_t* alpha;
+#if defined(UI_NATIVE_MONO)
+  // Stage 2 mono: 0 = 4-bit alpha nibbles (two pixels per byte, dataOffset in
+  // nibbles), 1 = 1bpp packed bits (eight pixels per byte, MSB-first, dataOffset
+  // in bits). Mono builds pack glyphs at build time via the same subsetting
+  // pipeline; the field exists only on mono targets so color output is unchanged.
+  uint8_t format;
+#endif
 };
 struct UINode {
   UIRect box;
@@ -243,6 +250,12 @@ struct UINode {
   int8_t flowAxis;  // visibility reflow: 0 none, 1 column, 2 row (ui_reflow_visibility)
   uint8_t flowGap;  // visibility reflow: main-axis gap between in-flow children
   uint8_t flowFlags;  // bit0 auto height, bit1 auto width, bit2 out-of-flow
+#if defined(UI_NATIVE_MONO)
+  // Stage 2 mono flattening: :pressed styling lowers to face inversion (mono's
+  // native highlight) instead of a color transition. Exists only on mono targets
+  // so color output stays byte-identical.
+  uint8_t monoPressInvert;
+#endif
 };
 // Rich-text run: one piece of styled inline text within a node's run list.
 struct UIRichRun {
@@ -537,7 +550,14 @@ static uint8_t __ui_active_screen = 0;   // which screen is visible/interactive
 extern const uint16_t __ui_screen_count;  // total number of screens (emitted by lowering)
 
 // ── Image assets ────────────────────────────────────────────────────────────
+// Mono (Stage 2): images flatten to 1bpp at build time (per-image threshold or
+// Floyd–Steinberg), packed MSB-first horizontal — byte = y*rowBytes + (x>>3),
+// bit = 0x80>>(x&7), the same layout as the mono glyph bitmaps.
+#if defined(UI_NATIVE_MONO)
+struct UIImage { uint16_t w; uint16_t h; const uint8_t* data; };
+#else
 struct UIImage { uint16_t w; uint16_t h; const UI_COLOR_T* data; };
+#endif
 extern const UIImage __ui_images[];
 extern const uint16_t __ui_image_count;
 
@@ -918,6 +938,13 @@ static inline void ui_release_canvas_state() {
 // viewport canvases (e.g. 116KB+ for a full-width scroll region on a 480x320
 // panel) don't exhaust internal SRAM. Falls back to internal SRAM otherwise.
 static inline CuttlefishCanvas16* ui_create_canvas_best(int16_t w, int16_t h) {
+#if defined(UI_FULL_FRAME_REDRAW)
+  // Mono: the backing store is the only canvas — every compositing caller
+  // falls back to drawing rows directly into it (the full-frame path's
+  // semantic). No rgb565 scratch canvases exist on a 1bpp target.
+  (void)w; (void)h;
+  return nullptr;
+#else
 #if defined(ESP32) && defined(BOARD_HAS_PSRAM)
   if (psramFound()) {
     CuttlefishCanvas16* c = display_createCanvasPsram(w, h);
@@ -940,6 +967,7 @@ static inline CuttlefishCanvas16* ui_create_canvas_best(int16_t w, int16_t h) {
   }
 #endif
   return display_createCanvas(w, h);
+#endif
 }
 
 static inline CuttlefishCanvas16* ui_get_container_canvas(int16_t w, int16_t h) {
@@ -1011,6 +1039,12 @@ static inline void ui_shift_container_canvas(CuttlefishCanvas16* canvas, int16_t
 // mismatch (a reused larger canvas would keep its old stride, corrupting the
 // pushed pixels — see the inline comment below).
 static inline CuttlefishCanvas16* ui_get_repair_canvas(int16_t w, int16_t h) {
+#if defined(UI_FULL_FRAME_REDRAW)
+  // Mono: no repair canvases — geometry repair falls back to mark-dirty and
+  // the next full-frame redraw erases the footprints wholesale.
+  (void)w; (void)h;
+  return nullptr;
+#else
   if (w <= 0 || h <= 0) return nullptr;
   // Reallocate when size differs at all (not just when growing). A reused
   // larger canvas keeps its old stride, and ui_push_canvas_rect uses that
@@ -1024,12 +1058,21 @@ static inline CuttlefishCanvas16* ui_get_repair_canvas(int16_t w, int16_t h) {
   }
   return (__ui_repair_canvas && display_canvasBuffer(__ui_repair_canvas))
     ? __ui_repair_canvas : nullptr;
+#endif
 }
 
 static inline CuttlefishDisplayTarget* ui_display_get_target() { return __ui_gfx; }
 static inline void ui_display_set_target(CuttlefishDisplayTarget* target) {
   __ui_gfx = target ? target : display_defaultTarget();
 }
+#if defined(UI_NATIVE_MONO)
+// Mono absorbing overload: rgb565 scratch canvases don't exist on a 1bpp
+// target (every canvas getter returns nullptr under UI_FULL_FRAME_REDRAW),
+// but the still-compiled optimization paths that redirect into a canvas keep
+// their signatures. If one ever executed it would land here as a no-op and
+// the full-frame redraw would restore correct output next tick.
+static inline void ui_display_set_target(CuttlefishCanvas16* canvas) { (void)canvas; }
+#endif
 static inline void ui_display_use_default_target() {
   __ui_gfx = display_defaultTarget();
 }
@@ -1431,6 +1474,20 @@ static inline int16_t ui_rotated_face_h(uint16_t nodeIdx, int16_t w, int16_t h) 
   return (q == 1 || q == 3) ? w : h;
 }
 
+// Sample one image pixel as a draw color. Mono (Stage 2): the data is 1bpp
+// packed at build time (threshold or Floyd–Steinberg), MSB-first horizontal —
+// a set bit is the lit pixel (0xffff on the 565-typed mono path, pre-snapped
+// to 1 by UI_MAYBE_SNAP_MONO565 downstream); a clear bit is 0x0000.
+static inline UI_COLOR_T ui_image_pixel(const UIImage* img, int32_t idx) {
+#if defined(UI_NATIVE_MONO)
+  if ((idx >> 3) >= 65535) return static_cast<UI_COLOR_T>(0);
+  return (img->data[idx >> 3] & static_cast<uint8_t>(0x80u >> (idx & 7)))
+    ? static_cast<UI_COLOR_T>(0xFFFFu) : static_cast<UI_COLOR_T>(0x0000u);
+#else
+  return img->data[idx];
+#endif
+}
+
 // Draw image with object-fit: 0=none, 1=fill, 2=contain, 3=cover, 4=scale-down.
 // The sampler is bounded to the target box first, then quarter-turn rotated.
 // This keeps cover cropped inside the element instead of overpainting siblings.
@@ -1514,7 +1571,7 @@ static inline void ui_draw_image_with_fit(const UIImage* img, int16_t x, int16_t
       int16_t srcX = (static_cast<int32_t>(localX) * srcW) / drawW;
       if (srcX < 0) srcX = 0;
       if (srcX >= srcW) srcX = srcW - 1;
-      UI_COLOR_T color = img->data[static_cast<int32_t>(srcY) * srcW + srcX];
+      UI_COLOR_T color = ui_image_pixel(img, static_cast<int32_t>(srcY) * srcW + srcX);
       int16_t dx = tx;
       int16_t dy = ty;
       if (q == 1) {
@@ -1565,7 +1622,10 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
   }
   if (dxStart >= dxEnd || dyStart >= dyEnd) return;
   if (q == 0) {
-    // Simple case: no rotation, draw with scaling
+    // Simple case: no rotation, draw with scaling. The row-bitmap fast path
+    // hands the display UI_COLOR_T rows — mono's packed bytes always take the
+    // per-pixel loop below (ui_image_pixel unpacks the bits).
+#if !defined(UI_NATIVE_MONO)
     if (drawW == img->w && drawH == img->h) {
       int16_t rows = static_cast<int16_t>(dyEnd - dyStart);
       int16_t cols = static_cast<int16_t>(dxEnd - dxStart);
@@ -1574,23 +1634,26 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
           img->data + static_cast<int32_t>(dyStart + row) * img->w + dxStart, cols, 1);
       }
     } else {
+#endif
       // Scale using nearest-neighbor
       for (int16_t dy = dyStart; dy < dyEnd; dy++) {
         int16_t srcY = (static_cast<int32_t>(dy) * img->h) / drawH;
         for (int16_t dx = dxStart; dx < dxEnd; dx++) {
           int16_t srcX = (static_cast<int32_t>(dx) * img->w) / drawW;
-          UI_COLOR_T color = img->data[static_cast<int32_t>(srcY) * img->w + srcX];
+          UI_COLOR_T color = ui_image_pixel(img, static_cast<int32_t>(srcY) * img->w + srcX);
           ui_display_draw_pixel(x + dx, y + dy, color);
         }
       }
+#if !defined(UI_NATIVE_MONO)
     }
+#endif
     return;
   }
   for (int16_t dy = dyStart; dy < dyEnd; dy++) {
     int16_t srcY = (static_cast<int32_t>(dy) * img->h) / drawH;
     for (int16_t dx = dxStart; dx < dxEnd; dx++) {
       int16_t srcX = (static_cast<int32_t>(dx) * img->w) / drawW;
-      UI_COLOR_T color = img->data[static_cast<int32_t>(srcY) * img->w + srcX];
+      UI_COLOR_T color = ui_image_pixel(img, static_cast<int32_t>(srcY) * img->w + srcX);
       int16_t rdx = 0, rdy = 0;
       if (q == 1) {
         rdx = drawH - 1 - dy;
@@ -1619,10 +1682,20 @@ static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t 
      int16_t sy0 = ui_clamp_i16(static_cast<int16_t>(clipY - y), 0, static_cast<int16_t>(img->h));
      int16_t sw = ui_clamp_i16(clipW, 0, static_cast<int16_t>(img->w - sx0));
      int16_t sh = ui_clamp_i16(clipH, 0, static_cast<int16_t>(img->h - sy0));
+     // Mono's packed data has no UI_COLOR_T rows — per-pixel via ui_image_pixel.
+#if !defined(UI_NATIVE_MONO)
      for (int16_t row = 0; row < sh; row++) {
        ui_display_draw_rgb_bitmap(static_cast<int16_t>(x + sx0), static_cast<int16_t>(y + sy0 + row),
          img->data + static_cast<int32_t>(sy0 + row) * img->w + sx0, sw, 1);
      }
+#else
+     for (int16_t row = 0; row < sh; row++) {
+       for (int16_t col = 0; col < sw; col++) {
+         ui_display_draw_pixel(static_cast<int16_t>(x + sx0 + col), static_cast<int16_t>(y + sy0 + row),
+           ui_image_pixel(img, static_cast<int32_t>(sy0 + row) * img->w + sx0 + col));
+       }
+     }
+#endif
      return;
    }
    uint16_t sxStart = 0, sxEnd = img->w, syStart = 0, syEnd = img->h;
@@ -1645,7 +1718,7 @@ static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t 
    if (sxStart >= sxEnd || syStart >= syEnd) return;
    for (uint16_t sy = syStart; sy < syEnd; sy++) {
      for (uint16_t sx = sxStart; sx < sxEnd; sx++) {
-       UI_COLOR_T color = img->data[static_cast<uint32_t>(sy) * img->w + sx];
+       UI_COLOR_T color = ui_image_pixel(img, static_cast<uint32_t>(sy) * img->w + sx);
        int16_t dx = 0;
        int16_t dy = 0;
        if (q == 1) {
@@ -2132,6 +2205,44 @@ static inline int16_t ui_draw_y_for_node(uint16_t nodeIdx) {
   return ui_base_draw_y_for_node(nodeIdx) + ui_pressed_offset_y_for_node(nodeIdx);
 }
 
+#if defined(UI_FULL_FRAME_REDRAW)
+// Mono full-frame scroll clipping: intersect every scrollable ancestor's
+// viewport (display coords — the same chain ui_base_draw_y_for_node subtracts
+// scrollY through) so full-frame children can't paint outside their viewport.
+// The canvas compositors that clip on color targets don't exist on mono; the
+// adapter's mono clip rect takes this intersection. Returns 0 when the node
+// has no scrollable ancestor (no clip needed).
+static inline uint8_t ui_mono_scroll_clip(uint16_t nodeIdx, int16_t* cx, int16_t* cy, int16_t* cw, int16_t* ch) {
+  if (!cx || !cy || !cw || !ch) return 0;
+  int16_t x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+  uint8_t any = 0;
+  uint16_t p = __ui_nodes[nodeIdx].parent;
+  while (p != UI_NO_PARENT && p < __ui_node_count) {
+    if (__ui_nodes[p].scrollable) {
+      int16_t vx = ui_draw_x_for_node(p);
+      int16_t vy = ui_draw_y_for_node(p);
+      int16_t rx1 = static_cast<int16_t>(vx + __ui_nodes[p].box.w);
+      int16_t ry1 = static_cast<int16_t>(vy + __ui_nodes[p].box.h);
+      if (!any) {
+        x0 = vx; y0 = vy; x1 = rx1; y1 = ry1;
+        any = 1;
+      } else {
+        if (vx > x0) x0 = vx;
+        if (vy > y0) y0 = vy;
+        if (rx1 < x1) x1 = rx1;
+        if (ry1 < y1) y1 = ry1;
+      }
+    }
+    p = __ui_nodes[p].parent;
+  }
+  if (!any || x1 <= x0 || y1 <= y0) return 0;
+  *cx = x0; *cy = y0;
+  *cw = static_cast<int16_t>(x1 - x0);
+  *ch = static_cast<int16_t>(y1 - y0);
+  return 1;
+}
+#endif
+
 // Find the scrollable container (list or generic scroll view) whose box contains
 // a point, on the active screen, with content overflowing the viewport. Mirrors
 // the touch path's scroll-scan (ui_touch_down) so the wheel handler finds the
@@ -2380,6 +2491,12 @@ static inline uint8_t ui_pixel_heavy_node(uint16_t nodeIdx) {
 }
 
 static inline uint8_t ui_should_buffer_paint(uint16_t nodeIdx, int16_t w, int16_t h) {
+#if defined(UI_FULL_FRAME_REDRAW)
+  // Mono: the backing store IS the composite surface — every draw already
+  // lands in RAM and the frame pushes once. Buffered paints are meaningless.
+  (void)nodeIdx; (void)w; (void)h;
+  return 0;
+#else
   if (w <= 0 || h <= 0) return 0;
   if (__ui_nodes[nodeIdx].kind == NODE_LIST) return 0;
   // <canvas> elements batch via __ui_node_canvas when drawing to the display.
@@ -2403,6 +2520,7 @@ static inline uint8_t ui_should_buffer_paint(uint16_t nodeIdx, int16_t w, int16_
       __ui_nodes[nodeIdx].outlineStyle == 0 &&
       __ui_nodes[nodeIdx].shadowCount == 0) return 0;
   return 1;
+#endif
 }
 
 static inline void ui_seed_paint_canvas_for_node(uint16_t nodeIdx, CuttlefishCanvas16* canvas, int16_t canvasX, int16_t canvasY, int16_t bandTop) {
@@ -3625,6 +3743,21 @@ static inline const UIFontFace* ui_font_face(uint8_t id) {
 
 static inline uint8_t ui_font_alpha_at(const UIFontFace* face, const UIFontGlyph* glyph, uint16_t pixelIndex) {
    if (!face || !glyph || !face->alpha) return 0;
+#if defined(UI_NATIVE_MONO)
+   // Mono format 1: 1bpp packed bits (MSB-first, dataOffset counts bits).
+   // A set bit returns full alpha (15) so the AA-off threshold path draws the
+   // solid foreground — exactly the coverage the build-time threshold kept.
+   if (face->format == 1) {
+     uint32_t bit = static_cast<uint32_t>(glyph->dataOffset) + pixelIndex;
+     if ((bit >> 3) >= 65535) return 0;
+#if defined(__AVR__)
+     uint8_t byte = pgm_read_byte(&face->alpha[bit >> 3]);
+#else
+     uint8_t byte = face->alpha[bit >> 3];
+#endif
+     return (byte & static_cast<uint8_t>(0x80u >> (bit & 7))) ? 15 : 0;
+   }
+#endif
    uint16_t nibble = glyph->dataOffset + pixelIndex;
    // Bounds check to prevent reading past the alpha array
    if (nibble >> 1 >= 65535) return 0;
@@ -6783,6 +6916,158 @@ static inline void ui_tick(uint16_t deltaMs) {
     return;
   }
 #endif
+#if defined(UI_FULL_FRAME_REDRAW)
+  // ── Mono full-frame path (Stage 2) ─────────────────────────────────────
+  // A 1KB frame composites entirely in the panel's backing store and pushes
+  // once (~25ms over I²C) — incremental compositing has nothing to optimize.
+  // The dirty/band/scroll-canvas machinery is BYPASSED, not ported: when
+  // anything on the active screen is dirty, repaint EVERYTHING in stacking
+  // order and flush one full frame. Scroll still works because every frame is
+  // a full repaint — children draw at translated coords, clipped to their
+  // scroll viewport through the adapter's mono clip (display_mono_set_clip).
+  // The scroll-canvas phase (②b) below reads these locals; mono never sets
+  // them, so it compiles out to no-ops.
+  int16_t bufferedScrollNode = -1;
+  int16_t bufferedScrollVX = 0;
+  int16_t bufferedScrollVY = 0;
+  CuttlefishCanvas16* bufferedScrollCanvas = nullptr;
+  CuttlefishCanvas16* bufferedScrollRepaintCanvas = nullptr;
+  int16_t bufferedScrollRepaintY = 0;
+  int16_t bufferedScrollRepaintH = 0;
+  uint8_t bufferedScrollDirectFull = 0;
+  uint8_t bufferedScrollLocalRepair = 0;
+  uint8_t bufferedScrollBands = 0;
+  // Later phase slices (②b, flush) reference these names; mono keeps them at
+  // their neutral values so those phases compile and no-op.
+  CuttlefishDisplayTarget* __ui_draw_target = display_defaultTarget();
+  uint8_t __ui_fb_frame_dirty = 0;
+  (void)__ui_draw_target; (void)__ui_fb_frame_dirty;
+  (void)bufferedScrollVX; (void)bufferedScrollVY; (void)bufferedScrollCanvas;
+  (void)bufferedScrollRepaintCanvas; (void)bufferedScrollRepaintY; (void)bufferedScrollRepaintH;
+  (void)bufferedScrollDirectFull; (void)bufferedScrollLocalRepair; (void)bufferedScrollBands;
+  uint8_t __ui_frame_painted = 0;
+  uint8_t __ui_any_dirty = 0;
+  for (uint16_t mi = 0; mi < __ui_node_count && !__ui_any_dirty; mi++) {
+    if (__ui_nodes[mi].screenId == __ui_active_screen && __ui_nodes[mi].dirty) __ui_any_dirty = 1;
+  }
+  if (__ui_any_dirty) {
+    // Seed the frame with the active screen's background.
+    UI_COLOR_T __ui_mbg = static_cast<UI_COLOR_T>(0);
+    if (__ui_active_screen_bg_node < __ui_node_count) {
+      __ui_mbg = __ui_nodes[__ui_active_screen_bg_node].hasBg
+        ? static_cast<UI_COLOR_T>(__ui_nodes[__ui_active_screen_bg_node].bg)
+        : static_cast<UI_COLOR_T>(__ui_nodes[__ui_active_screen_bg_node].clearColor);
+    }
+    display_fillScreen(__ui_mbg);
+    for (uint16_t __ui_draw_pass = 0; __ui_draw_pass < __ui_node_count; __ui_draw_pass++) {
+      // No selection-sort fallback when __ui_draw_order is null (startup
+      // malloc failure): source order is the degraded-but-correct z for mono.
+      uint16_t i = __ui_draw_order ? __ui_draw_order[__ui_draw_pass] : __ui_draw_pass;
+      if (!ui_is_effectively_visible(i)) { __ui_nodes[i].dirty = 0; continue; }
+      if (__ui_nodes[i].screenId != __ui_active_screen) { __ui_nodes[i].dirty = 0; continue; }
+
+      // Clip scroll subtrees to their viewport (the adapter's mono clip).
+#if defined(UI_NATIVE_MONO)
+      int16_t __ui_mcx = 0, __ui_mcy = 0, __ui_mcw = 0, __ui_mch = 0;
+      uint8_t __ui_mclip = ui_mono_scroll_clip(i, &__ui_mcx, &__ui_mcy, &__ui_mcw, &__ui_mch);
+      if (__ui_mclip) display_mono_set_clip(__ui_mcx, __ui_mcy, __ui_mcw, __ui_mch);
+      // :pressed → face inversion — mono's native highlight (flattening rule).
+      // Colors are pre-snapped 0/1: the face takes the old fg, the content
+      // takes its complement. Patched on the node so text/body draws see it;
+      // restored below.
+      uint32_t __ui_save_fg = 0, __ui_save_bg = 0, __ui_save_bc = 0;
+      uint8_t __ui_save_hasBg = 0;
+      uint8_t __ui_minv = (__ui_nodes[i].monoPressInvert && __ui_nodes[i].value > 0) ? 1 : 0;
+      if (__ui_minv) {
+        uint32_t invFace = __ui_nodes[i].fg;
+        uint32_t invFg = __ui_nodes[i].fg ? 0u : 1u;
+        __ui_save_fg = __ui_nodes[i].fg;
+        __ui_save_bg = __ui_nodes[i].bg;
+        __ui_save_bc = __ui_nodes[i].borderColor;
+        __ui_save_hasBg = __ui_nodes[i].hasBg;
+        __ui_nodes[i].fg = invFg;
+        __ui_nodes[i].bg = invFace;
+        __ui_nodes[i].hasBg = 1;
+        __ui_nodes[i].borderColor = invFg;
+      }
+#endif
+
+      int16_t drawY = ui_draw_y_for_node(i);
+      const char* displayText = __ui_nodes[i].hasTextBinding
+        ? __ui_nodes[i].textBuffer
+        : __ui_nodes[i].text;
+      uint8_t ts = __ui_nodes[i].textSize ? __ui_nodes[i].textSize : 2;
+      uint16_t textMaxW = ui_node_text_max_width(i);
+      uint16_t tw = 0;
+      uint16_t th = 0;
+      ui_node_text_layout_metrics(i, textMaxW, &tw, &th);
+      uint16_t paintTextW = tw;
+      uint16_t paintTextH = th;
+      if (__ui_nodes[i].kind == NODE_TEXT || __ui_nodes[i].kind == NODE_SELECT) {
+        uint16_t hInset = static_cast<uint16_t>(__ui_nodes[i].paddingLeft) + static_cast<uint16_t>(__ui_nodes[i].paddingRight) + static_cast<uint16_t>(__ui_nodes[i].borderWidth) * 2;
+        uint16_t vInset = static_cast<uint16_t>(__ui_nodes[i].paddingTop) + static_cast<uint16_t>(__ui_nodes[i].paddingBottom) + static_cast<uint16_t>(__ui_nodes[i].borderWidth) * 2;
+        paintTextW = static_cast<uint16_t>(tw + hInset);
+        paintTextH = static_cast<uint16_t>(th + vInset);
+      }
+      if (__ui_nodes[i].kind == NODE_CHECK || __ui_nodes[i].kind == NODE_RADIO) {
+        paintTextW = tw + 22;
+        if (paintTextH < 16) paintTextH = 16;
+      }
+
+      // Border color: use borderColor if set, otherwise fg. Opacity is
+      // flattened to 100 at lowering — no blend on 1bpp.
+      UI_COLOR_T bColor = __ui_nodes[i].borderColor ? static_cast<UI_COLOR_T>(__ui_nodes[i].borderColor) : static_cast<UI_COLOR_T>(__ui_nodes[i].fg);
+      UI_COLOR_T fillBg = static_cast<UI_COLOR_T>(__ui_nodes[i].bg);
+      UINodeDrawCtx __ui_ctx;
+      __ui_ctx.drawY = drawY;
+      __ui_ctx.bColor = bColor;
+      __ui_ctx.fillBg = fillBg;
+      __ui_ctx.ts = ts;
+      __ui_ctx.textMaxW = textMaxW;
+      __ui_ctx.tw = tw;
+      __ui_ctx.th = th;
+      __ui_ctx.paintTextW = paintTextW;
+      __ui_ctx.paintTextH = paintTextH;
+      __ui_ctx.displayText = displayText;
+      __ui_ctx.drawingBufferedScroll = 0;
+      __ui_ctx.drawTarget = display_defaultTarget();
+      __ui_ctx.origBoxX = __ui_nodes[i].box.x;
+      __ui_ctx.origBoxY = __ui_nodes[i].box.y;
+      uint8_t __ui_list_handled = ui_draw_node_body(i, &__ui_ctx);
+      if (!__ui_list_handled) {
+        if (__ui_nodes[i].kind == NODE_FILL && ui_rotation_quadrant(__ui_nodes[i].rotateDeg) != 0 &&
+            __ui_nodes[i].outlineStyle != 0 && __ui_nodes[i].outlineWidth > 0) {
+          uint8_t w = __ui_nodes[i].outlineWidth;
+          int16_t outlineW = ui_rotated_face_w(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
+          int16_t outlineH = ui_rotated_face_h(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
+          ui_draw_rect_outline(__ui_nodes[i].box.x - w, drawY - w,
+            outlineW + 2 * w, outlineH + 2 * w,
+            __ui_nodes[i].borderRadius + w, __ui_nodes[i].outlineStyle, w, __ui_nodes[i].outlineColor);
+        } else {
+          ui_draw_node_outline(i, __ui_nodes[i].box.x, drawY);
+        }
+      }
+      // Restore the pressed-invert patch (the node table is mutable state).
+#if defined(UI_NATIVE_MONO)
+      if (__ui_minv) {
+        __ui_nodes[i].fg = __ui_save_fg;
+        __ui_nodes[i].bg = __ui_save_bg;
+        __ui_nodes[i].borderColor = __ui_save_bc;
+        __ui_nodes[i].hasBg = __ui_save_hasBg;
+      }
+      if (__ui_mclip) display_mono_clear_clip();
+#endif
+      __ui_nodes[i].dirty = 0;
+    }
+    __ui_frame_painted = 1;
+    // Modal <select> list stamps over the fresh frame.
+    if (__ui_select_menu >= 0 && (__ui_select_menu_dirty || __ui_frame_painted)) {
+      ui_select_menu_draw();
+    }
+    // One full-frame rect → ui_refresh_flush pushes the whole backing store.
+    ui_refresh_add_rect(0, 0, display_width(), display_height());
+  }
+#else
   // Select and seed the framebuffer before scroll compositors run. Band/list
   // renderers can then composite into this same off-screen target instead of
   // pushing their bands to the live panel before the main draw pass starts.
@@ -7606,6 +7891,7 @@ static inline void ui_tick(uint16_t deltaMs) {
   if (__ui_select_menu >= 0 && (__ui_select_menu_dirty || __ui_frame_painted)) {
     ui_select_menu_draw();
   }
+#endif  // UI_FULL_FRAME_REDRAW
   // ②b Draw scrollbar + push canvas for the buffered scroll container.
   if (bufferedScrollNode >= 0 && bufferedScrollCanvas) {
     ui_push_buffered_scroll_canvas(bufferedScrollCanvas, bufferedScrollRepaintCanvas,

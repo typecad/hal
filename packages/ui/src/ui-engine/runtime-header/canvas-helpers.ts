@@ -21,6 +21,13 @@ static inline void ui_release_canvas_state() {
 // viewport canvases (e.g. 116KB+ for a full-width scroll region on a 480x320
 // panel) don't exhaust internal SRAM. Falls back to internal SRAM otherwise.
 static inline CuttlefishCanvas16* ui_create_canvas_best(int16_t w, int16_t h) {
+#if defined(UI_FULL_FRAME_REDRAW)
+  // Mono: the backing store is the only canvas — every compositing caller
+  // falls back to drawing rows directly into it (the full-frame path's
+  // semantic). No rgb565 scratch canvases exist on a 1bpp target.
+  (void)w; (void)h;
+  return nullptr;
+#else
 #if defined(ESP32) && defined(BOARD_HAS_PSRAM)
   if (psramFound()) {
     CuttlefishCanvas16* c = display_createCanvasPsram(w, h);
@@ -43,6 +50,7 @@ static inline CuttlefishCanvas16* ui_create_canvas_best(int16_t w, int16_t h) {
   }
 #endif
   return display_createCanvas(w, h);
+#endif
 }
 
 static inline CuttlefishCanvas16* ui_get_container_canvas(int16_t w, int16_t h) {
@@ -114,6 +122,12 @@ static inline void ui_shift_container_canvas(CuttlefishCanvas16* canvas, int16_t
 // mismatch (a reused larger canvas would keep its old stride, corrupting the
 // pushed pixels — see the inline comment below).
 static inline CuttlefishCanvas16* ui_get_repair_canvas(int16_t w, int16_t h) {
+#if defined(UI_FULL_FRAME_REDRAW)
+  // Mono: no repair canvases — geometry repair falls back to mark-dirty and
+  // the next full-frame redraw erases the footprints wholesale.
+  (void)w; (void)h;
+  return nullptr;
+#else
   if (w <= 0 || h <= 0) return nullptr;
   // Reallocate when size differs at all (not just when growing). A reused
   // larger canvas keeps its old stride, and ui_push_canvas_rect uses that
@@ -127,5 +141,6 @@ static inline CuttlefishCanvas16* ui_get_repair_canvas(int16_t w, int16_t h) {
   }
   return (__ui_repair_canvas && display_canvasBuffer(__ui_repair_canvas))
     ? __ui_repair_canvas : nullptr;
+#endif
 }`;
 }

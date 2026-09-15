@@ -68,6 +68,9 @@ export interface KconfigUsage {
   /** Panel bus family from the binding harvest: i2c-family panels (mono
    *  OLEDs) get I2C and no SPI/MIPI/DMA block at all. */
   displayBus?: 'i2c' | 'spi';
+  /** Profile-required Kconfig fragments, appended verbatim (e.g. the SDL
+   *  panel's mono pixel-format choice on native_sim). */
+  displayKconfigExtra?: readonly string[];
   usesWifi?: boolean;
   usesHttp?: boolean;
   usesMqtt?: boolean;
@@ -269,10 +272,18 @@ export function resolveKconfigFragments(
   if (usage.usesHwtimer) m.set('CONFIG_COUNTER', 'y');
   if (usage.usesDisplay) {
     m.set('CONFIG_DISPLAY', 'y');
-    if (usage.displayBus === 'i2c') {
-      // Mono OLED family (ssd1306-class): an I2C child node; the panel
-      // driver self-builds from it. No SPI bridge, no DMA.
-      m.set('CONFIG_I2C', 'y');
+    if (usage.displayBus === 'i2c' || usage.displayKconfigExtra) {
+      // Self-describing panels — no SPI bridge, no DMA:
+      //  - i2c-family (mono OLEDs, ssd1306-class): an I2C child node; the
+      //    panel driver self-builds from it.
+      //  - board-provided panels (native_sim's sdl_dc): the board's own DTS
+      //    wires the display; the profile's extra fragments (e.g. the SDL
+      //    panel's mono pixel-format choice) land here verbatim.
+      if (usage.displayBus === 'i2c') m.set('CONFIG_I2C', 'y');
+      for (const frag of usage.displayKconfigExtra ?? []) {
+        const eq = frag.indexOf('=');
+        if (eq > 0) m.set(frag.slice(0, eq).trim(), frag.slice(eq + 1).trim());
+      }
     } else {
     m.set('CONFIG_SPI', 'y');
     m.set('CONFIG_MIPI_DBI', 'y');

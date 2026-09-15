@@ -53,6 +53,8 @@ export interface UIElementNode {
   imgWidth?: number;
   /** Image height in pixels (for <img>). */
   imgHeight?: number;
+  /** Mono dither mode for <img dither="floyd-steinberg|threshold"> (default threshold). */
+  imgDither?: "threshold" | "floyd-steinberg";
   /** Item height in pixels (for <list item-height="24">). */
   itemHeight?: number;
   /** Canvas buffer width in pixels (for <canvas>). */
@@ -417,6 +419,12 @@ function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementN
   const srcAttr = tag === "img" ? (el.getAttribute("src") || undefined) : undefined;
   const imgWidthAttr = tag === "img" ? parseInt(el.getAttribute("width") || "0", 10) : undefined;
   const imgHeightAttr = tag === "img" ? parseInt(el.getAttribute("height") || "0", 10) : undefined;
+  // <img dither="floyd-steinberg" | "threshold"> — how the mono lowering
+  // flattens this image at build time (default: threshold).
+  const imgDitherAttr = tag === "img"
+    ? ((el.getAttribute("dither") === "floyd-steinberg" || el.getAttribute("dither") === "fs")
+        ? "floyd-steinberg" : "threshold")
+    : undefined;
   const itemHeightAttr = tag === "list" ? (parseInt(el.getAttribute("item-height") || "24", 10) || 24) : undefined;
   const canvasWAttr = tag === "canvas" ? (parseInt(el.getAttribute("width") || "0", 10) || 0) : undefined;
   const canvasHAttr = tag === "canvas" ? (parseInt(el.getAttribute("height") || "0", 10) || 0) : undefined;
@@ -560,7 +568,7 @@ function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementN
   const toastDurationAttr = tag === "toast"
     ? Math.max(500, parseInt(el.getAttribute("duration") || "2500", 10) || 2500)
     : undefined;
-  const node: UIElementNode = { tag: effectiveTag, origTag: remappedFrom, id, classes, text, value: valueAttr, name: nameAttr, drawerSide: drawerSideAttr, toastDuration: toastDurationAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, canvasW: canvasWAttr, canvasH: canvasHAttr, disabled: disabledAttr, inline, hasInterpolation, events: hasEvents ? events : undefined, bind: hasBind ? bind : undefined, ref: refAttr, children: [] };
+  const node: UIElementNode = { tag: effectiveTag, origTag: remappedFrom, id, classes, text, value: valueAttr, name: nameAttr, drawerSide: drawerSideAttr, toastDuration: toastDurationAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, imgDither: imgDitherAttr, itemHeight: itemHeightAttr, canvasW: canvasWAttr, canvasH: canvasHAttr, disabled: disabledAttr, inline, hasInterpolation, events: hasEvents ? events : undefined, bind: hasBind ? bind : undefined, ref: refAttr, children: [] };
 
   // Anonymous inline wrap: stray text next to ONLY-inline element children
   // flows as one text line (CSS anonymous inline boxes) instead of stacking

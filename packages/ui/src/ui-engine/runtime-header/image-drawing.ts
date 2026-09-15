@@ -135,6 +135,20 @@ static inline int16_t ui_rotated_face_h(uint16_t nodeIdx, int16_t w, int16_t h) 
   return (q == 1 || q == 3) ? w : h;
 }
 
+// Sample one image pixel as a draw color. Mono (Stage 2): the data is 1bpp
+// packed at build time (threshold or Floyd–Steinberg), MSB-first horizontal —
+// a set bit is the lit pixel (0xffff on the 565-typed mono path, pre-snapped
+// to 1 by UI_MAYBE_SNAP_MONO565 downstream); a clear bit is 0x0000.
+static inline UI_COLOR_T ui_image_pixel(const UIImage* img, int32_t idx) {
+#if defined(UI_NATIVE_MONO)
+  if ((idx >> 3) >= 65535) return static_cast<UI_COLOR_T>(0);
+  return (img->data[idx >> 3] & static_cast<uint8_t>(0x80u >> (idx & 7)))
+    ? static_cast<UI_COLOR_T>(0xFFFFu) : static_cast<UI_COLOR_T>(0x0000u);
+#else
+  return img->data[idx];
+#endif
+}
+
 // Draw image with object-fit: 0=none, 1=fill, 2=contain, 3=cover, 4=scale-down.
 // The sampler is bounded to the target box first, then quarter-turn rotated.
 // This keeps cover cropped inside the element instead of overpainting siblings.
@@ -218,7 +232,7 @@ static inline void ui_draw_image_with_fit(const UIImage* img, int16_t x, int16_t
       int16_t srcX = (static_cast<int32_t>(localX) * srcW) / drawW;
       if (srcX < 0) srcX = 0;
       if (srcX >= srcW) srcX = srcW - 1;
-      UI_COLOR_T color = img->data[static_cast<int32_t>(srcY) * srcW + srcX];
+      UI_COLOR_T color = ui_image_pixel(img, static_cast<int32_t>(srcY) * srcW + srcX);
       int16_t dx = tx;
       int16_t dy = ty;
       if (q == 1) {
@@ -269,7 +283,10 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
   }
   if (dxStart >= dxEnd || dyStart >= dyEnd) return;
   if (q == 0) {
-    // Simple case: no rotation, draw with scaling
+    // Simple case: no rotation, draw with scaling. The row-bitmap fast path
+    // hands the display UI_COLOR_T rows — mono's packed bytes always take the
+    // per-pixel loop below (ui_image_pixel unpacks the bits).
+#if !defined(UI_NATIVE_MONO)
     if (drawW == img->w && drawH == img->h) {
       int16_t rows = static_cast<int16_t>(dyEnd - dyStart);
       int16_t cols = static_cast<int16_t>(dxEnd - dxStart);
@@ -278,23 +295,26 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
           img->data + static_cast<int32_t>(dyStart + row) * img->w + dxStart, cols, 1);
       }
     } else {
+#endif
       // Scale using nearest-neighbor
       for (int16_t dy = dyStart; dy < dyEnd; dy++) {
         int16_t srcY = (static_cast<int32_t>(dy) * img->h) / drawH;
         for (int16_t dx = dxStart; dx < dxEnd; dx++) {
           int16_t srcX = (static_cast<int32_t>(dx) * img->w) / drawW;
-          UI_COLOR_T color = img->data[static_cast<int32_t>(srcY) * img->w + srcX];
+          UI_COLOR_T color = ui_image_pixel(img, static_cast<int32_t>(srcY) * img->w + srcX);
           ui_display_draw_pixel(x + dx, y + dy, color);
         }
       }
+#if !defined(UI_NATIVE_MONO)
     }
+#endif
     return;
   }
   for (int16_t dy = dyStart; dy < dyEnd; dy++) {
     int16_t srcY = (static_cast<int32_t>(dy) * img->h) / drawH;
     for (int16_t dx = dxStart; dx < dxEnd; dx++) {
       int16_t srcX = (static_cast<int32_t>(dx) * img->w) / drawW;
-      UI_COLOR_T color = img->data[static_cast<int32_t>(srcY) * img->w + srcX];
+      UI_COLOR_T color = ui_image_pixel(img, static_cast<int32_t>(srcY) * img->w + srcX);
       int16_t rdx = 0, rdy = 0;
       if (q == 1) {
         rdx = drawH - 1 - dy;
@@ -323,10 +343,20 @@ static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t 
      int16_t sy0 = ui_clamp_i16(static_cast<int16_t>(clipY - y), 0, static_cast<int16_t>(img->h));
      int16_t sw = ui_clamp_i16(clipW, 0, static_cast<int16_t>(img->w - sx0));
      int16_t sh = ui_clamp_i16(clipH, 0, static_cast<int16_t>(img->h - sy0));
+     // Mono's packed data has no UI_COLOR_T rows — per-pixel via ui_image_pixel.
+#if !defined(UI_NATIVE_MONO)
      for (int16_t row = 0; row < sh; row++) {
        ui_display_draw_rgb_bitmap(static_cast<int16_t>(x + sx0), static_cast<int16_t>(y + sy0 + row),
          img->data + static_cast<int32_t>(sy0 + row) * img->w + sx0, sw, 1);
      }
+#else
+     for (int16_t row = 0; row < sh; row++) {
+       for (int16_t col = 0; col < sw; col++) {
+         ui_display_draw_pixel(static_cast<int16_t>(x + sx0 + col), static_cast<int16_t>(y + sy0 + row),
+           ui_image_pixel(img, static_cast<int32_t>(sy0 + row) * img->w + sx0 + col));
+       }
+     }
+#endif
      return;
    }
    uint16_t sxStart = 0, sxEnd = img->w, syStart = 0, syEnd = img->h;
@@ -349,7 +379,7 @@ static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t 
    if (sxStart >= sxEnd || syStart >= syEnd) return;
    for (uint16_t sy = syStart; sy < syEnd; sy++) {
      for (uint16_t sx = sxStart; sx < sxEnd; sx++) {
-       UI_COLOR_T color = img->data[static_cast<uint32_t>(sy) * img->w + sx];
+       UI_COLOR_T color = ui_image_pixel(img, static_cast<uint32_t>(sy) * img->w + sx);
        int16_t dx = 0;
        int16_t dy = 0;
        if (q == 1) {

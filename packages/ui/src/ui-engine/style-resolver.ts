@@ -71,6 +71,8 @@ export interface StyledNode {
   imgWidth?: number;
   /** Image height in pixels (for <img>). */
   imgHeight?: number;
+  /** Mono dither mode for <img dither="floyd-steinberg|threshold"> (default threshold). */
+  imgDither?: "threshold" | "floyd-steinberg";
   /** Item height in pixels (for <list>). */
   itemHeight?: number;
   /** Canvas buffer width in pixels (for <canvas>). */
@@ -459,6 +461,7 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
     src: node.src,
     imgWidth: node.imgWidth,
     imgHeight: node.imgHeight,
+    imgDither: node.imgDither,
     itemHeight: node.itemHeight,
     canvasW: node.canvasW,
     canvasH: node.canvasH,

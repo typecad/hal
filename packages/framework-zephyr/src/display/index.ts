@@ -47,13 +47,18 @@ export function resolveZephyrDisplayOp(
     state.initialized = true;
     // Drop-in panels (driver = DT compatible): seed the synthesized profile
     // so the direct-op GFX runtime sizes itself for THIS panel (the mono
-    // framebuffer branch keys off the profile's colorFormat/geometry).
+    // framebuffer branch keys off the profile's colorFormat/geometry). The
+    // op carries the resolved profile's colorFormat — explicit mono wins;
+    // otherwise the compatible table decides (ssd1306-class → mono).
     const registered = ZEPHYR_DISPLAY_PROFILES[o.driver as string];
-    if (!registered) {
+    if (registered) {
+      state.profile = registered;
+    } else {
       const synth = synthesizeZephyrProfile({
         driver: o.driver as string,
         width: o.width as number,
         height: o.height as number,
+        colorFormat: o.colorFormat as string | undefined,
       });
       if (synth) state.profile = synth;
     }

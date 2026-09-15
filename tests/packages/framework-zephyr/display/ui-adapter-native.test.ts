@@ -164,8 +164,14 @@ describe('transport routing (zephyrDisplayAdapterGenerator)', () => {
     expect(code!.functions).not.toContain('display_write(__tc_zd_dev');
   });
 
-  it('still declines mono and unknown drivers', () => {
-    expect(resolve('ssd1306-zephyr')).toBeUndefined();
+  it('routes mono profiles to the full-frame 1bpp adapter; declines unknown drivers', () => {
+    // Stage 2: mono no longer declines — the ZephyrMonoTarget backing-store
+    // adapter owns it (display_write full-frame, no spi_write).
+    const mono = resolve('ssd1306-zephyr');
+    expect(mono).toBeTruthy();
+    expect(mono!.functions).toContain('class ZephyrMonoTarget final : public CuttlefishGFX');
+    expect(mono!.functions).toContain('display_write(__tc_zd_dev');
+    expect(mono!.functions).not.toContain('spi_write(');
     expect(resolve('nope-zephyr')).toBeUndefined();
   });
 });

@@ -70,31 +70,34 @@ describe('display runtime builder — mono (OLED)', () => {
 
   it('emits a mono framebuffer sized (W*H+7)/8 (1024 bytes for 128x64)', () => {
     const r = buildDisplayRuntime(profile);
-    expect(r.stateLines.join('\n')).toContain('static uint8_t __tc_display_fb[((128 * 64) + 7) / 8]');
+    expect(r.stateLines.join('\n')).toContain('static uint8_t __tc_display_fb[(128 * 64 + 7) / 8]');
     // No RGB565 line buffer on the mono path.
     expect(r.stateLines.join('\n')).not.toContain('__tc_display_line');
   });
 
-  it('packs pixels MONO01 horizontal MSB-first (byte = y*16 + x>>3, bit = 0x80 >> x&7)', () => {
+  it('packs pixels VTILED MONO01 (byte = fb[(y>>3)*128 + x], bit = 1<<(y&7))', () => {
+    // The ssd1306-class drivers consume SCREEN_INFO_MONO_VTILED data — the
+    // same layout cfb's draw_point writes. The old horizontal packing failed
+    // the driver's pitch==width check and never reached the panel.
     const r = buildDisplayRuntime(profile);
     const h = r.helpers;
-    // 128/8 = 16 bytes per row.
-    expect(h).toContain('static_cast<uint32_t>(y) * 16U');
-    expect(h).toContain('(x >> 3)');
-    expect(h).toContain('0x80U >> (x & 7U)');
+    expect(h).toContain('(static_cast<uint32_t>(y) >> 3) * 128U + x');
+    expect(h).toContain('1U << (y & 7U)');
     // set (OR mask) + clear (AND ~mask) branches.
     expect(h).toContain('__tc_display_fb[idx] | mask');
     expect(h).toContain('& static_cast<uint8_t>(~mask)');
   });
 
-  it('display_flush writes the whole framebuffer (buf_size=sizeof, pitch=16, 128x64)', () => {
+  it('display_flush writes the whole framebuffer (buf_size=sizeof, pitch=128 — the driver requirement)', () => {
     const r = buildDisplayRuntime(profile);
     const flush = r.helpers;
     expect(flush).toContain('display_write(__tc_display, 0, 0');
     expect(flush).toContain('buf_size = sizeof(__tc_display_fb)');
     expect(flush).toContain('width = 128U');
     expect(flush).toContain('height = 64U');
-    expect(flush).toContain('pitch = 16U');
+    // VTILED: pitch counts the bytes of one 8-pixel page row == panel width.
+    expect(flush).toContain('pitch = 128U');
+    expect(flush).not.toContain('pitch = 16U');
   });
 
   it('maps color != 0 to lit (on), so fill_rect/draw_text are additive', () => {

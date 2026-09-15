@@ -165,11 +165,16 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     // Display transport + controller: recovered from the profile marker the
     // display adapters stamp into the emitted source (the profile registry is
     // the single source of truth — no geometry re-derivation here).
-    ...((): Pick<KconfigUsage, 'displayTransport' | 'displayController' | 'displayBus'> => {
+    ...((): Pick<KconfigUsage, 'displayTransport' | 'displayController' | 'displayBus' | 'displayKconfigExtra'> => {
       const profile = profileFromEmittedSource(src);
       if (!profile) return {};
-      const bus = readDisplayBinding(profile.driver)?.busFamily;
+      // Registry profiles name a DT compatible via dtCompatible (the driver
+      // id itself isn't one); drop-in profiles use the driver string directly.
+      const bus = readDisplayBinding(profile.dtCompatible ?? profile.driver)?.busFamily;
       if (bus === 'i2c') return { displayBus: 'i2c' };
+      // Board-provided panels (native_sim's sdl_dc) carry their own fragments
+      // and no bus at all.
+      if (profile.boardProvidesDisplay) return { displayKconfigExtra: profile.kconfig };
       if (transportFor(profile) !== 'zephyr-display') return {};
       return { displayTransport: 'zephyr-display', displayController: panelControllerFor(profile) };
     })(),

@@ -269,6 +269,9 @@ function emitFontTables(model: UIProgram): string {
        `const uint16_t __ui_font_face_count = 0;`,
      ].join("\n");
    }
+   // Stage 2 mono: glyphs pack as 1bpp (format 1, dataOffset counts bits);
+   // color targets keep the 4-bit alpha nibbles (format field doesn't exist).
+   const mono = model.colorFormat === "mono";
 
    const lines: string[] = [];
    for (const asset of assets) {
@@ -280,25 +283,26 @@ function emitFontTables(model: UIProgram): string {
      // Alpha data goes in PROGMEM (constants in flash, not RAM) - accessed via pgm_read_byte on AVR
      lines.push(`static const uint8_t __ui_font_${asset.id}_alpha[] PROGMEM = {`);
      lines.push(byteArray(asset.alpha));
-     lines.push(`};`);
+     lines.push("};");
      lines.push(`static const UIFontGlyph __ui_font_${asset.id}_glyphs[] = {`);
      for (const glyph of asset.glyphs) {
        lines.push(
          `  { ${glyph.codepoint}, ${glyph.xOffset}, ${glyph.yOffset}, ${glyph.width}, ${glyph.height}, ${glyph.advance}, ${glyph.dataOffset} },`,
        );
      }
-     lines.push(`};`);
+     lines.push("};");
    }
 
    // Font faces and glyphs stay in regular memory for direct struct access
    // (AVR optimized builds can move the whole table to PROGMEM + accessor functions)
    lines.push(`const UIFontFace __ui_font_faces[] = {`);
    for (const asset of assets) {
+     const format = mono ? (asset.format === "mono1" ? 1 : 0) : null;
      lines.push(
-       `  { ${asset.id}, ${asset.glyphs.length}, ${asset.lineHeight}, ${asset.baseline}, __ui_font_${asset.id}_glyphs, __ui_font_${asset.id}_alpha },`,
+       `  { ${asset.id}, ${asset.glyphs.length}, ${asset.lineHeight}, ${asset.baseline}, __ui_font_${asset.id}_glyphs, __ui_font_${asset.id}_alpha${format !== null ? `, ${format}` : ""} },`,
      );
    }
-   lines.push(`};`);
+   lines.push("};");
    lines.push(`const uint16_t __ui_font_face_count = ${assets.length};`);
    return lines.join("\n");
  }
@@ -377,7 +381,11 @@ function emitNodeTable(model: UIProgram): string {
     const richSegStart = rr ? rr.richSegStart : 0;
     const richSegCount = rr ? rr.richSegCount : 0;
     const richLineStart = rr ? rr.richLineStart : 0;
-    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${inputText}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .textSize=${n.textSize}, .lineHeight=${n.lineHeight}, .letterSpacing=${n.letterSpacing}, .fontAntialias=${n.fontAntialias ? 1 : 0}, .fontFace=${n.fontFace}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .borderWidth=${n.borderWidth}, .borderTopWidth=${(n as any).borderTopWidth ?? n.borderWidth}, .borderRightWidth=${(n as any).borderRightWidth ?? n.borderWidth}, .borderBottomWidth=${(n as any).borderBottomWidth ?? n.borderWidth}, .borderLeftWidth=${(n as any).borderLeftWidth ?? n.borderWidth}, .hasPerSideBorder=${(((n as any).borderTopWidth ?? n.borderWidth) !== n.borderWidth || ((n as any).borderRightWidth ?? n.borderWidth) !== n.borderWidth || ((n as any).borderBottomWidth ?? n.borderWidth) !== n.borderWidth || ((n as any).borderLeftWidth ?? n.borderWidth) !== n.borderWidth) ? 1 : 0}, .borderRadius=${Math.min(255, n.borderRadius)}, .paddingTop=${n.paddingTop ?? 0}, .paddingRight=${n.paddingRight ?? 0}, .paddingBottom=${n.paddingBottom ?? 0}, .paddingLeft=${n.paddingLeft ?? 0}, .gradientEnabled=${n.gradientEnabled}, .gradientColor1=${hex(n.gradientColor1)}, .gradientColor2=${hex(n.gradientColor2)}, .outlineColor=${hex(n.outlineColor)}, .outlineStyle=${n.outlineStyle}, .outlineWidth=${n.outlineWidth}, .zIndex=${n.zIndex}, .transformOffsetX=${n.transformOffsetX}, .transformOffsetY=${n.transformOffsetY}, .rotateDeg=${n.rotateDeg}, .pressedOffsetX=${n.pressedOffsetX}, .pressedOffsetY=${n.pressedOffsetY}, .shadowCount=${n.shadowCount}, .shadowOffsetX=${shArr(n.shadowOffsetX)}, .shadowOffsetY=${shArr(n.shadowOffsetY)}, .shadowBlur=${shArr(n.shadowBlur)}, .shadowColor={${n.shadowColor.slice(0, 4).map(hex).join(",")}}, .shadowAlpha=${shArr(n.shadowAlpha)}, .shadowInset=${shArr(n.shadowInset.map(v => v ? 1 : 0))}, .textShadowCount=${n.textShadowCount}, .textShadowOffsetX=${n.textShadowOffsetX}, .textShadowOffsetY=${n.textShadowOffsetY}, .textShadowBlur=${n.textShadowBlur}, .textShadowColor=${hex(n.textShadowColor)}, .textShadowAlpha=${n.textShadowAlpha}, .underline=${n.underline}, .textOverflow=${n.textOverflow ? 1 : 0}, .nowrap=${n.nowrap ? 1 : 0}, .whiteSpaceMode=${n.whiteSpaceMode}, .visible=${n.visible ? 1 : 0}, .opacity=${n.opacity}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=${lastTextWidth}, .lastTextHeight=0, .layoutCacheKey=0, .layoutMetricsW=0, .layoutMetricsH=0, .scrollable=${n.scrollable ? 1 : 0}, .virtualized=${virtualized}, .scrollY=0, .contentHeight=${n.contentHeight}, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=${listCountFn}, .listItemFn=${listItemFn}, .listTapFn=${listTapFn}, .parent=${parent}, .subtreeEnd=${n.subtreeEnd}, .screenId=${n.screenId}, .imgDataId=${n.imgDataId ?? 255}, .objectFit=${n.objectFit ?? 1}, .listItemHeight=${(n as any).listItemHeight ?? 0}, .rangeMin=${n.rangeMin}, .rangeMax=${n.rangeMax}, .maxlen=${n.maxlen}, .canvasW=${n.canvasW ?? 0}, .canvasH=${n.canvasH ?? 0}, .runCount=${runCount}, .richLineCount=${richLineCount}, .runStart=${runStart}, .richSegStart=${richSegStart}, .richSegCount=${richSegCount}, .richLineStart=${richLineStart}, .dirty=0, .value=${n.value}, .disabled=${n.disabled ? 1 : 0}, .optionCount=${n.kind === "select" && n.options ? n.options.length : 0}, .optionTextFn=${optionFnByNode.get(n.index) ?? "nullptr"}, .drawerSide=${(n as any).drawerSide ?? -1}, .toastDuration=${n.toastDuration ?? 0}, .checkedBg=${(n as any).checkedBg !== undefined && (n as any).checkedBg >= 0 ? hex((n as any).checkedBg) : "0x0"}, .checkedFg=${(n as any).checkedFg !== undefined && (n as any).checkedFg >= 0 ? hex((n as any).checkedFg) : "0x0"}, .hasCheckedBg=${(n as any).checkedBg !== undefined && (n as any).checkedBg >= 0 ? 1 : 0}, .hasCheckedFg=${(n as any).checkedFg !== undefined && (n as any).checkedFg >= 0 ? 1 : 0}, .flowAxis=${n.flowAxis ?? 0}, .flowGap=${n.flowGap ?? 0}, .flowFlags=${n.flowFlags ?? 0} },`;
+    // Stage 2 mono: the UINode struct carries monoPressInvert only under
+    // UI_NATIVE_MONO — emit the initializer field only on mono builds.
+    const monoField = model.colorFormat === "mono" && n.monoPressInvert
+      ? ", .monoPressInvert=1" : "";
+    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${inputText}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .textSize=${n.textSize}, .lineHeight=${n.lineHeight}, .letterSpacing=${n.letterSpacing}, .fontAntialias=${n.fontAntialias ? 1 : 0}, .fontFace=${n.fontFace}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .borderWidth=${n.borderWidth}, .borderTopWidth=${(n as any).borderTopWidth ?? n.borderWidth}, .borderRightWidth=${(n as any).borderRightWidth ?? n.borderWidth}, .borderBottomWidth=${(n as any).borderBottomWidth ?? n.borderWidth}, .borderLeftWidth=${(n as any).borderLeftWidth ?? n.borderWidth}, .hasPerSideBorder=${(((n as any).borderTopWidth ?? n.borderWidth) !== n.borderWidth || ((n as any).borderRightWidth ?? n.borderWidth) !== n.borderWidth || ((n as any).borderBottomWidth ?? n.borderWidth) !== n.borderWidth || ((n as any).borderLeftWidth ?? n.borderWidth) !== n.borderWidth) ? 1 : 0}, .borderRadius=${Math.min(255, n.borderRadius)}, .paddingTop=${n.paddingTop ?? 0}, .paddingRight=${n.paddingRight ?? 0}, .paddingBottom=${n.paddingBottom ?? 0}, .paddingLeft=${n.paddingLeft ?? 0}, .gradientEnabled=${n.gradientEnabled}, .gradientColor1=${hex(n.gradientColor1)}, .gradientColor2=${hex(n.gradientColor2)}, .outlineColor=${hex(n.outlineColor)}, .outlineStyle=${n.outlineStyle}, .outlineWidth=${n.outlineWidth}, .zIndex=${n.zIndex}, .transformOffsetX=${n.transformOffsetX}, .transformOffsetY=${n.transformOffsetY}, .rotateDeg=${n.rotateDeg}, .pressedOffsetX=${n.pressedOffsetX}, .pressedOffsetY=${n.pressedOffsetY}, .shadowCount=${n.shadowCount}, .shadowOffsetX=${shArr(n.shadowOffsetX)}, .shadowOffsetY=${shArr(n.shadowOffsetY)}, .shadowBlur=${shArr(n.shadowBlur)}, .shadowColor={${n.shadowColor.slice(0, 4).map(hex).join(",")}}, .shadowAlpha=${shArr(n.shadowAlpha)}, .shadowInset=${shArr(n.shadowInset.map(v => v ? 1 : 0))}, .textShadowCount=${n.textShadowCount}, .textShadowOffsetX=${n.textShadowOffsetX}, .textShadowOffsetY=${n.textShadowOffsetY}, .textShadowBlur=${n.textShadowBlur}, .textShadowColor=${hex(n.textShadowColor)}, .textShadowAlpha=${n.textShadowAlpha}, .underline=${n.underline}, .textOverflow=${n.textOverflow ? 1 : 0}, .nowrap=${n.nowrap ? 1 : 0}, .whiteSpaceMode=${n.whiteSpaceMode}, .visible=${n.visible ? 1 : 0}, .opacity=${n.opacity}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=${lastTextWidth}, .lastTextHeight=0, .layoutCacheKey=0, .layoutMetricsW=0, .layoutMetricsH=0, .scrollable=${n.scrollable ? 1 : 0}, .virtualized=${virtualized}, .scrollY=0, .contentHeight=${n.contentHeight}, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=${listCountFn}, .listItemFn=${listItemFn}, .listTapFn=${listTapFn}, .parent=${parent}, .subtreeEnd=${n.subtreeEnd}, .screenId=${n.screenId}, .imgDataId=${n.imgDataId ?? 255}, .objectFit=${n.objectFit ?? 1}, .listItemHeight=${(n as any).listItemHeight ?? 0}, .rangeMin=${n.rangeMin}, .rangeMax=${n.rangeMax}, .maxlen=${n.maxlen}, .canvasW=${n.canvasW ?? 0}, .canvasH=${n.canvasH ?? 0}, .runCount=${runCount}, .richLineCount=${richLineCount}, .runStart=${runStart}, .richSegStart=${richSegStart}, .richSegCount=${richSegCount}, .richLineStart=${richLineStart}, .dirty=0, .value=${n.value}, .disabled=${n.disabled ? 1 : 0}, .optionCount=${n.kind === "select" && n.options ? n.options.length : 0}, .optionTextFn=${optionFnByNode.get(n.index) ?? "nullptr"}, .drawerSide=${(n as any).drawerSide ?? -1}, .toastDuration=${n.toastDuration ?? 0}, .checkedBg=${(n as any).checkedBg !== undefined && (n as any).checkedBg >= 0 ? hex((n as any).checkedBg) : "0x0"}, .checkedFg=${(n as any).checkedFg !== undefined && (n as any).checkedFg >= 0 ? hex((n as any).checkedFg) : "0x0"}, .hasCheckedBg=${(n as any).checkedBg !== undefined && (n as any).checkedBg >= 0 ? 1 : 0}, .hasCheckedFg=${(n as any).checkedFg !== undefined && (n as any).checkedFg >= 0 ? 1 : 0}, .flowAxis=${n.flowAxis ?? 0}, .flowGap=${n.flowGap ?? 0}, .flowFlags=${n.flowFlags ?? 0}${monoField} },`;
   });
   return [
     // <select> option tables (must precede __ui_nodes[]: initializers

@@ -1,0 +1,15 @@
+{
+  "name": "demo-mono-sim",
+  "version": "1.0.0",
+  "private": true,
+  "description": "native_sim SDL panel running the Stage 2 mono lowering — the no-hardware CI gate (Linux only; the POSIX arch does not build on Windows)",
+  "type": "module",
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile"
+  },
+  "dependencies": {
+    "@typecad/framework-zephyr": "*",
+    "@typecad/ui": "*"
+  }
+}

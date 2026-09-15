@@ -1059,6 +1059,11 @@ function emitDisplayNode(
 ): void {
   const bus = display.busLabel ?? 'spi2';
   const controller = panelControllerFor(display);
+  // Board-provided displays (native_sim's built-in sdl_dc): the board's own
+  // devicetree wires the panel — nothing to emit here.
+  if (display.boardProvidesDisplay) {
+    return;
+  }
   // I2C-family panels (mono OLEDs, ssd1306-class): a plain &i2cN child node —
   // no mipi-dbi bridge, no SPI bus block, no DMA. Bus pins come from the
   // touch wiring's remux (shared bus) or the board's default I2C pins.

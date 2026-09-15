@@ -1,0 +1,16 @@
+{
+  "name": "demo-mono-oled",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SSD1306 128x64 mono OLED — Stage 2's 1bpp lowering target: same UI API, flattened at build time",
+  "type": "module",
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload"
+  },
+  "dependencies": {
+    "@typecad/framework-zephyr": "*",
+    "@typecad/ui": "*"
+  }
+}

@@ -76,6 +76,158 @@ export function emitTickDirtyDrawPhase(): string {
     return;
   }
 #endif
+#if defined(UI_FULL_FRAME_REDRAW)
+  // ── Mono full-frame path (Stage 2) ─────────────────────────────────────
+  // A 1KB frame composites entirely in the panel's backing store and pushes
+  // once (~25ms over I²C) — incremental compositing has nothing to optimize.
+  // The dirty/band/scroll-canvas machinery is BYPASSED, not ported: when
+  // anything on the active screen is dirty, repaint EVERYTHING in stacking
+  // order and flush one full frame. Scroll still works because every frame is
+  // a full repaint — children draw at translated coords, clipped to their
+  // scroll viewport through the adapter's mono clip (display_mono_set_clip).
+  // The scroll-canvas phase (②b) below reads these locals; mono never sets
+  // them, so it compiles out to no-ops.
+  int16_t bufferedScrollNode = -1;
+  int16_t bufferedScrollVX = 0;
+  int16_t bufferedScrollVY = 0;
+  CuttlefishCanvas16* bufferedScrollCanvas = nullptr;
+  CuttlefishCanvas16* bufferedScrollRepaintCanvas = nullptr;
+  int16_t bufferedScrollRepaintY = 0;
+  int16_t bufferedScrollRepaintH = 0;
+  uint8_t bufferedScrollDirectFull = 0;
+  uint8_t bufferedScrollLocalRepair = 0;
+  uint8_t bufferedScrollBands = 0;
+  // Later phase slices (②b, flush) reference these names; mono keeps them at
+  // their neutral values so those phases compile and no-op.
+  CuttlefishDisplayTarget* __ui_draw_target = display_defaultTarget();
+  uint8_t __ui_fb_frame_dirty = 0;
+  (void)__ui_draw_target; (void)__ui_fb_frame_dirty;
+  (void)bufferedScrollVX; (void)bufferedScrollVY; (void)bufferedScrollCanvas;
+  (void)bufferedScrollRepaintCanvas; (void)bufferedScrollRepaintY; (void)bufferedScrollRepaintH;
+  (void)bufferedScrollDirectFull; (void)bufferedScrollLocalRepair; (void)bufferedScrollBands;
+  uint8_t __ui_frame_painted = 0;
+  uint8_t __ui_any_dirty = 0;
+  for (uint16_t mi = 0; mi < __ui_node_count && !__ui_any_dirty; mi++) {
+    if (__ui_nodes[mi].screenId == __ui_active_screen && __ui_nodes[mi].dirty) __ui_any_dirty = 1;
+  }
+  if (__ui_any_dirty) {
+    // Seed the frame with the active screen's background.
+    UI_COLOR_T __ui_mbg = static_cast<UI_COLOR_T>(0);
+    if (__ui_active_screen_bg_node < __ui_node_count) {
+      __ui_mbg = __ui_nodes[__ui_active_screen_bg_node].hasBg
+        ? static_cast<UI_COLOR_T>(__ui_nodes[__ui_active_screen_bg_node].bg)
+        : static_cast<UI_COLOR_T>(__ui_nodes[__ui_active_screen_bg_node].clearColor);
+    }
+    display_fillScreen(__ui_mbg);
+    for (uint16_t __ui_draw_pass = 0; __ui_draw_pass < __ui_node_count; __ui_draw_pass++) {
+      // No selection-sort fallback when __ui_draw_order is null (startup
+      // malloc failure): source order is the degraded-but-correct z for mono.
+      uint16_t i = __ui_draw_order ? __ui_draw_order[__ui_draw_pass] : __ui_draw_pass;
+      if (!ui_is_effectively_visible(i)) { __ui_nodes[i].dirty = 0; continue; }
+      if (__ui_nodes[i].screenId != __ui_active_screen) { __ui_nodes[i].dirty = 0; continue; }
+
+      // Clip scroll subtrees to their viewport (the adapter's mono clip).
+#if defined(UI_NATIVE_MONO)
+      int16_t __ui_mcx = 0, __ui_mcy = 0, __ui_mcw = 0, __ui_mch = 0;
+      uint8_t __ui_mclip = ui_mono_scroll_clip(i, &__ui_mcx, &__ui_mcy, &__ui_mcw, &__ui_mch);
+      if (__ui_mclip) display_mono_set_clip(__ui_mcx, __ui_mcy, __ui_mcw, __ui_mch);
+      // :pressed → face inversion — mono's native highlight (flattening rule).
+      // Colors are pre-snapped 0/1: the face takes the old fg, the content
+      // takes its complement. Patched on the node so text/body draws see it;
+      // restored below.
+      uint32_t __ui_save_fg = 0, __ui_save_bg = 0, __ui_save_bc = 0;
+      uint8_t __ui_save_hasBg = 0;
+      uint8_t __ui_minv = (__ui_nodes[i].monoPressInvert && __ui_nodes[i].value > 0) ? 1 : 0;
+      if (__ui_minv) {
+        uint32_t invFace = __ui_nodes[i].fg;
+        uint32_t invFg = __ui_nodes[i].fg ? 0u : 1u;
+        __ui_save_fg = __ui_nodes[i].fg;
+        __ui_save_bg = __ui_nodes[i].bg;
+        __ui_save_bc = __ui_nodes[i].borderColor;
+        __ui_save_hasBg = __ui_nodes[i].hasBg;
+        __ui_nodes[i].fg = invFg;
+        __ui_nodes[i].bg = invFace;
+        __ui_nodes[i].hasBg = 1;
+        __ui_nodes[i].borderColor = invFg;
+      }
+#endif
+
+      int16_t drawY = ui_draw_y_for_node(i);
+      const char* displayText = __ui_nodes[i].hasTextBinding
+        ? __ui_nodes[i].textBuffer
+        : __ui_nodes[i].text;
+      uint8_t ts = __ui_nodes[i].textSize ? __ui_nodes[i].textSize : 2;
+      uint16_t textMaxW = ui_node_text_max_width(i);
+      uint16_t tw = 0;
+      uint16_t th = 0;
+      ui_node_text_layout_metrics(i, textMaxW, &tw, &th);
+      uint16_t paintTextW = tw;
+      uint16_t paintTextH = th;
+      if (__ui_nodes[i].kind == NODE_TEXT || __ui_nodes[i].kind == NODE_SELECT) {
+        uint16_t hInset = static_cast<uint16_t>(__ui_nodes[i].paddingLeft) + static_cast<uint16_t>(__ui_nodes[i].paddingRight) + static_cast<uint16_t>(__ui_nodes[i].borderWidth) * 2;
+        uint16_t vInset = static_cast<uint16_t>(__ui_nodes[i].paddingTop) + static_cast<uint16_t>(__ui_nodes[i].paddingBottom) + static_cast<uint16_t>(__ui_nodes[i].borderWidth) * 2;
+        paintTextW = static_cast<uint16_t>(tw + hInset);
+        paintTextH = static_cast<uint16_t>(th + vInset);
+      }
+      if (__ui_nodes[i].kind == NODE_CHECK || __ui_nodes[i].kind == NODE_RADIO) {
+        paintTextW = tw + 22;
+        if (paintTextH < 16) paintTextH = 16;
+      }
+
+      // Border color: use borderColor if set, otherwise fg. Opacity is
+      // flattened to 100 at lowering — no blend on 1bpp.
+      UI_COLOR_T bColor = __ui_nodes[i].borderColor ? static_cast<UI_COLOR_T>(__ui_nodes[i].borderColor) : static_cast<UI_COLOR_T>(__ui_nodes[i].fg);
+      UI_COLOR_T fillBg = static_cast<UI_COLOR_T>(__ui_nodes[i].bg);
+      UINodeDrawCtx __ui_ctx;
+      __ui_ctx.drawY = drawY;
+      __ui_ctx.bColor = bColor;
+      __ui_ctx.fillBg = fillBg;
+      __ui_ctx.ts = ts;
+      __ui_ctx.textMaxW = textMaxW;
+      __ui_ctx.tw = tw;
+      __ui_ctx.th = th;
+      __ui_ctx.paintTextW = paintTextW;
+      __ui_ctx.paintTextH = paintTextH;
+      __ui_ctx.displayText = displayText;
+      __ui_ctx.drawingBufferedScroll = 0;
+      __ui_ctx.drawTarget = display_defaultTarget();
+      __ui_ctx.origBoxX = __ui_nodes[i].box.x;
+      __ui_ctx.origBoxY = __ui_nodes[i].box.y;
+      uint8_t __ui_list_handled = ui_draw_node_body(i, &__ui_ctx);
+      if (!__ui_list_handled) {
+        if (__ui_nodes[i].kind == NODE_FILL && ui_rotation_quadrant(__ui_nodes[i].rotateDeg) != 0 &&
+            __ui_nodes[i].outlineStyle != 0 && __ui_nodes[i].outlineWidth > 0) {
+          uint8_t w = __ui_nodes[i].outlineWidth;
+          int16_t outlineW = ui_rotated_face_w(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
+          int16_t outlineH = ui_rotated_face_h(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
+          ui_draw_rect_outline(__ui_nodes[i].box.x - w, drawY - w,
+            outlineW + 2 * w, outlineH + 2 * w,
+            __ui_nodes[i].borderRadius + w, __ui_nodes[i].outlineStyle, w, __ui_nodes[i].outlineColor);
+        } else {
+          ui_draw_node_outline(i, __ui_nodes[i].box.x, drawY);
+        }
+      }
+      // Restore the pressed-invert patch (the node table is mutable state).
+#if defined(UI_NATIVE_MONO)
+      if (__ui_minv) {
+        __ui_nodes[i].fg = __ui_save_fg;
+        __ui_nodes[i].bg = __ui_save_bg;
+        __ui_nodes[i].borderColor = __ui_save_bc;
+        __ui_nodes[i].hasBg = __ui_save_hasBg;
+      }
+      if (__ui_mclip) display_mono_clear_clip();
+#endif
+      __ui_nodes[i].dirty = 0;
+    }
+    __ui_frame_painted = 1;
+    // Modal <select> list stamps over the fresh frame.
+    if (__ui_select_menu >= 0 && (__ui_select_menu_dirty || __ui_frame_painted)) {
+      ui_select_menu_draw();
+    }
+    // One full-frame rect → ui_refresh_flush pushes the whole backing store.
+    ui_refresh_add_rect(0, 0, display_width(), display_height());
+  }
+#else
   // Select and seed the framebuffer before scroll compositors run. Band/list
   // renderers can then composite into this same off-screen target instead of
   // pushing their bands to the live panel before the main draw pass starts.
@@ -898,5 +1050,6 @@ export function emitTickDirtyDrawPhase(): string {
   // the whole tree dirty for the erase repaint.
   if (__ui_select_menu >= 0 && (__ui_select_menu_dirty || __ui_frame_painted)) {
     ui_select_menu_draw();
-  }`;
+  }
+#endif  // UI_FULL_FRAME_REDRAW`;
 }

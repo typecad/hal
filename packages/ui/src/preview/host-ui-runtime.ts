@@ -3,6 +3,7 @@ import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../ui-engine/de
 import type { CSSProperty, CSSRule } from "../ui-engine/css-parser.js";
 import type { UIFontAssetModel, UIFontGlyphModel } from "../ui-engine/font-assets.js";
 import type { UIImageAsset } from "../ui-engine/image-assets.js";
+import { monoImageBits } from "../ui-engine/image-assets.js";
 import type { KeyboardTemplate, UIKeyTemplate } from "../ui-engine/html-parser.js";
 import type { AnimationModel, KeyframeSetModel, UINodeModel, UIProgram, UITransitionModel } from "../ui-engine/model.js";
 import { resolveScrollConfig } from "@typecad/cuttlefish/api/shared";
@@ -264,6 +265,12 @@ function cloneProgram(program: UIProgram): { nodes: MutableNode[]; transitions: 
 
 export class PreviewUIRuntime {
   readonly gfx: HostAdafruitGFX;
+  /** Mono flattening active — preview mirrors the panel's 1bpp rendering. */
+  private monoFormat = false;
+  /** Baked 1bpp bits per image asset (mono only) — the SAME monoImageBits the
+   *  C++ table emission bakes, so preview pixels match the panel exactly
+   *  (threshold and Floyd–Steinberg alike). Keyed by asset id. */
+  private readonly monoBitsByAsset = new Map<string, number[]>();
   readonly screen: ScreenProxy = {};
   private readonly nodes: MutableNode[];
   private readonly transitions: UITransitionModel[];
@@ -377,6 +384,10 @@ export class PreviewUIRuntime {
     // Snap draw colors to black/white for mono/e-ink targets (parity with the
     // device's UI_NATIVE_MONO draw-path snap). No-op for color targets.
     this.gfx.setMonoSnap(snapshot.program.colorFormat === "mono");
+    // Mono flattening flag: the preview renders exactly what the panel gets —
+    // 1bpp colors, square corners, no shadows (the shared lowering already
+    // flattened the model), :pressed as face inversion.
+    this.monoFormat = snapshot.program.colorFormat === "mono";
     // Buffer storage depth tracks the target: 565 panels store packed 565,
     // rgb888 stores packed 888, rgb666 stores 888 and quantizes at the canvas
     // push. Without this, 888-packed colors render channel-shifted (the
@@ -1173,6 +1184,16 @@ export class PreviewUIRuntime {
       tyEnd = Math.max(0, Math.min(targetH, clip.x + clip.w - x));
     }
     if (txStart >= txEnd || tyStart >= tyEnd) return;
+    // Mono: sample the baked 1bpp bits (parity with the device's build-time
+    // flatten — per-pixel thresholding here would miss Floyd–Steinberg).
+    let monoBits: number[] | undefined;
+    if (this.monoFormat) {
+      monoBits = this.monoBitsByAsset.get(asset.id);
+      if (!monoBits) {
+        monoBits = monoImageBits(asset, asset.dither === "floyd-steinberg" ? "floyd-steinberg" : "threshold");
+        this.monoBitsByAsset.set(asset.id, monoBits);
+      }
+    }
     for (let ty = tyStart; ty < tyEnd; ty++) {
       const localY = ty - offY;
       if (localY < 0 || localY >= drawH) continue;
@@ -1181,7 +1202,13 @@ export class PreviewUIRuntime {
         const localX = tx - offX;
         if (localX < 0 || localX >= drawW) continue;
         const srcX = Math.max(0, Math.min(srcW - 1, Math.trunc((localX * srcW) / drawW)));
-        const color = asset.data[srcY * srcW + srcX] ?? 0;
+        let color: number;
+        if (monoBits) {
+          const idx = srcY * srcW + srcX;
+          color = (monoBits[idx >> 3] & (0x80 >> (idx & 7))) ? 0xffff : 0x0000;
+        } else {
+          color = asset.data[srcY * srcW + srcX] ?? 0;
+        }
         let dx = tx;
         let dy = ty;
         if (q === 1) {
@@ -1734,6 +1761,14 @@ export class PreviewUIRuntime {
   }
 
   private fontAlpha(asset: UIFontAssetModel, glyph: UIFontGlyphModel, pixelIndex: number): number {
+    // Mono1 assets pack 1bpp glyphs (MSB-first, dataOffset counts bits) — a
+    // set bit is full alpha so the threshold draw is solid, matching the
+    // device's ui_font_alpha_at format-1 branch.
+    if (asset.format === "mono1") {
+      const bit = glyph.dataOffset + pixelIndex;
+      const byte = asset.alpha[bit >> 3] ?? 0;
+      return (byte & (0x80 >> (bit & 7))) ? 15 : 0;
+    }
     const nibble = glyph.dataOffset + pixelIndex;
     const byte = asset.alpha[nibble >> 1] ?? 0;
     return (nibble & 1) ? byte & 0x0f : byte >> 4;
@@ -2127,6 +2162,25 @@ export class PreviewUIRuntime {
       let fillBg = node.bg;
       if (node.opacity < 100) fillBg = blendRuntime(node.bg, this.parentClearColor(node), node.opacity);
 
+      // Mono :pressed flattening (Stage 2): mirror the device's face
+      // inversion — the face takes the old fg, the content its complement.
+      // Patched on the node so every kind's draw reads the inverted pair,
+      // restored after (the node table is live mutable state).
+      let monoInverted = false;
+      let monoSave: { fg: number; bg: number; borderColor: number; hasBg: boolean } | undefined;
+      if (this.monoFormat && (node as MutableNode & { monoPressInvert?: boolean }).monoPressInvert && node.value > 0) {
+        monoSave = { fg: node.fg, bg: node.bg, borderColor: node.borderColor ?? 0, hasBg: node.hasBg };
+        const invFace = node.fg;
+        const invFg = node.fg ? 0 : 1;
+        node.fg = invFg;
+        node.bg = invFace;
+        node.hasBg = true;
+        node.borderColor = invFg;
+        bColor = invFg;
+        fillBg = invFace;
+        monoInverted = true;
+      }
+
       this.gfx.withClipRect(scrollClip, () => {
         // Lists draw their outset shadow inside drawListNode, on the
         // full-repaint path only. The shadow rect spans the element, so
@@ -2193,6 +2247,12 @@ export class PreviewUIRuntime {
         }
       });
       changed = true;
+      if (monoInverted && monoSave) {
+        node.fg = monoSave.fg;
+        node.bg = monoSave.bg;
+        node.borderColor = monoSave.borderColor;
+        node.hasBg = monoSave.hasBg;
+      }
       node.box.x = origBoxX;
       node.dirty = false;
       if (this.debugCapture) {

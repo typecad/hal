@@ -70,21 +70,30 @@ interface ProfileLike {
 
 /** Derive capabilities from a profile. Explicit `capabilities` on the profile
  *  win; otherwise derive from `displayClass` + `colorFormat`. A bare TFT profile
- *  (no displayClass) defaults to defaultTftCapabilities() — byte-identical. */
+ *  (no displayClass) defaults to defaultTftCapabilities() — byte-identical.
+ *
+ *  Mono (Stage 2): any profile whose colorFormat is "mono" derives the mono
+ *  capability set regardless of displayClass — the format alone forces the
+ *  1bpp packers, a backing store (the full-frame compose surface), and the
+ *  flattening rules. The refresh model splits by class: an OLED-class mono
+ *  panel pushes a ~1KB frame in ~25ms — interactive (immediate), so scroll and
+ *  keyframe animation stay on; e-ink defers refresh by seconds and turns both
+ *  off (Stage 4 owns that path). */
 export function deriveCapabilities(profile: ProfileLike): DisplayCapabilities {
   if (profile.capabilities) return profile.capabilities;
-  if (profile.displayClass === "eink" || profile.displayClass === "oled") {
+  if (profile.colorFormat === "mono" || profile.displayClass === "eink" || profile.displayClass === "oled") {
+    const eink = profile.displayClass === "eink";
     return {
       nativeFormat: profile.colorFormat === "mono" ? "mono" : "palette",
-      refreshModel: "deferred-partial",
+      refreshModel: eink ? "deferred-partial" : "immediate",
       partialRefresh: profile.colorFormat === "mono" ? "mono-only" : "none",
       requiresBackingStore: true,
       features: {
         antialias: false,
         gradients: false,
         opacityBlend: false,
-        smoothScroll: false,
-        animation: false,
+        smoothScroll: !eink,
+        animation: !eink,
       },
     };
   }
