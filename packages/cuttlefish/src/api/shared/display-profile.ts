@@ -91,6 +91,20 @@ export interface DisplayProfile {
    *  When wired, panel updates wait for the TE frame pulse instead of the
    *  GET_SCANLINE readback (no MISO needed; see also scanlineSync). */
   tearingEffectPin?: number;
+  /** Panel quirk (drop-in driver path): swap the R and B channels of each
+   *  RGB565 pixel at pack time, for clone panels whose 16-bit channel
+   *  routing is crossed. Frameworks that don't need it ignore it. */
+  channelSwapRb?: boolean;
+  /** Panel quirk (drop-in driver path): pixels must be byte-swapped on the
+   *  wire (RGB565 endianness) — expressed as the st7796s family's
+   *  rgb-is-inverted DT property, which flips the format the driver reports
+   *  so the adapter swaps at pack time. Clone SPI panels whose white reads
+   *  purple / dark reads green need this. */
+  rgbInverted?: boolean;
+  /** Panel quirk (drop-in driver path): require a mipi-dbi host that holds
+   *  CS across each command+data burst (clone ST77xx panels the stock SPI
+   *  bridge scrambles). Frameworks without a local host ignore it. */
+  csHold?: boolean;
   touch?: TouchProfile;
   /** Enable antialiased rendering for circles, lines, rounded corners, and text
    *  unless a node opts out with font-smoothing:none.
@@ -167,6 +181,12 @@ export interface DisplayConfig {
    *  TE frame pulse (tear-free writes, no MISO readback); the Zephyr overlay
    *  emits te-gpios on the display DT node and the adapter raises TEON. */
   tearingEffectPin?: number;
+  /** R/B channel swap at pack time (clone-panel quirk; see DisplayConfig). */
+  channelSwapRb?: boolean;
+  /** RGB565 byte-order inversion (clone-panel quirk; see DisplayConfig). */
+  rgbInverted?: boolean;
+  /** CS-held mipi-dbi host required (clone-panel quirk; see DisplayConfig). */
+  csHold?: boolean;
   touch?: TouchProfile | false;
   cs?: number;
   dc?: number;
@@ -372,6 +392,9 @@ export function resolveDisplayProfile(
   if (config.invertDisplay !== undefined) base.invertDisplay = config.invertDisplay;
   if (config.tearingEffectPin !== undefined) base.tearingEffectPin = config.tearingEffectPin;
   if (config.scanlineSync !== undefined) base.scanlineSync = config.scanlineSync;
+  if (config.channelSwapRb !== undefined) base.channelSwapRb = config.channelSwapRb;
+  if (config.rgbInverted !== undefined) base.rgbInverted = config.rgbInverted;
+  if (config.csHold !== undefined) base.csHold = config.csHold;
   if (config.touch === false) base.touch = undefined;
   else if (config.touch !== undefined) base.touch = config.touch;
   if (config.antialias !== undefined) base.antialias = config.antialias;

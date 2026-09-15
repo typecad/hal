@@ -54,5 +54,5 @@ export function resolveMount(
     reset: req.reset,
     backlight: req.backlight,
     spiFrequency: req.spiFrequency,
-  } as any;
+  };
 }

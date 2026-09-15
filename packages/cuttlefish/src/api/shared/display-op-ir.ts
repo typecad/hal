@@ -24,6 +24,10 @@ export interface DisplayInitOp {
   height: number;
   /** Driver id, e.g. "ili9341" — must be in supportedDisplayDrivers() */
   driver: string;
+  /** Rotation in degrees (0/90/180/270) as requested at mount. */
+  rotation?: number;
+  /** Backlight identifier/pin as requested at mount (framework-specific). */
+  backlight?: number;
   /** Optional SPI clock frequency in Hz for SPI-backed displays. */
   spiFrequency?: number;
   /** I2C address (hex) for I2C-backed displays like SSD1309. */
