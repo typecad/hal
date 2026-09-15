@@ -17,6 +17,19 @@ import type { ZephyrDisplayProfile } from '../display/profiles.js';
 import { PANEL_CONTROLLER_DEFAULTS, panelControllerFor, transportFor, isDtCompatible } from '../display/profiles.js';
 import { readDisplayBinding, type RequiredProp } from '../display/bindings.js';
 
+/** Standard values for the mono-OLED family's default-free required props
+ *  (segment/page/display offsets, multiplex ratio, precharge period) — the
+ *  values upstream board overlays ship; tune per panel from here. */
+function monoPropFallback(prop: string, info: RequiredProp | undefined, nativeHeight: number): string | undefined {
+  if (prop === 'width' || prop === 'height' || prop === 'reg' || prop === 'compatible') return undefined;
+  const def = info?.default;
+  if (def?.kind === 'int') return `${prop} = <${def.value}>`;
+  if (prop === 'multiplex-ratio') return `multiplex-ratio = <${nativeHeight - 1}>`;
+  if (prop === 'prechargep') return 'prechargep = <0x22>';
+  if (prop === 'segment-offset' || prop === 'page-offset' || prop === 'display-offset') return `${prop} = <0>`;
+  return undefined;
+}
+
 /** Format one binding-required property with its harvested default. Binding
  *  props that are deliberately default-free ("panel specific" — e.g. the
  *  sitronix gamma arrays) fall back to the rig-validated tuning the curated
@@ -72,6 +85,8 @@ export interface DisplayWiring {
    *  te-gpios on the display DT node. Opt-in; most boards don't wire TE. */
   tearingEffectPin?: number;
   spiFrequency?: number;
+  /** I2C address for i2c-family panels (mono OLEDs, ssd1306-class). */
+  address?: number;
   /** SPI bus pins. When present, the overlay remuxes the SPI controller's
    *  pinctrl to these pins (the board defaults rarely match a breakout's
    *  wiring — e.g. demo-st's panel is on SCK=18/MOSI=23, not the devkitc
@@ -1044,6 +1059,30 @@ function emitDisplayNode(
 ): void {
   const bus = display.busLabel ?? 'spi2';
   const controller = panelControllerFor(display);
+  // I2C-family panels (mono OLEDs, ssd1306-class): a plain &i2cN child node —
+  // no mipi-dbi bridge, no SPI bus block, no DMA. Bus pins come from the
+  // touch wiring's remux (shared bus) or the board's default I2C pins.
+  if (readDisplayBinding(display.dtCompatible ?? (isDtCompatible(display.driver) ? display.driver : ''))?.busFamily === 'i2c') {
+    const addr = wiring?.address ?? 0x3c;
+    lines.push('&i2c0 {');
+    lines.push('    status = "okay";');
+    lines.push(`    ${display.dtLabel}: ssd1306@${addr.toString(16)} {`);
+    lines.push(`        compatible = "${display.dtCompatible ?? display.driver}";`);
+    lines.push(`        reg = <0x${addr.toString(16)}>;`);
+    lines.push(`        width = <${display.nativeWidth ?? display.width}>;`);
+    lines.push(`        height = <${display.nativeHeight ?? display.height}>;`);
+    const binding = readDisplayBinding(display.dtCompatible ?? display.driver);
+    if (binding) {
+      for (const [prop, info] of binding.required) {
+        const v = monoPropFallback(prop, info, display.nativeHeight ?? display.height);
+        if (v !== undefined) lines.push(`        ${v};`);
+      }
+    }
+    lines.push('    };');
+    lines.push('};');
+    lines.push('');
+    return;
+  }
   // Compatible resolution: explicit override → the registry controllers →
   // the drop-in path (driver IS a compatible string) → a safe default.
   const compatible = display.dtCompatible

@@ -12,7 +12,7 @@
 // ---------------------------------------------------------------------------
 
 import type { DisplayHALOp } from '@typecad/cuttlefish/api/shared';
-import { DEFAULT_ZEPHYR_DISPLAY_PROFILE, type ZephyrDisplayProfile } from './profiles.js';
+import { DEFAULT_ZEPHYR_DISPLAY_PROFILE, ZEPHYR_DISPLAY_PROFILES, synthesizeZephyrProfile, type ZephyrDisplayProfile } from './profiles.js';
 
 // Re-export the UI display/touch adapters + profile registry so the strategy
 // and consumers can reach them from the package barrel.
@@ -45,6 +45,18 @@ export function resolveZephyrDisplayOp(
   // fields, so use the default profile.
   if (op.operation === 'display.init') {
     state.initialized = true;
+    // Drop-in panels (driver = DT compatible): seed the synthesized profile
+    // so the direct-op GFX runtime sizes itself for THIS panel (the mono
+    // framebuffer branch keys off the profile's colorFormat/geometry).
+    const registered = ZEPHYR_DISPLAY_PROFILES[o.driver as string];
+    if (!registered) {
+      const synth = synthesizeZephyrProfile({
+        driver: o.driver as string,
+        width: o.width as number,
+        height: o.height as number,
+      });
+      if (synth) state.profile = synth;
+    }
     return { code: 'display_init();' };
   }
 

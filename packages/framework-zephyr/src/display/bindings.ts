@@ -34,6 +34,9 @@ export interface RequiredProp {
 export interface DisplayBindingInfo {
   /** The compatible string this binding documents. */
   compatible: string;
+  /** Transport family from the include chain — decides the overlay node
+   *  shape (I2C child vs mipi-dbi SPI child) and the Kconfig bus. */
+  busFamily: 'i2c' | 'spi';
   /** Required properties (DT name → binding facts). */
   required: Map<string, RequiredProp>;
   /** Every property name the binding (or its include chain) declares,
@@ -213,7 +216,11 @@ function collectIncludes(fragment: string, out: string[]): void {
   const f = fragment.trim();
   if (!f) return;
   if (f.startsWith('[')) {
-    for (const part of f.slice(1, -1).split(',')) pushInclude(part.trim(), out);
+    // Extract filename tokens by pattern (commas INCLUDED — binding
+    // filenames are vendor,panel.yaml and cannot be split or excluded on commas) — NEVER split on commas: binding
+    // filenames themselves contain commas (vendor,panel.yaml), and a comma
+    // split silently mangles them into nonexistent includes.
+    for (const m of f.matchAll(/[A-Za-z0-9_.,-]+\.ya?ml/g)) out.push(m[0]!);
   } else if (f.startsWith('- ')) {
     pushInclude(f.slice(2).trim(), out);
   } else {
@@ -223,8 +230,12 @@ function collectIncludes(fragment: string, out: string[]): void {
 
 function pushInclude(item: string, out: string[]): void {
   // The `- name: foo.yaml` include form (with optional property-blocklist).
-  const m = item.match(/name:\s*(\S+)/);
-  const name = (m ? m[1] : item).replace(/["']/g, '');
+  // The match is ANCHORED: an unanchored /name:/ can false-match inside
+  // filenames (e.g. vendor,panel-common.yaml) and silently mangle the
+  // include chain — the missing-prop class this harvest exists to prevent.
+  let name = item.trim().replace(/["']/g, '');
+  const m = name.match(/^name:\s*(\S+)$/);
+  if (m) name = m[1]!;
   if (name.endsWith('.yaml') || name.endsWith('.yml')) out.push(name);
 }
 
@@ -273,12 +284,18 @@ export function readDisplayBindingFrom(
   const required = new Map<string, RequiredProp>();
   const props = new Set<string>();
   let requiresPixelFormat = false;
+  let busFamily: 'i2c' | 'spi' = 'spi';
+  const noteFamily = (fileName: string): void => {
+    if (fileName === 'i2c-device.yaml') busFamily = 'i2c';
+    if (fileName === 'mipi-dbi-spi-device.yaml' || fileName === 'spi-device.yaml') busFamily = 'spi';
+  };
 
   const load = (fileName: string): void => {
     const path = index.get(fileName);
     if (!path || visited.has(fileName)) return;
     visited.add(fileName);
     const raw = parseBinding(path);
+    noteFamily(fileName);
     if (fileName === 'lcd-controller.yaml') requiresPixelFormat = true;
     for (const [prop, info] of raw.required) {
       const prev = required.get(prop);
@@ -304,7 +321,7 @@ export function readDisplayBindingFrom(
     if (raw.compatible === compatible) {
       load(fileName);
       noteProps(fileName);
-      return { compatible, required, requiresPixelFormat, props };
+      return { compatible, required, requiresPixelFormat, props, busFamily };
     }
   }
   return undefined;

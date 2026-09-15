@@ -65,6 +65,9 @@ export interface KconfigUsage {
    *  (`default y depends on DT_HAS_<COMPATIBLE>_ENABLED`), so no symbol
    *  is assigned at all. */
   displayController?: 'st7796s' | 'ili9341';
+  /** Panel bus family from the binding harvest: i2c-family panels (mono
+   *  OLEDs) get I2C and no SPI/MIPI/DMA block at all. */
+  displayBus?: 'i2c' | 'spi';
   usesWifi?: boolean;
   usesHttp?: boolean;
   usesMqtt?: boolean;
@@ -266,6 +269,11 @@ export function resolveKconfigFragments(
   if (usage.usesHwtimer) m.set('CONFIG_COUNTER', 'y');
   if (usage.usesDisplay) {
     m.set('CONFIG_DISPLAY', 'y');
+    if (usage.displayBus === 'i2c') {
+      // Mono OLED family (ssd1306-class): an I2C child node; the panel
+      // driver self-builds from it. No SPI bridge, no DMA.
+      m.set('CONFIG_I2C', 'y');
+    } else {
     m.set('CONFIG_SPI', 'y');
     m.set('CONFIG_MIPI_DBI', 'y');
     // Enable GDMA so the ESP32 SPI driver uses DMA for panel transfers instead
@@ -308,6 +316,7 @@ export function resolveKconfigFragments(
       m.set('CONFIG_MIPI_DBI_SPI', 'n');
       m.set('CONFIG_ILI9341', 'n');
       m.set('CONFIG_ST7796S', 'n');
+    }
     }
   }
   if (usage.usesTouch) {

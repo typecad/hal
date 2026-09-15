@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { resolveKconfigFragments, type KconfigUsage } from '../dt-config/kconfig.js';
 import { scanSensorParts, scanStrips, scanHid, scanMatrix } from './index.js';
 import { profileFromEmittedSource, transportFor, panelControllerFor } from '../display/profiles.js';
+import { readDisplayBinding } from '../display/bindings.js';
 import { readCuttlefishLibrarySidecar } from '@typecad/cuttlefish/library-packages';
 import { SENSOR_PART_INFO } from '@typecad/hal';
 
@@ -164,9 +165,12 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     // Display transport + controller: recovered from the profile marker the
     // display adapters stamp into the emitted source (the profile registry is
     // the single source of truth — no geometry re-derivation here).
-    ...((): Pick<KconfigUsage, 'displayTransport' | 'displayController'> => {
+    ...((): Pick<KconfigUsage, 'displayTransport' | 'displayController' | 'displayBus'> => {
       const profile = profileFromEmittedSource(src);
-      if (!profile || transportFor(profile) !== 'zephyr-display') return {};
+      if (!profile) return {};
+      const bus = readDisplayBinding(profile.driver)?.busFamily;
+      if (bus === 'i2c') return { displayBus: 'i2c' };
+      if (transportFor(profile) !== 'zephyr-display') return {};
       return { displayTransport: 'zephyr-display', displayController: panelControllerFor(profile) };
     })(),
     usesTouch: uses('ft6336u') || uses('touch_'),

@@ -1,0 +1,3 @@
+description: Solomon SSD1306 OLED (I2C variant)
+compatible: "solomon,ssd1306"
+include: ["solomon,ssd1306-common.yaml", "i2c-device.yaml"]

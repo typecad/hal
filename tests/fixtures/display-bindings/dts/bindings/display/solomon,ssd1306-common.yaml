@@ -1,0 +1,22 @@
+description: Common properties for the Solomon SSD1306/SSD1309/SH1106 family
+include: display-controller.yaml
+properties:
+  segment-offset:
+    type: int
+    required: true
+  page-offset:
+    type: int
+    required: true
+  display-offset:
+    type: int
+    required: true
+  multiplex-ratio:
+    type: int
+    required: true
+  prechargep:
+    type: int
+    required: true
+  segment-remap:
+    type: boolean
+  com-invdir:
+    type: boolean

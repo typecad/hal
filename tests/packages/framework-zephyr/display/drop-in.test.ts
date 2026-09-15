@@ -107,10 +107,37 @@ describe('drop-in displays (compatible-driven, no profile)', () => {
     expect(txt).toContain('pgc = [f0 09 0b 06];');
   });
 
+  it('i2c-family panels get an I2C child node with standard mono props', () => {
+    const txt = generateOverlay(
+      TEST_CHIP,
+      { usesDisplay: true },
+      synthesizeZephyrProfile({ driver: 'solomon,ssd1306', width: 128, height: 64 })!,
+      { address: 0x3c },
+    );
+    // I2C child shape — no mipi-dbi bridge, no SPI bus block.
+    expect(txt).toContain('&i2c0 {');
+    expect(txt).toContain('display0: ssd1306@3c {');
+    expect(txt).toContain('compatible = "solomon,ssd1306"');
+    expect(txt).toContain('reg = <0x3c>');
+    expect(txt).not.toContain('mipi-dbi');
+    // The default-free required props get the standard upstream values.
+    expect(txt).toContain('multiplex-ratio = <63>');
+    expect(txt).toContain('prechargep = <0x22>');
+    expect(txt).toContain('segment-offset = <0>');
+  });
+
   it('kconfig assigns no driver symbol for synthesized panels (DT-default-on)', () => {
     const m = resolveKconfigFragments({ usesDisplay: true, displayTransport: 'zephyr-display' }, false);
     expect(m.get('CONFIG_MIPI_DBI_SPI')).toBe('y');
     expect(m.has('CONFIG_ILI9341')).toBe(false);
     expect(m.has('CONFIG_ST7796S')).toBe(false);
+  });
+
+  it('kconfig routes i2c-family displays to I2C with no SPI/MIPI block', () => {
+    const m = resolveKconfigFragments({ usesDisplay: true, displayBus: 'i2c' }, false);
+    expect(m.get('CONFIG_I2C')).toBe('y');
+    expect(m.has('CONFIG_SPI')).toBe(false);
+    expect(m.has('CONFIG_MIPI_DBI')).toBe(false);
+    expect(m.has('CONFIG_DMA')).toBe(false);
   });
 });
