@@ -65,6 +65,8 @@ export function zephyrMonoDisplayAdapter(profile: ZephyrDisplayProfile): Display
     `// Push scratch for panels that insist on MONO10 (1=black): the frame is`,
     `// complemented here, never in the backing store itself.`,
     `static uint8_t __tc_mono_inv[(${w} * ${h} + 7) / 8];`,
+    `// Rig diagnostics: frames pushed since boot (see display_partial_refresh).`,
+    `static uint32_t __tc_mono_frames = 0;`,
     `// Set when the panel insists on MONO10 (1=black): pushes invert the frame.`,
     `static bool __tc_mono_invert = false;`,
     `// Scroll-viewport clip in display coords (w <= 0 ⇒ no clip). Enforced in`,
@@ -142,7 +144,17 @@ static inline void display_partial_refresh(int16_t x, int16_t y, int16_t rw, int
     }
     src = __tc_mono_inv;
   }
-  (void)display_write(__tc_zd_dev, 0, 0, &__desc, src);
+  int __ret = display_write(__tc_zd_dev, 0, 0, &__desc, src);
+  // Rig diagnostics: the first frame + every 64th reports liveness, and any
+  // write failure prints once-per-second-class errno (EIO = I2C NACK —
+  // address/wiring; ENODEV = device never initialized). A blank panel with
+  // these lines green means the failure is panel-side (power/quirks).
+  __tc_mono_frames++;
+  if (__ret != 0) {
+    printk("TC_DISPLAY: display_write failed: %d\\n", __ret);
+  } else if ((__tc_mono_frames & 0x3Fu) == 1u) {
+    printk("TC_DISPLAY: mono frame #%u pushed\\n", static_cast<unsigned int>(__tc_mono_frames));
+  }
 }
 
 // ── display_init (called from setup) ───────────────────────────────────────
@@ -154,6 +166,13 @@ static inline void display_init() {
     return;
   }
   display_get_capabilities(__tc_zd_dev, &__tc_zd_caps);
+  // Rig diagnostics: what the driver reports — geometry/format mismatches
+  // print here before anything reaches the panel.
+  printk("TC_DISPLAY: panel reports %ux%u fmt=%u screen_info=%u\\n",
+         static_cast<unsigned int>(__tc_zd_caps.x_resolution),
+         static_cast<unsigned int>(__tc_zd_caps.y_resolution),
+         static_cast<unsigned int>(__tc_zd_caps.current_pixel_format),
+         static_cast<unsigned int>(__tc_zd_caps.screen_info));
   // MONO01 (0=black, 1=white) matches our packing. A MONO10 panel gets asked
   // to switch once; if it refuses, frames push bit-inverted (still correct).
   if (__tc_zd_caps.current_pixel_format == PIXEL_FORMAT_MONO10) {
