@@ -101,6 +101,13 @@ const SUPERSAMPLE = 4;
 // strokes connected; heavier faces just read bolder, which is the right bias
 // for emissive 1bpp panels.
 export const MONO_ALPHA_THRESHOLD = 5;
+// Small-size relief: at <=10px thin diagonals (a % slash, an R leg) carry
+// coverage just under the global threshold and drop to disconnected dots.
+// One threshold notch recovers them; stems are already at their floor so
+// the cost is a slightly bolder small size.
+export function monoAlphaThresholdFor(px: number): number {
+  return px <= 10 ? 4 : MONO_ALPHA_THRESHOLD;
+}
 // Panel-trial toggles (2026-09-16 ladder A/B): corner bridging and blue
 // zones OFF to judge their contribution. Flip either back to true to
 // re-enable — no other wiring changes.
@@ -516,7 +523,7 @@ function rasterizeFontAsset(options: {
             }
           }
           const alpha = Math.round((covered * 15) / (SUPERSAMPLE * SUPERSAMPLE));
-          if (monoPack) monoGlyph.push(alpha >= MONO_ALPHA_THRESHOLD ? 1 : 0);
+          if (monoPack) monoGlyph.push(alpha >= monoAlphaThresholdFor(options.px) ? 1 : 0);
           else unpackedAlpha.push(alpha);
         }
       }
@@ -624,10 +631,6 @@ const MONO_HINT_ZONE_TOL_PX = 0.35;
 // 0.4 admits genuinely-wide stems (DejaVu's '1' carries a 1.64px stem that
 // snaps cleanly to 2px at deform 0.36).
 const MONO_HINT_MAX_DEFORM_PX = 0.4;
-// Collinear-fragment merge thresholds: two edges this close in position,
-// with extents this close to touching, are one edge split by a junction.
-const MONO_HINT_MERGE_POS_PX = 0.2;
-const MONO_HINT_MERGE_GAP_PX = 0.5;
 
 /** A y-axis blue zone: a shared design height in path coordinates (negative
  *  above the baseline) and the integer row every near edge should land on. */
@@ -701,31 +704,31 @@ function monoAxisShift(
 ): (v: number) => number {
   if (edges.length === 0) return () => 0;
   edges.sort((a, b) => a.pos - b.pos);
-  // Merge collinear fragments BEFORE pairing. A stem's edge often splits
-  // into two runs where a curve junction breaks the run's direction (an h's
-  // inner-left edge splits at the arch), and the interleaved fragment then
-  // blocks the stem's true partner — pairing only walks sorted-adjacent
-  // edges, so the wall rendered unsnapped (1.1px design at the wrong phase
-  // = a fat 2px stroke next to snapped 1px neighbors).
-  const merged: MonoHintEdge[] = [];
-  for (const e of edges) {
-    const prev = merged[merged.length - 1];
-    if (
-      prev &&
-      Math.abs(e.pos - prev.pos) <= MONO_HINT_MERGE_POS_PX &&
-      e.lo <= prev.hi + MONO_HINT_MERGE_GAP_PX &&
-      prev.lo <= e.hi + MONO_HINT_MERGE_GAP_PX
-    ) {
-      const total = prev.hi - prev.lo + e.hi - e.lo;
-      if (total > 0) prev.pos = (prev.pos * (prev.hi - prev.lo) + e.pos * (e.hi - e.lo)) / total;
-      prev.lo = Math.min(prev.lo, e.lo);
-      prev.hi = Math.max(prev.hi, e.hi);
-    } else {
-      merged.push({ ...e });
+  // Coalesce adjacent edges closer than the minimum stroke width: they are
+  // fragments of ONE physical edge (split by curve junctions / sampling),
+  // not a stroke. A stem's edge often splits where the run's direction
+  // breaks (an h's inner-left edge at the arch, a curved g wall into three
+  // pieces); left split, the fragments snap independently and smear the
+  // wall across two columns (the 10px g rendered a fat 2px right wall
+  // against 1px neighbors). Iterate to a fixpoint, then pair strokes.
+  let coalesced = true;
+  while (coalesced) {
+    coalesced = false;
+    for (let i = 0; i + 1 < edges.length; i++) {
+      if (edges[i + 1].pos - edges[i].pos < MONO_HINT_STEM_MIN_PX) {
+        const a = edges[i]!;
+        const b = edges[i + 1]!;
+        const total = a.hi - a.lo + (b.hi - b.lo);
+        edges.splice(i, 2, {
+          pos: total > 0 ? (a.pos * (a.hi - a.lo) + b.pos * (b.hi - b.lo)) / total : (a.pos + b.pos) / 2,
+          lo: Math.min(a.lo, b.lo),
+          hi: Math.max(a.hi, b.hi),
+          delta: 0,
+        });
+        coalesced = true;
+      }
     }
   }
-  edges.length = 0;
-  edges.push(...merged);
   const clamp = (d: number) => Math.max(-MONO_HINT_MAX_SHIFT, Math.min(MONO_HINT_MAX_SHIFT, d));
   // Blue zones (y axis): an edge within tolerance of a shared design height
   // (baseline, x-height, cap-height) snaps to the ZONE's integer rather than
