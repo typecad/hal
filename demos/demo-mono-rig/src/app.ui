@@ -40,25 +40,30 @@
     flex-direction: column;
   }
 
-  #titlebar {
-    background: #ffffff;
-    padding: 1px 3px;
-    height: 22px;
+  #lvline {
+    padding: 2px 3px;
+    height: 14px;
   }
-  #title {
-    color: #000000;
+  #lvtxt {
     font-family: "RigMono";
-    font-size: 20px;
-    font-weight: 400;
+    font-size: 9px;
+  }
+  #ourline {
+    padding: 2px 3px;
+    height: 14px;
+  }
+  #ourtxt {
+    font-family: "RigMono";
+    font-size: 9px;
   }
 
   #row2 {
-    padding: 0 3px;
-    height: 21px;
+    padding: 2px 3px;
+    height: 14px;
   }
   #uptime {
     font-family: "RigMono";
-    font-size: 20px;
+    font-size: 9px;
   }
 
   #row4 {
@@ -86,8 +91,11 @@
 </style>
 
 <screen>
-  <view id="titlebar">
-    <text id="title">SSD MONO</text>
+  <view id="lvline">
+    <text id="lvtxt">Sine Wave Nine</text>
+  </view>
+  <view id="ourline">
+    <text id="ourtxt">Sine Wave Nine</text>
   </view>
   <view id="row2">
     <text id="uptime">t=0s</text>
