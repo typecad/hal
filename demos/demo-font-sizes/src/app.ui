@@ -38,7 +38,7 @@
     flex-direction: row;
     align-items: center;
     padding: 1px 3px;
-    height: 12px;
+    height: 11px;
   }
   #t10 {
     font-family: "Ladder";
@@ -52,7 +52,7 @@
     flex-direction: row;
     align-items: center;
     padding: 1px 3px;
-    height: 15px;
+    height: 14px;
   }
   #t13 {
     font-family: "Ladder";

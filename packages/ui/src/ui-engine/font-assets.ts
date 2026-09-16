@@ -101,6 +101,11 @@ const SUPERSAMPLE = 4;
 // strokes connected; heavier faces just read bolder, which is the right bias
 // for emissive 1bpp panels.
 export const MONO_ALPHA_THRESHOLD = 5;
+// Panel-trial toggles (2026-09-16 ladder A/B): corner bridging and blue
+// zones OFF to judge their contribution. Flip either back to true to
+// re-enable — no other wiring changes.
+export const MONO_CORNER_BRIDGE_ENABLED = false;
+export const MONO_BLUE_ZONES_ENABLED = false;
 
 export function normalizeFontFamily(value: string | undefined): string | undefined {
   if (!value) return undefined;
@@ -475,7 +480,7 @@ function rasterizeFontAsset(options: {
   const glyphs: UIFontGlyphModel[] = [];
   const unpackedAlpha: number[] = [];
   const monoBits: number[] = [];
-  const yZones = monoPack ? monoYZoneTable(options.font, options.px) : undefined;
+  const yZones = monoPack && MONO_BLUE_ZONES_ENABLED ? monoYZoneTable(options.font, options.px) : undefined;
 
   for (const ch of options.chars) {
     const glyph = options.font.charToGlyph(ch);
@@ -517,7 +522,7 @@ function rasterizeFontAsset(options: {
       }
       if (monoPack) {
         monoDespeckle(monoGlyph, width, height);
-        monoSmoothDiagonals(monoGlyph, width, height);
+        if (MONO_CORNER_BRIDGE_ENABLED) monoSmoothDiagonals(monoGlyph, width, height);
         for (const b of monoGlyph) monoBits.push(b);
       }
     }
