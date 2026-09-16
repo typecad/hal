@@ -134,6 +134,20 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   small size (bake-verified: digits and lowercase complete, counters
   open; 8px is this face's floor) — the rig demo's percentage readout
   uses it.
+- Fixed the browser preview (black canvas): the preview's host runtime
+  loads in the browser through dist, and its value imports from the
+  bake-time font-assets/image-assets modules — which carry node:fs —
+  killed the entire module graph (type-only imports had been safe;
+  kerning and mono-image preview support turned them into runtime
+  imports). The browser-safe pieces now live in leaf modules with zero
+  node imports (font-kern.ts, image-mono.ts), re-exported for the bake,
+  and a graph-walking test guards the dist import graph against node
+  builtins forever. The preview snapshot builder also now binds the
+  display profile before baking fonts (matching the CLI transpile path)
+  so mono panels bake mono1 faces in the browser too, instead of an AA
+  rgb565 approximation; and mono drop-in demos declare colorFormat:
+  'mono' explicitly in their config — the preview server has no
+  framework strategy to infer it from the driver.
 
 Out of scope per the design: band renderer / scroll canvases / OSK on 1bpp.
 Raw display.* ops keep the direct-op runtime beneath the UI path.

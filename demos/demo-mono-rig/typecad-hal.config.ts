@@ -25,6 +25,10 @@ const config: TypecadConfig = {
 
   display: {
     driver: 'solomon,ssd1309',
+    // Explicit: the device build infers mono from the driver, but the
+    // preview server has no framework strategy — without this the browser
+    // renders an rgb565 approximation.
+    colorFormat: 'mono',
     width: 128,
     height: 64,
     address: 0x3c,

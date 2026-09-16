@@ -10,6 +10,7 @@ import { injectDefaultFontFaces } from "../ui-engine/default-font.js";
 import { extractStyleBlocks, parseHtmlWithKeyboards } from "../ui-engine/html-parser.js";
 import { splitUiFile } from "../ui-engine/ui-file-splitter.js";
 import { buildUIFontAssets } from "../ui-engine/font-assets.js";
+import { setDisplayProfile } from "@typecad/cuttlefish/stores/display-profile-store";
 import { loadImageAssets, applyDecodedImageSizes } from "../ui-engine/image-assets.js";
 import { warmUpImageDecoding } from "../ui-engine/image-decode.js";
 import { SHADCN_KIT_CSS } from "../ui-engine/shadcn-kit.js";
@@ -708,6 +709,12 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   const resolved = resolveDisplayProfile(config.display ?? { profile: "ili9341-spi" }, registry);
   const profile = resolved.profile;
   const displaySize = effectiveDisplaySize(profile);
+  // Bind the profile for the whole build, matching the CLI transpile path:
+  // the font bake (buildUIFontAssets), the UA stylesheet's size defaults,
+  // and CSS @media evaluation all read the bound profile. Without this the
+  // faces bake alpha4 on mono panels and the preview shows AA text instead
+  // of the exact 1bpp bits the device renders.
+  setDisplayProfile(profile as never, {});
   const parsedHtml = parseHtmlWithKeyboards(htmlText);
   // @import parity with the CLI build (loadUIModuleFromText in ui-registry.ts
   // expands imports before parsing). Without this, `@import "./styles/shadcn.css"`

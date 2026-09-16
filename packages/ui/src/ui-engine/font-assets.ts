@@ -25,16 +25,14 @@ export type UIFontSubsetMode = "exact" | "fallback";
  *  bits, MSB-first (mono targets — Stage 2). */
 export type UIFontBitmapFormat = "alpha4" | "mono1";
 
-/** A baked kerning pair: subset-local glyph indices (into the asset's glyphs
- *  array) and the pair's horizontal adjustment in whole pixels. Sorted by
- *  (l, r) so the runtime binary-searches; values come from the font's GPOS
- *  kerning lookups with the legacy `kern` table as fallback (opentype.js
- *  never falls back itself when GPOS tables exist). */
-export interface UIFontKernPair {
-  l: number;
-  r: number;
-  v: number;
-}
+// Kerning pair type + the runtime-mirrored lookup live in font-kern.ts (a
+// browser-safe leaf — the preview's host runtime loads in the browser, and
+// this module imports node:fs). Re-exported so bake/test importers are
+// unchanged.
+export { kernPairValue } from "./font-kern.js";
+export type { UIFontKernPair } from "./font-kern.js";
+import { kernPairValue } from "./font-kern.js";
+import type { UIFontKernPair } from "./font-kern.js";
 
 /** Emission cap: kernCount is a uint8_t in the runtime face struct. Real
  *  faces carry a few hundred pairs at most, so this only trims pathological
@@ -579,24 +577,6 @@ function computeKernPairs(
   }
   out.sort((a, b) => a.l - b.l || a.r - b.r);
   return out;
-}
-
-/** Kerning adjustment (whole pixels) between two glyphs of an asset, by
- * subset-local index. Mirrors the runtime's binary search over the same
- * (l, r)-sorted pairs. Returns 0 when the face carries no pair table. */
-export function kernPairValue(asset: UIFontAssetModel, l: number, r: number): number {
-  const kern = asset.kern;
-  if (!kern || kern.length === 0 || l < 0 || r < 0) return 0;
-  let lo = 0;
-  let hi = kern.length - 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    const k = kern[mid]!;
-    if (k.l === l && k.r === r) return k.v;
-    if (k.l < l || (k.l === l && k.r < r)) lo = mid + 1;
-    else hi = mid - 1;
-  }
-  return 0;
 }
 
 // ── Mono light hinting: stem snapping ───────────────────────────────────────

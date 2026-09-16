@@ -1,10 +1,10 @@
 import { resolveColor, resolveColor888 } from "../ui-engine/color.js";
 import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../ui-engine/default-keyboards.js";
 import type { CSSProperty, CSSRule } from "../ui-engine/css-parser.js";
-import { kernPairValue } from "../ui-engine/font-assets.js";
+import { kernPairValue } from "../ui-engine/font-kern.js";
+import { monoImageBits } from "../ui-engine/image-mono.js";
 import type { UIFontAssetModel, UIFontGlyphModel } from "../ui-engine/font-assets.js";
 import type { UIImageAsset } from "../ui-engine/image-assets.js";
-import { monoImageBits } from "../ui-engine/image-assets.js";
 import type { KeyboardTemplate, UIKeyTemplate } from "../ui-engine/html-parser.js";
 import type { AnimationModel, KeyframeSetModel, UINodeModel, UIProgram, UITransitionModel } from "../ui-engine/model.js";
 import { resolveScrollConfig } from "@typecad/cuttlefish/api/shared";
