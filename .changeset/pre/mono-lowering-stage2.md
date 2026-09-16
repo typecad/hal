@@ -71,16 +71,6 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   and 2 pixels along its length; stems share phase across glyphs because
   every edge snaps to the same integer lattice. The alpha4 (color display)
   bake stays on the raw outline, byte-identical.
-- Built-in Classic bitmap family: `font-family: "Classic"` (no @font-face)
-  bakes from the shared glcdfont 5x7 table — native 8px pixels as designed,
-  and at 16px the Technoblogy diagonal-corner smoothing ("Smooth Big Text",
-  David Johnson-Davies): the two sub-pixels at every one-row diagonal
-  step's inner corner are bridged, so doubled staircases read as connected
-  45° runs between integer-width stems. Sizes quantize to whole cells
-  (floor(px/8), min 1); other scales double cleanly without smoothing.
-  Works for mono1 and alpha4 targets alike. Possible follow-up: the
-  article's per-glyph hint pixels for the few junction kinks the automatic
-  rule leaves (source-level gaps in glyphs like '4').
 
 Out of scope per the design: band renderer / scroll canvases / OSK on 1bpp.
 Raw display.* ops keep the direct-op runtime beneath the UI path.
