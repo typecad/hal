@@ -6,10 +6,9 @@
   // size prefixed in its own sample so the scale reads directly on panel:
   //
   //   ┌────────────────────┐
-  //   │ 10 Ag Rg 47%       │  10px — light; stems snap to 1px
-  //   │ 13 Ag Rg 47%       │  13px — the compact workhorse
-  //   │ 17 Ag Rg 47%       │  17px — stems snap to 2px
-  //   (15px dropped: four full font cells = 74px > the 64px screen)
+  //   │ 10 Ag Rg 47%       │  10px — the candidate floor
+  //   │ 11 Ag Rg 47%       │  11px — one notch up, is it the floor?
+  //   │ 13 Ag Rg 47%       │  13px — the known-good workhorse
   //   └────────────────────┘
   //
   // Static on purpose: this is a specimen, not an animation. Flash, squint,
@@ -63,17 +62,17 @@
     white-space: nowrap;
   }
 
-  #r17 {
+  #r11 {
     display: flex;
     flex-direction: row;
     align-items: center;
     padding: 1px 3px;
-    height: 28px;
+    height: 18px;
   }
-  #t17 {
+  #t11 {
     font-family: "Ladder";
-    font-size: 17px;
-    height: 22px;
+    font-size: 11px;
+    height: 16px;
     min-height: 0;
     white-space: nowrap;
   }
@@ -81,6 +80,6 @@
 
 <screen>
   <view id="r10"><text id="t10">10 Ag Rg 47%</text></view>
+  <view id="r11"><text id="t11">11 Ag Rg 47%</text></view>
   <view id="r13"><text id="t13">13 Ag Rg 47%</text></view>
-  <view id="r17"><text id="t17">17 Ag Rg 47%</text></view>
 </screen>
