@@ -115,6 +115,7 @@
     height: 11px;
   }
   #alt {
+    font-family: "RigMono";
     font-size: 10px;
   }
 </style>
