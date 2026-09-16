@@ -1,6 +1,7 @@
 import { resolveColor, resolveColor888 } from "../ui-engine/color.js";
 import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../ui-engine/default-keyboards.js";
 import type { CSSProperty, CSSRule } from "../ui-engine/css-parser.js";
+import { kernPairValue } from "../ui-engine/font-assets.js";
 import type { UIFontAssetModel, UIFontGlyphModel } from "../ui-engine/font-assets.js";
 import type { UIImageAsset } from "../ui-engine/image-assets.js";
 import { monoImageBits } from "../ui-engine/image-assets.js";
@@ -1784,9 +1785,16 @@ export class PreviewUIRuntime {
       return width;
     }
     let width = 0;
+    const indexOf = new Map<number, number>();
+    for (let i = 0; i < asset.glyphs.length; i++) indexOf.set(asset.glyphs[i]!.codepoint, i);
+    let prev = -1;
     for (const ch of displayText) {
-      const glyph = this.fontGlyph(asset, ch.codePointAt(0) ?? 0);
+      const gi = indexOf.get(ch.codePointAt(0) ?? 0) ?? -1;
+      const glyph = gi >= 0 ? asset.glyphs[gi] : undefined;
       width += glyph ? glyph.advance : Math.trunc(asset.lineHeight / 2);
+      // Pair kerning — mirrors the device runtime's cursor adjustment.
+      if (prev >= 0 && gi >= 0) width += kernPairValue(asset, prev, gi);
+      prev = gi;
     }
     return width;
   }
@@ -1852,10 +1860,15 @@ export class PreviewUIRuntime {
     let cursor = x;
     const baseline = y + asset.baseline;
     const clip = this.activeDrawClip();
+    const indexOf = new Map<number, number>();
+    for (let i = 0; i < asset.glyphs.length; i++) indexOf.set(asset.glyphs[i]!.codepoint, i);
+    let prevIdx = -1;
     for (const ch of text) {
-      const glyph = this.fontGlyph(asset, ch.codePointAt(0) ?? 0);
+      const gi = indexOf.get(ch.codePointAt(0) ?? 0) ?? -1;
+      const glyph = gi >= 0 ? asset.glyphs[gi] : undefined;
       if (!glyph) {
         cursor += Math.trunc(asset.lineHeight / 2);
+        prevIdx = -1;
         continue;
       }
       const glyphX = cursor + glyph.xOffset;
@@ -1863,6 +1876,8 @@ export class PreviewUIRuntime {
       if (glyphX + glyph.width <= clip.x || glyphX >= clip.x + clip.w ||
         glyphY + glyph.height <= clip.y || glyphY >= clip.y + clip.h) {
         cursor += glyph.advance;
+        cursor += kernPairValue(asset, prevIdx, gi);
+        prevIdx = gi;
         continue;
       }
       const gxStart = Math.max(0, clip.x - glyphX);
@@ -1883,6 +1898,8 @@ export class PreviewUIRuntime {
         }
       }
       cursor += glyph.advance;
+      cursor += kernPairValue(asset, prevIdx, gi);
+      prevIdx = gi;
     }
     return true;
   }

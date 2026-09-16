@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+// opentype.js ^2 is load-bearing: pair kerning via GPOS lookups (getKerningValue)
+// and the legacy kern table (kerningPairs) both need the 2.x APIs/tables.
 import opentype from "opentype.js";
 import type { CSSFontFace, CSSProperty } from "./css-parser.js";
 import type { StyledNode } from "./style-resolver.js";
@@ -23,6 +25,22 @@ export type UIFontSubsetMode = "exact" | "fallback";
  *  bits, MSB-first (mono targets — Stage 2). */
 export type UIFontBitmapFormat = "alpha4" | "mono1";
 
+/** A baked kerning pair: subset-local glyph indices (into the asset's glyphs
+ *  array) and the pair's horizontal adjustment in whole pixels. Sorted by
+ *  (l, r) so the runtime binary-searches; values come from the font's GPOS
+ *  kerning lookups with the legacy `kern` table as fallback (opentype.js
+ *  never falls back itself when GPOS tables exist). */
+export interface UIFontKernPair {
+  l: number;
+  r: number;
+  v: number;
+}
+
+/** Emission cap: kernCount is a uint8_t in the runtime face struct. Real
+ *  faces carry a few hundred pairs at most, so this only trims pathological
+ *  fonts, keeping the strongest pairs. */
+const KERN_PAIR_MAX = 255;
+
 export interface UIFontAssetModel {
   id: number;
   family: string;
@@ -35,6 +53,8 @@ export interface UIFontAssetModel {
   baseline: number;
   glyphs: UIFontGlyphModel[];
   alpha: number[];
+  /** Kerning pairs for this face (subset-local indices, whole pixels). */
+  kern?: UIFontKernPair[];
   /** Defaults to "alpha4"; mono builds pack 1bpp glyphs instead. */
   format?: UIFontBitmapFormat;
 }
@@ -163,11 +183,19 @@ export function assetTextWidth(text: string, style: CSSProperty, fontAssets: UIF
   if (!asset) return undefined;
   if (text.length === 0) return 0;
   const fallback = Math.max(1, Math.floor(asset.lineHeight / 2));
+  const indexOf = new Map<number, number>();
+  for (let i = 0; i < asset.glyphs.length; i++) indexOf.set(asset.glyphs[i]!.codepoint, i);
   let w = 0;
+  let prev = -1;
   for (const ch of text) {
     const cp = ch.codePointAt(0)!;
-    const glyph = asset.glyphs.find((g) => g.codepoint === cp);
+    const gi = indexOf.get(cp);
+    const glyph = gi === undefined ? undefined : asset.glyphs[gi]!;
     w += glyph ? glyph.advance : fallback;
+    // Same kern the runtime and preview apply at the cursor, so layout
+    // (wrapping, centering) measures what drawing actually renders.
+    if (prev >= 0 && gi !== undefined) w += kernPairValue(asset, prev, gi);
+    prev = gi ?? -1;
   }
   return w;
 }
@@ -492,8 +520,65 @@ function rasterizeFontAsset(options: {
     baseline,
     glyphs,
     alpha: monoPack ? packBits(monoBits) : packNibbles(unpackedAlpha),
+    kern: computeKernPairs(options.font, glyphs, options.px / options.font.unitsPerEm),
     format: monoPack ? "mono1" : "alpha4",
   };
+}
+
+/** Bake the kerning pairs for a face's subset. opentype.js ^2 exposes pair
+ * kerning two ways: `font.getKerningValue` walks GPOS kern lookups (but
+ * returns 0 — never falling back — whenever the font also carries a legacy
+ * `kern` table it can't fully evaluate, which is exactly DejaVu's shape),
+ * and `font.kerningPairs` holds the legacy table as a flat map. Merging
+ * both, scaled to whole pixels, covers every font either way. All-pairs over
+ * the subset is O(n²) lookups at build time only — trivial for n ≤ ~100. */
+function computeKernPairs(
+  font: any,
+  glyphs: UIFontGlyphModel[],
+  scale: number,
+): UIFontKernPair[] {
+  const localIndexOf = new Map<number, number>();
+  for (let i = 0; i < glyphs.length; i++) {
+    const gi = font.charToGlyphIndex(String.fromCodePoint(glyphs[i]!.codepoint));
+    if (gi) localIndexOf.set(gi, i);
+  }
+  if (localIndexOf.size < 2) return [];
+  const legacy: Record<string, number> = font.kerningPairs ?? {};
+  const out: UIFontKernPair[] = [];
+  for (const [li, i] of localIndexOf) {
+    for (const [rj, j] of localIndexOf) {
+      let units = 0;
+      try { units = font.getKerningValue(li, rj) ?? 0; } catch { units = 0; }
+      if (!units) units = legacy[`${li},${rj}`] ?? 0;
+      if (!units) continue;
+      const px = Math.round(units * scale);
+      if (px !== 0) out.push({ l: i, r: j, v: px });
+    }
+  }
+  if (out.length > KERN_PAIR_MAX) {
+    out.sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
+    out.length = KERN_PAIR_MAX;
+  }
+  out.sort((a, b) => a.l - b.l || a.r - b.r);
+  return out;
+}
+
+/** Kerning adjustment (whole pixels) between two glyphs of an asset, by
+ * subset-local index. Mirrors the runtime's binary search over the same
+ * (l, r)-sorted pairs. Returns 0 when the face carries no pair table. */
+export function kernPairValue(asset: UIFontAssetModel, l: number, r: number): number {
+  const kern = asset.kern;
+  if (!kern || kern.length === 0 || l < 0 || r < 0) return 0;
+  let lo = 0;
+  let hi = kern.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const k = kern[mid]!;
+    if (k.l === l && k.r === r) return k.v;
+    if (k.l < l || (k.l === l && k.r < r)) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return 0;
 }
 
 // ── Mono light hinting: stem snapping ───────────────────────────────────────

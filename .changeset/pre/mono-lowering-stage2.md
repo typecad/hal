@@ -71,6 +71,15 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   and 2 pixels along its length; stems share phase across glyphs because
   every edge snaps to the same integer lattice. The alpha4 (color display)
   bake stays on the raw outline, byte-identical.
+- Pair kerning baked from opentype.js (the existing dependency — no new
+  packages): each face carries its subset's non-zero kern pairs (GPOS
+  lookups via getKerningValue, with the legacy `kern` table as fallback
+  because opentype.js never falls back itself when GPOS tables exist —
+  DejaVu ships both). The runtime applies the pair at the draw cursor via
+  a binary-searched UIFontKern table; ui_asset_text_width, span widths,
+  layout measurement (assetTextWidth), and the preview draw/width paths
+  all mirror it, so wrapping and centering measure what drawing renders.
+  Works for color and mono targets alike.
 
 Out of scope per the design: band renderer / scroll canvases / OSK on 1bpp.
 Raw display.* ops keep the direct-op runtime beneath the UI path.

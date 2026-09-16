@@ -16,6 +16,13 @@ struct UIFontGlyph {
   uint8_t advance;
   uint16_t dataOffset; // 4-bit alpha pixel offset (mono format: bit offset — see UIFontFace.format)
 };
+// Kerning pair: subset-local glyph indices (left, right) + whole-pixel
+// adjustment. Faces carry them (l, r)-sorted; the runtime binary-searches.
+struct UIFontKern {
+  uint8_t left;
+  uint8_t right;
+  int8_t value;
+};
 struct UIFontFace {
   uint8_t id;
   uint8_t glyphCount;
@@ -23,6 +30,8 @@ struct UIFontFace {
   uint8_t baseline;
   const UIFontGlyph* glyphs;
   const uint8_t* alpha;
+  const UIFontKern* kern;
+  uint8_t kernCount;
 #if defined(UI_NATIVE_MONO)
   // Stage 2 mono: 0 = 4-bit alpha nibbles (two pixels per byte, dataOffset in
   // nibbles), 1 = 1bpp packed bits (eight pixels per byte, MSB-first, dataOffset

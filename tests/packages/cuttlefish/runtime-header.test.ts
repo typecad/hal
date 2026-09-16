@@ -281,8 +281,11 @@ describe("C++ reactive runtime header", () => {
   });
 
   it("keeps generated font glyph lookup syntactically balanced", () => {
-    expect(header).toMatch(/ui_font_glyph[\s\S]*if \(face->glyphs\[i\]\.codepoint == codepoint\)[\s\S]*return nullptr;\n}\n\nstatic inline uint8_t ui_font_alpha_at/);
+    expect(header).toMatch(/ui_font_glyph_index[\s\S]*if \(face->glyphs\[i\]\.codepoint == codepoint\)[\s\S]*return -1;\n}\n\nstatic inline const UIFontGlyph\* ui_font_glyph/);
     expect(header).not.toMatch(/ui_font_glyph[\s\S]*return nullptr;\n}\n\s*return nullptr;\n}/);
+    // Pair kerning: the binary-search lookup and its use at the draw cursor.
+    expect(header).toMatch(/static inline int8_t ui_font_kern\(const UIFontFace\* face, int8_t leftIdx, int8_t rightIdx\)/);
+    expect(header).toMatch(/cursor = static_cast<int16_t>\(cursor \+ ui_font_kern\(face, prevIdx, idx\)\);/);
   });
 
   it("uses tree metadata for scroll ownership", () => {

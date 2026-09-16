@@ -291,6 +291,13 @@ function emitFontTables(model: UIProgram): string {
        );
      }
      lines.push("};");
+     // Kerning pairs (subset-local indices, whole pixels), (l, r)-sorted for
+     // the runtime's binary search.
+     lines.push(`static const UIFontKern __ui_font_${asset.id}_kern[] = {`);
+     for (const k of asset.kern ?? []) {
+       lines.push(`  { ${k.l}, ${k.r}, ${k.v} },`);
+     }
+     lines.push("};");
    }
 
    // Font faces and glyphs stay in regular memory for direct struct access
@@ -299,7 +306,7 @@ function emitFontTables(model: UIProgram): string {
    for (const asset of assets) {
      const format = mono ? (asset.format === "mono1" ? 1 : 0) : null;
      lines.push(
-       `  { ${asset.id}, ${asset.glyphs.length}, ${asset.lineHeight}, ${asset.baseline}, __ui_font_${asset.id}_glyphs, __ui_font_${asset.id}_alpha${format !== null ? `, ${format}` : ""} },`,
+       `  { ${asset.id}, ${asset.glyphs.length}, ${asset.lineHeight}, ${asset.baseline}, __ui_font_${asset.id}_glyphs, __ui_font_${asset.id}_alpha, __ui_font_${asset.id}_kern, ${(asset.kern?.length ?? 0)}${format !== null ? `, ${format}` : ""} },`,
      );
    }
    lines.push("};");

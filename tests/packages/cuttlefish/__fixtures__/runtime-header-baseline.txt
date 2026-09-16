@@ -122,6 +122,13 @@ struct UIFontGlyph {
   uint8_t advance;
   uint16_t dataOffset; // 4-bit alpha pixel offset (mono format: bit offset — see UIFontFace.format)
 };
+// Kerning pair: subset-local glyph indices (left, right) + whole-pixel
+// adjustment. Faces carry them (l, r)-sorted; the runtime binary-searches.
+struct UIFontKern {
+  uint8_t left;
+  uint8_t right;
+  int8_t value;
+};
 struct UIFontFace {
   uint8_t id;
   uint8_t glyphCount;
@@ -129,6 +136,8 @@ struct UIFontFace {
   uint8_t baseline;
   const UIFontGlyph* glyphs;
   const uint8_t* alpha;
+  const UIFontKern* kern;
+  uint8_t kernCount;
 #if defined(UI_NATIVE_MONO)
   // Stage 2 mono: 0 = 4-bit alpha nibbles (two pixels per byte, dataOffset in
   // nibbles), 1 = 1bpp packed bits (eight pixels per byte, MSB-first, dataOffset
@@ -3733,12 +3742,35 @@ static inline const UIFontFace* ui_font_face(uint8_t id) {
    return nullptr;
  }
 
- static inline const UIFontGlyph* ui_font_glyph(const UIFontFace* face, uint16_t codepoint) {
-   if (!face) return nullptr;
+ static inline int8_t ui_font_glyph_index(const UIFontFace* face, uint16_t codepoint) {
+   if (!face) return -1;
   for (uint8_t i = 0; i < face->glyphCount; i++) {
-    if (face->glyphs[i].codepoint == codepoint) return &face->glyphs[i];
+    if (face->glyphs[i].codepoint == codepoint) return static_cast<int8_t>(i);
   }
-  return nullptr;
+  return -1;
+}
+
+static inline const UIFontGlyph* ui_font_glyph(const UIFontFace* face, uint16_t codepoint) {
+  const int8_t idx = ui_font_glyph_index(face, codepoint);
+  return idx >= 0 ? &face->glyphs[static_cast<uint8_t>(idx)] : nullptr;
+}
+
+// Kerning adjustment between two glyphs by subset-local index. The pair
+// table is (left, right)-sorted at emit time, so this is a binary search.
+static inline int8_t ui_font_kern(const UIFontFace* face, int8_t leftIdx, int8_t rightIdx) {
+  if (!face || !face->kern || face->kernCount == 0 || leftIdx < 0 || rightIdx < 0) return 0;
+  int16_t lo = 0;
+  int16_t hi = static_cast<int16_t>(face->kernCount - 1);
+  const uint8_t l = static_cast<uint8_t>(leftIdx);
+  const uint8_t r = static_cast<uint8_t>(rightIdx);
+  while (lo <= hi) {
+    const int16_t mid = static_cast<int16_t>(lo + ((hi - lo) >> 1));
+    const UIFontKern* k = &face->kern[static_cast<uint8_t>(mid)];
+    if (k->left == l && k->right == r) return k->value;
+    if (k->left < l || (k->left == l && k->right < r)) lo = static_cast<int16_t>(mid + 1);
+    else hi = static_cast<int16_t>(mid - 1);
+  }
+  return 0;
 }
 
 static inline uint8_t ui_font_alpha_at(const UIFontFace* face, const UIFontGlyph* glyph, uint16_t pixelIndex) {
@@ -3797,11 +3829,16 @@ static inline uint16_t ui_next_utf8_codepoint(const unsigned char** p) {
 static inline uint16_t ui_asset_text_width(const char* text, const UIFontFace* face) {
   if (!text || !face) return 0;
   uint16_t w = 0;
+  int8_t prevIdx = -1;
   const unsigned char* p = (const unsigned char*)text;
   while (*p) {
     uint16_t codepoint = ui_next_utf8_codepoint(&p);
-    const UIFontGlyph* glyph = ui_font_glyph(face, codepoint);
+    int8_t idx = ui_font_glyph_index(face, codepoint);
+    const UIFontGlyph* glyph = idx >= 0 ? &face->glyphs[static_cast<uint8_t>(idx)] : nullptr;
     w += glyph ? glyph->advance : (face->lineHeight / 2);
+    // Pair kerning — must match the draw loop exactly (layout parity).
+    w = static_cast<uint16_t>(static_cast<int32_t>(w) + ui_font_kern(face, prevIdx, idx));
+    prevIdx = idx;
   }
   return w;
 }
@@ -3890,9 +3927,21 @@ static inline uint16_t ui_text_span_width(const char* start, const char* end, ui
   uint16_t w = 0;
   const unsigned char* p = (const unsigned char*)start;
   const unsigned char* limit = (const unsigned char*)end;
+  const UIFontFace* face = ui_font_face(fontFace);
+  int8_t prevIdx = -1;
   while (p < limit && *p) {
     uint16_t codepoint = ui_next_utf8_codepoint_bounded(&p, limit);
     if (codepoint == 0) break;
+    if (face) {
+      // Asset face: advance + pair kerning, matching the draw loop. (The
+      // generic advance below can't kern — it sees one codepoint at a time.)
+      int8_t idx = ui_font_glyph_index(face, codepoint);
+      const UIFontGlyph* glyph = idx >= 0 ? &face->glyphs[static_cast<uint8_t>(idx)] : nullptr;
+      w += glyph ? glyph->advance : (face->lineHeight / 2);
+      w = static_cast<uint16_t>(static_cast<int32_t>(w) + ui_font_kern(face, prevIdx, idx));
+      prevIdx = idx;
+      continue;
+    }
     w += ui_text_codepoint_advance(codepoint, ts, fontFace, letterSpacing);
   }
   return w;
@@ -4091,11 +4140,14 @@ static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y,
   int16_t targetLeft, targetTop, targetRight, targetBottom;
   ui_display_target_bounds(&targetLeft, &targetTop, &targetRight, &targetBottom);
   const unsigned char* p = (const unsigned char*)text;
+  int8_t prevIdx = -1;
   while (*p) {
     uint16_t codepoint = ui_next_utf8_codepoint(&p);
-    const UIFontGlyph* glyph = ui_font_glyph(face, codepoint);
+    int8_t idx = ui_font_glyph_index(face, codepoint);
+    const UIFontGlyph* glyph = idx >= 0 ? &face->glyphs[static_cast<uint8_t>(idx)] : nullptr;
     if (!glyph) {
       cursor += face->lineHeight / 2;
+      prevIdx = -1;
       continue;
     }
     int16_t glyphX = cursor + glyph->xOffset;
@@ -4103,6 +4155,8 @@ static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y,
     if (glyphX + static_cast<int16_t>(glyph->width) <= targetLeft || glyphX >= targetRight ||
         glyphY + static_cast<int16_t>(glyph->height) <= targetTop || glyphY >= targetBottom) {
       cursor += glyph->advance;
+      cursor = static_cast<int16_t>(cursor + ui_font_kern(face, prevIdx, idx));
+      prevIdx = idx;
       continue;
     }
     int16_t gxStart = glyphX < targetLeft ? static_cast<int16_t>(targetLeft - glyphX) : 0;
@@ -4131,6 +4185,8 @@ static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y,
       }
     }
     cursor += glyph->advance;
+    cursor = static_cast<int16_t>(cursor + ui_font_kern(face, prevIdx, idx));
+    prevIdx = idx;
   }
   return 1;
 }
