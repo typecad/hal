@@ -1,0 +1,16 @@
+{
+  "name": "demo-font-sizes",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Font-size ladder on the SSD1309 128x64 mono OLED — the same DejaVu face at 10/13/15/17px through the standard pipeline",
+  "type": "module",
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload"
+  },
+  "dependencies": {
+    "@typecad/framework-zephyr": "*",
+    "@typecad/ui": "*"
+  }
+}
