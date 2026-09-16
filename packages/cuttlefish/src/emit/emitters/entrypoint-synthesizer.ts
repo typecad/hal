@@ -68,19 +68,28 @@ export function synthesizeEntrypoints(ctx: EmitterContext): void {
         } as never);
       }
       if (modelsGpio) {
+        // Pin-mode configuration goes through the strategy hook (the
+        // framework's own vocabulary — Zephyr lowers to
+        // __tc_gpio_configure_input, Arduino to pinMode) so cuttlefish never
+        // emits a Wiring token by name. Interrupt wiring stays explicit:
+        // attachInterrupt/digitalPinToInterrupt are Arduino-core symbols and
+        // press bindings remain an Arduino-framework feature.
+        const pinModeFor = (pin: string | number): string =>
+          strategy.setPinMode?.(String(pin), "INPUT_PULLUP") ?? `pinMode(${pin}, INPUT_PULLUP);`;
         for (const pb of pressBindings) {
           const mode = pb.edge === "press" ? "FALLING" : "RISING";
           uiSetupStmts.push(
-            { kind: "call" as const, callee: `__RAW_STMT__pinMode(${pb.pin}, INPUT_PULLUP);`, args: [],
+            { kind: "call" as const, callee: `__RAW_STMT__${pinModeFor(pb.pin)}`, args: [],
               sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
             { kind: "call" as const, callee: `__RAW_STMT__attachInterrupt(digitalPinToInterrupt(${pb.pin}), ${pb.handlerName}, ${mode});`, args: [],
               sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
           );
         }
-        // Pin-watchers (from ui.watchPin): set pin mode so ui_poll_inputs can read it
+        // Pin-watchers (from ui.watchPin): configure the pin as pulled-up
+        // input so ui_poll_inputs can read it.
         for (const wp of pinWatchers) {
           uiSetupStmts.push(
-            { kind: "call" as const, callee: `__RAW_STMT__pinMode(${wp.pin}, INPUT_PULLUP);`, args: [],
+            { kind: "call" as const, callee: `__RAW_STMT__${pinModeFor(wp.pin)}`, args: [],
               sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
           );
         }

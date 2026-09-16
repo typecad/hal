@@ -1,0 +1,193 @@
+<script lang="ts">
+  // app.ui — mono feature exercise (SSD1309 128x64, ESP32-S3).
+  //
+  // Closes the Stage 2 hardware-verification gaps in one flash: 1bpp images
+  // (threshold + Floyd-Steinberg), a scrollable virtualized list, a select,
+  // a toast, a dialog, GPIO input, and visibility-driven pages.
+  //
+  // Interaction — no touch panel: the BOOT button (GPIO0, active-low) is
+  // watched via ui.watchPin. Each press flips between pages A/B; every 3rd
+  // press pops a toast; every 5th opens the dialog (the next press closes
+  // it). The two <screen> elements + href links compile the ui_navigate
+  // path; activating those needs touch, so pages drive the live demo.
+  //
+  //   Page A: title bar, threshold image (logo.png), animated progress,
+  //           press counter.
+  //   Page B: title bar, FS-dithered gradient (grad.png), 30-item list
+  //           (scrollbar drawn; drag-scroll needs a touch panel), select.
+
+  import { ui } from '@typecad/ui';
+  import { Time } from '@typecad/hal';
+
+  ui.mount(screen);
+
+  export const page = ui.signal(0);
+  export const presses = ui.signal(0);
+  export const dialogOpen = ui.signal(0);
+
+  ui.watchPin(0, () => {
+    if (dialogOpen()) {
+      ui.dialog.close('featDialog');
+      dialogOpen.set(0);
+      return;
+    }
+    const n = presses() + 1;
+    presses.set(n);
+    page.set(page() === 0 ? 1 : 0);
+    if (n % 3 === 0) ui.toast('featToast');
+    if (n % 5 === 0) {
+      ui.dialog.open('featDialog');
+      dialogOpen.set(1);
+    }
+  });
+
+  ui.bind(screen.pgA, 'visible', () => page() === 0);
+  ui.bind(screen.pgB, 'visible', () => page() === 1);
+  ui.bind(screen.pressEcho, 'text', () => `presses: ${presses()}`);
+  ui.bind(screen.pageEcho, 'text', () => `page: ${page() === 0 ? 'A' : 'B'}`);
+
+  // Sweep 0..99 every 5s (int arithmetic — see the mono-rig notes).
+  ui.bind(screen.featProgress, 'value', () => Math.floor(Time.now() / 50) % 100);
+
+  // Virtualized list: 30 items, tap rows reserved for touch builds.
+  ui.bindList(
+    screen.featList,
+    () => 30,
+    (i: number) => `Item ${i + 1}`,
+    (i: number) => { void i; },
+  );
+</script>
+
+<style>
+  @font-face {
+    font-family: "Feat";
+    src: url("../../../packages/ui/assets/fonts/dejavu/DejaVuSansMono.ttf");
+    font-weight: 400;
+    font-style: normal;
+  }
+
+  :root {
+    background: #000000;
+    color: #ffffff;
+    flex-direction: column;
+  }
+
+  view, text, button, select, progress {
+    font-family: "Feat";
+    font-size: 11px;
+  }
+
+  #pgA, #pgB {
+    flex-direction: column;
+    width: 128px;
+    height: 64px;
+  }
+
+  #barA, #barB {
+    background: #ffffff;
+    padding: 1px 3px;
+    height: 13px;
+  }
+  #barA text, #barB text {
+    color: #000000;
+  }
+
+  #logoImg {
+    margin: 4px 16px 0 16px;
+  }
+
+  #progRow {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 3px 3px 0 3px;
+    height: 15px;
+  }
+  #featProgress {
+    width: 90px;
+    height: 9px;
+    min-height: 0;
+    border: 1px solid #ffffff;
+  }
+
+  #echoRow {
+    padding: 3px 3px 0 3px;
+    height: 14px;
+  }
+
+  #hintRow {
+    padding: 2px 3px 0 3px;
+    height: 13px;
+  }
+  #hintRow text {
+    color: #909090;
+  }
+
+  #gradRow {
+    display: flex;
+    flex-direction: row;
+    padding: 2px 3px;
+    height: 26px;
+  }
+  #gradImg {
+    margin: 2px 0 0 2px;
+  }
+  #featSel {
+    margin: 4px 0 0 8px;
+    height: 15px;
+  }
+
+  #featList {
+    margin: 1px 3px 0 3px;
+    height: 34px;
+  }
+
+  #featToast {
+    background: #ffffff;
+    color: #000000;
+  }
+
+  #featDialog {
+    background: #000000;
+    border: 1px solid #ffffff;
+  }
+</style>
+
+<screen id="features">
+  <view id="pgA">
+    <view id="barA"><text id="barATitle">FEATURES 1/2</text></view>
+    <img id="logoImg" src="logo.png" dither="threshold"></img>
+    <view id="progRow">
+      <progress id="featProgress" value="0"></progress>
+    </view>
+    <view id="echoRow"><text id="pressEcho">presses: 0</text></view>
+    <view id="hintRow"><text id="hintA">hold BOOT: next page</text></view>
+  </view>
+  <view id="pgB" style="visible: hidden">
+    <view id="barB"><text id="barBTitle">FEATURES 2/2</text></view>
+    <view id="gradRow">
+      <img id="gradImg" src="grad.png" dither="floyd-steinberg"></img>
+      <select id="featSel">
+        <option>Alpha</option>
+        <option>Beta</option>
+        <option>Gamma</option>
+      </select>
+    </view>
+    <list id="featList" item-height="11"></list>
+  </view>
+  <toast id="featToast" duration="2000">page flipped</toast>
+  <dialog id="featDialog">
+    <text id="dlgTitle">every 5th press</text>
+    <text id="dlgBody">BOOT closes this</text>
+  </dialog>
+  <view id="pageEchoWrap" style="display: none"><text id="pageEcho">page: A</text></view>
+</screen>
+<screen id="nav">
+  <view id="navBar" class="bar">
+    <text id="navTitle">NAV (touch builds)</text>
+  </view>
+  <view id="navBody">
+    <text id="navHint">href links auto-wire taps</text>
+    <button id="navHome" href="#features">back to features</button>
+  </view>
+</screen>

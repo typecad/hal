@@ -1214,6 +1214,10 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (this.needsGpioReadShim(program, ctx)) {
       lines.push(
         'inline int __tc_gpio_read(int pin) { return gpio_pin_get_raw(__tc_gpio_dev(static_cast<uint32_t>(pin)), __tc_gpio_pin(static_cast<uint32_t>(pin))); }',
+        // Runtime input configuration for ui.watchPin / ui.press setup
+        // (the strategy's setPinMode lowers here). Idempotent — setup calls
+        // it once per watched pin before the poll loop reads it.
+        'inline void __tc_gpio_configure_input(uint32_t pin) { gpio_pin_configure(__tc_gpio_dev(pin), __tc_gpio_pin(pin), GPIO_INPUT | GPIO_PULL_UP); }',
       );
     }
     // __tc_gpio_write / __tc_delay_us are only referenced via @typecad/safety
@@ -2303,9 +2307,14 @@ struct __tc_StaticArray {
   writeDigitalPin(pin: string, val: string): string {
     return `__tc_gpio_write(${pin}, ${val})`;
   }
-  setPinMode(_pin: string, _mode: string): string {
-    // Zephyr configures pin direction via devicetree, not a runtime pinMode.
-    return `/* pin mode configured via devicetree */`;
+  setPinMode(pin: string, _mode: string): string {
+    // Runtime input configuration: Zephyr has no pinMode — the GPIO API
+    // configures direction/pull explicitly. The mode argument is ignored:
+    // every watchPin/press consumer wants an input with pull-up (buttons are
+    // active-low), and __tc_gpio_configure_input hardcodes exactly that.
+    // The helper's definition rides the GPIO read shim (same gate — UI builds
+    // with pin watchers always carry the read surface too).
+    return `__tc_gpio_configure_input(static_cast<uint32_t>(${pin}));`;
   }
   delayMs(ms: string): string {
     return `k_msleep(${ms})`;

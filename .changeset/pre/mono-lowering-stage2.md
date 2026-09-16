@@ -168,6 +168,20 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   instead of drifting silently. compat-report warns when a mono UI
   uses font-size below the 10px legibility floor
   (css-mono-font-size-floor).
+- GPIO input on Zephyr: ui.watchPin previously emitted raw Arduino
+  pinMode/INPUT_PULLUP in setup and had no Zephyr story — the compile
+  failed the moment a mono UI watched a pin. Pin-mode configuration now
+  goes through the platform-strategy hook (setPinMode): Zephyr lowers to
+  a new __tc_gpio_configure_input helper (GPIO_INPUT | GPIO_PULL_UP on
+  the owning controller via the existing __tc_gpio_dev dispatcher),
+  Arduino keeps pinMode, and cuttlefish stops emitting Wiring tokens by
+  name on this path. demos/demo-mono-features exercises the verified-on-
+  hardware set in one flash: 1bpp images (threshold logo + Floyd-
+  Steinberg gradient), a 30-item virtualized list, a select, toast +
+  dialog triggered from the BOOT button (GPIO0) via ui.watchPin, and
+  visibility-driven pages. Scroll-drag and href navigation still need a
+  touch panel — their draw paths compile and render, interaction awaits
+  touch hardware.
 - TrueType hinting is now the primary mono raster path: for fonts
   shipping hinting bytecode (DejaVu does), the bake executes the
   designer's own per-size grid fitting through opentype.js 2.0's
