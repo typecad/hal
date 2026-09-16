@@ -58,10 +58,19 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   UA's light screen defaults won the cascade and the panel rendered with a
   fully-lit background (which read as white lines flanking the pressed
   rect's border). The mono glyph bake threshold drops from 50% to ~31%
-  coverage (MONO_ALPHA_THRESHOLD 8→5): thin stems of a 10px bold face sat
+  coverage (MONO_ALPHA_THRESHOLD 8→5): thin strokes of a 10px bold face sit
   under 50% coverage and dropped out, leaving ragged anti-alias-looking
   edges; 5 keeps strokes connected without over-bolding (both the panel and
   the preview render the same baked bits).
+- Mono light hinting: the 1bpp bake now snaps stems onto the pixel grid (a
+  simplified FreeType-autohinter mono pass — near-vertical/horizontal edge
+  runs, stem pairing, integer-width snapping, interpolated point shifts),
+  plus a conservative despeckle/hole-fill finishing pass that exempts
+  tiny-mark glyphs (a middot at 10px is legitimately one pixel). A 1.4px
+  stem renders one constant integer width instead of wobbling between 1
+  and 2 pixels along its length; stems share phase across glyphs because
+  every edge snaps to the same integer lattice. The alpha4 (color display)
+  bake stays on the raw outline, byte-identical.
 
 Out of scope per the design: band renderer / scroll canvases / OSK on 1bpp.
 Raw display.* ops keep the direct-op runtime beneath the UI path.

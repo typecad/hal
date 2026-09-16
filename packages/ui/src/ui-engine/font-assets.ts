@@ -431,7 +431,14 @@ function rasterizeFontAsset(options: {
     const glyph = options.font.charToGlyph(ch);
     const advance = Math.max(1, Math.ceil((glyph.advanceWidth ?? options.font.unitsPerEm / 2) * scale));
     const path = glyph.getPath(0, 0, options.px);
-    const bbox = path.getBoundingBox();
+    const rawContours = flattenPath(path.commands as OpenTypePathCommand[]);
+    // Mono light hinting: snap stems onto the pixel grid BEFORE sampling, so
+    // a 1.4px stem renders one constant integer width instead of wobbling
+    // between 1 and 2 pixels along its length (the "bumps" plain coverage
+    // thresholding shows at small sizes). Alpha4 keeps the raw outline and
+    // its original path bbox, byte-identical to the pre-hinting bake.
+    const contours = monoPack && rawContours.length > 0 ? monoHintContours(rawContours) : rawContours;
+    const bbox = contours !== rawContours ? contoursBBox(contours) : path.getBoundingBox();
     const empty = !Number.isFinite(bbox.x1) || !Number.isFinite(bbox.y1) || bbox.x1 === bbox.x2 || bbox.y1 === bbox.y2;
     const xOffset = empty ? 0 : Math.floor(bbox.x1) - 1;
     const yOffset = empty ? 0 : Math.floor(bbox.y1) - 1;
@@ -440,7 +447,7 @@ function rasterizeFontAsset(options: {
     const dataOffset = monoPack ? monoBits.length : unpackedAlpha.length;
 
     if (width > 0 && height > 0) {
-      const contours = flattenPath(path.commands as OpenTypePathCommand[]);
+      const monoGlyph: number[] = [];
       for (let py = 0; py < height; py++) {
         for (let px = 0; px < width; px++) {
           let covered = 0;
@@ -452,9 +459,13 @@ function rasterizeFontAsset(options: {
             }
           }
           const alpha = Math.round((covered * 15) / (SUPERSAMPLE * SUPERSAMPLE));
-          if (monoPack) monoBits.push(alpha >= MONO_ALPHA_THRESHOLD ? 1 : 0);
+          if (monoPack) monoGlyph.push(alpha >= MONO_ALPHA_THRESHOLD ? 1 : 0);
           else unpackedAlpha.push(alpha);
         }
+      }
+      if (monoPack) {
+        monoDespeckle(monoGlyph, width, height);
+        for (const b of monoGlyph) monoBits.push(b);
       }
     }
 
@@ -483,6 +494,180 @@ function rasterizeFontAsset(options: {
     alpha: monoPack ? packBits(monoBits) : packNibbles(unpackedAlpha),
     format: monoPack ? "mono1" : "alpha4",
   };
+}
+
+// ── Mono light hinting: stem snapping ───────────────────────────────────────
+// A simplified FreeType-autohinter-in-mono-mode pass over the flattened
+// contours, applied only on the 1bpp bake path:
+//   1. Edge runs — maximal sequences of near-parallel path segments (a stem
+//      side or a flat bar edge) become edges, positioned by their
+//      length-weighted mean along the snapped axis.
+//   2. Stem pairing — adjacent-in-position edges whose extents overlap and
+//      whose gap is stem-like (0.55..2.6px) form a stem; the pair snaps so
+//      BOTH edges land on integer pixels exactly `round(gap)` apart.
+//   3. Unpaired edges (terminals, counters) snap to the nearest integer.
+//   4. Every contour point shifts by the piecewise-linear interpolation of
+//      its bracketing edges' deltas, so curves between snapped stems stay
+//      smooth instead of tearing.
+// Because all edges snap to the same integer lattice, stems share phase
+// across glyphs (the i/l/t stems align) without any global table.
+const MONO_HINT_STEM_MIN_PX = 0.55;
+const MONO_HINT_STEM_MAX_PX = 2.6;
+const MONO_HINT_RUN_MIN_PX = 0.7;
+const MONO_HINT_MAX_SHIFT = 0.85;
+const MONO_HINT_STEM_OVERLAP = 0.55;
+
+interface MonoHintEdge {
+  pos: number;
+  lo: number;
+  hi: number;
+  delta: number;
+}
+
+function collectMonoEdges(contours: Point[][], axis: "x" | "y"): MonoHintEdge[] {
+  const edges: MonoHintEdge[] = [];
+  const other = axis === "x" ? "y" : "x";
+  for (const contour of contours) {
+    if (contour.length < 2) continue;
+    let runLen = 0;
+    let runPosSum = 0;
+    let lo = Infinity;
+    let hi = -Infinity;
+    let runDir = 0;
+    const flush = () => {
+      if (runLen >= MONO_HINT_RUN_MIN_PX) {
+        edges.push({ pos: runPosSum / runLen, lo, hi, delta: 0 });
+      }
+      runLen = 0;
+      runPosSum = 0;
+      lo = Infinity;
+      hi = -Infinity;
+      runDir = 0;
+    };
+    for (let i = 0; i < contour.length; i++) {
+      const a = contour[i];
+      const b = contour[(i + 1) % contour.length];
+      const snapD = b[axis] - a[axis];
+      const otherD = b[other] - a[other];
+      const otherLen = Math.abs(otherD);
+      const dir = otherD > 0 ? 1 : otherD < 0 ? -1 : 0;
+      const steers = otherLen > 1e-6 && Math.abs(snapD) <= 0.5 * otherLen && (runDir === 0 || dir === runDir);
+      if (steers) {
+        runLen += otherLen;
+        runPosSum += ((a[axis] + b[axis]) / 2) * otherLen;
+        lo = Math.min(lo, a[other], b[other]);
+        hi = Math.max(hi, a[other], b[other]);
+        runDir = dir;
+      } else if (otherLen > 1e-6) {
+        flush();
+        // The segment that broke the run may itself steer a new one.
+        if (Math.abs(snapD) <= 0.5 * otherLen) {
+          runLen = otherLen;
+          runPosSum = ((a[axis] + b[axis]) / 2) * otherLen;
+          lo = Math.min(a[other], b[other]);
+          hi = Math.max(a[other], b[other]);
+          runDir = dir;
+        }
+      }
+    }
+    flush();
+  }
+  return edges;
+}
+
+function monoAxisShift(edges: MonoHintEdge[]): (v: number) => number {
+  if (edges.length === 0) return () => 0;
+  edges.sort((a, b) => a.pos - b.pos);
+  const clamp = (d: number) => Math.max(-MONO_HINT_MAX_SHIFT, Math.min(MONO_HINT_MAX_SHIFT, d));
+  const paired = new Array<boolean>(edges.length).fill(false);
+  for (let i = 0; i + 1 < edges.length; i++) {
+    const a = edges[i];
+    const b = edges[i + 1];
+    if (paired[i] || paired[i + 1]) continue;
+    const gap = b.pos - a.pos;
+    const overlap = Math.min(a.hi, b.hi) - Math.max(a.lo, b.lo);
+    const minExtent = Math.min(a.hi - a.lo, b.hi - b.lo);
+    if (gap < MONO_HINT_STEM_MIN_PX || gap > MONO_HINT_STEM_MAX_PX) continue;
+    if (minExtent <= 0 || overlap < MONO_HINT_STEM_OVERLAP * minExtent) continue;
+    const stemW = Math.max(1, Math.round(gap));
+    const newLeft = Math.round(a.pos + (stemW - gap) / 2);
+    a.delta = clamp(newLeft - a.pos);
+    b.delta = clamp(newLeft + stemW - b.pos);
+    paired[i] = true;
+    paired[i + 1] = true;
+  }
+  for (let i = 0; i < edges.length; i++) {
+    if (!paired[i]) edges[i].delta = clamp(Math.round(edges[i].pos) - edges[i].pos);
+  }
+  return (v: number): number => {
+    if (v <= edges[0].pos) return edges[0].delta;
+    const last = edges[edges.length - 1];
+    if (v >= last.pos) return last.delta;
+    for (let i = 0; i + 1 < edges.length; i++) {
+      const a = edges[i];
+      const b = edges[i + 1];
+      if (v >= a.pos && v <= b.pos) {
+        const t = b.pos > a.pos ? (v - a.pos) / (b.pos - a.pos) : 0;
+        return clamp(a.delta + t * (b.delta - a.delta));
+      }
+    }
+    return 0;
+  };
+}
+
+/** Snap a glyph's stems onto the pixel grid (mono bake only). */
+export function monoHintContours(contours: Point[][]): Point[][] {
+  const shiftX = monoAxisShift(collectMonoEdges(contours, "x"));
+  const shiftY = monoAxisShift(collectMonoEdges(contours, "y"));
+  return contours.map((c) =>
+    c.map((p) => ({ x: p.x + shiftX(p.x), y: p.y + shiftY(p.y) })),
+  );
+}
+
+function contoursBBox(contours: Point[][]): { x1: number; y1: number; x2: number; y2: number } {
+  let x1 = Infinity;
+  let y1 = Infinity;
+  let x2 = -Infinity;
+  let y2 = -Infinity;
+  for (const c of contours) {
+    for (const p of c) {
+      x1 = Math.min(x1, p.x);
+      y1 = Math.min(y1, p.y);
+      x2 = Math.max(x2, p.x);
+      y2 = Math.max(y2, p.y);
+    }
+  }
+  return { x1, y1, x2, y2 };
+}
+
+// Binary finishing pass on the baked 1bpp glyph: drop isolated specks the
+// threshold leaves at curve tails (no orthogonal neighbors and at most one
+// diagonal), and close plus-shaped single-pixel holes inside strokes.
+// Tiny-mark glyphs (a middot or period at 10px is a single pixel) are exempt —
+// their only ink IS an isolated pixel, not a speck beside a stroke.
+function monoDespeckle(bits: number[], w: number, h: number): void {
+  if (w < 3 || h < 3) return;
+  let ink = 0;
+  for (const b of bits) ink += b;
+  if (ink < 4) return;
+  const src = bits.slice();
+  const at = (x: number, y: number): number =>
+    x < 0 || y < 0 || x >= w || y >= h ? 0 : src[y * w + x];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const n4 = at(x, y - 1) + at(x, y + 1) + at(x - 1, y) + at(x + 1, y);
+      if (src[i] === 1) {
+        if (n4 === 0) {
+          const diag =
+            at(x - 1, y - 1) + at(x + 1, y - 1) + at(x - 1, y + 1) + at(x + 1, y + 1);
+          if (diag <= 1) bits[i] = 0;
+        }
+      } else if (n4 === 4) {
+        bits[i] = 1;
+      }
+    }
+  }
 }
 
 function flattenPath(commands: OpenTypePathCommand[]): Point[][] {

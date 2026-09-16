@@ -37,8 +37,8 @@
 <style>
   @font-face {
     font-family: "RigMono";
-    src: url("../../../packages/ui/assets/fonts/dejavu/DejaVuSans-Bold.ttf");
-    font-weight: 700;
+    src: url("../../../packages/ui/assets/fonts/dejavu/DejaVuSans.ttf");
+    font-weight: 400;
     font-style: normal;
   }
 
@@ -57,7 +57,7 @@
     color: #000000;
     font-family: "RigMono";
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 400;
   }
 
   #row2 {
