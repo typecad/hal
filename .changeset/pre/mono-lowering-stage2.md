@@ -107,6 +107,17 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   values drew with gaps ("t=12.5s" rendered "t=1 s"). Mono faces now widen
   to the fallback charset unconditionally (~0.7KB mono1 bits; color targets
   keep the precise per-node widening).
+- Hinting deformation guard + the size floor: snapping a stroke to an
+  integer width deforms it by |round(gap) - gap| and squeezes the curves
+  attached to it — pairs needing more than 0.3px of deformation now keep
+  their designed width (the d/m bowls thinned below the draw threshold
+  before this). And the rig demo moves to 12px text in four 16px rows:
+  10px is this face's resolution floor (stems ~0.95px, features collide
+  with the threshold); at 12px stems quantize to 1px cleanly, counters
+  open, and every previously-damaged glyph renders complete. The demo
+  drops the fifth (#alt) line — its bound-text coverage duplicates
+  sweepPct's — and shortens the title to "SSD1309 · MONO" (the full
+  string overflows 122px at 12px).
 
 Out of scope per the design: band renderer / scroll canvases / OSK on 1bpp.
 Raw display.* ops keep the direct-op runtime beneath the UI path.

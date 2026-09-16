@@ -5,11 +5,10 @@
   // ui_tick), so the panel shows motion with no wiring beyond power + I2C:
   //
   //   ┌────────────────────┐  What to verify visually:
-  //   │ SSD1309 · MONO RIG │  1. Crisp 1bpp text (subset font, no AA)
+  //   │ SSD1309 · MONO │  1. 12px text — the resolution floor for this face
   //   │ t=12.5s            │  2. Uptime counts ~2x/s → full-frame redraw
   //   │ ▓▓▓▓▓▓░░░░░░  47%  │  3. Bar sweeps 0→100% every 5s
   //   │ ██ INVERT ██       │  4. Button face inverts every second
-  //   │ alternating line   │  5. Second line alternates text
   //   └────────────────────┘
   //
   // If the display shows transposed snow instead of this layout, the vtiled
@@ -30,8 +29,6 @@
   ui.bind(screen.sweepPct, 'text', () => `${screen.sweep.value}%`);
   // 1 Hz square wave drives the button's :pressed value → face inversion.
   ui.bind(screen.invert, 'value', () => Math.floor(Time.now() / 1000) % 2);
-  // Alternating status line keyed off the same square wave.
-  ui.bind(screen.alt, 'text', () => screen.invert.value ? 'colors: 0/1 only' : 'frame: full redraw');
 </script>
 
 <style>
@@ -50,31 +47,31 @@
 
   #titlebar {
     background: #ffffff;
-    padding: 1px 3px;
-    height: 12px;
+    padding: 2px 3px;
+    height: 16px;
   }
   #title {
     color: #000000;
     font-family: "RigMono";
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 400;
   }
 
   #row2 {
-    padding: 0 3px;
-    height: 11px;
+    padding: 1px 3px;
+    height: 16px;
   }
   #uptime {
     font-family: "RigMono";
-    font-size: 10px;
+    font-size: 12px;
   }
 
   #row3 {
     display: flex;
     flex-direction: row;
     align-items: center;
-    padding: 0 3px;
-    height: 14px;
+    padding: 2px 3px;
+    height: 16px;
   }
   #sweep {
     width: 90px;
@@ -84,7 +81,7 @@
   }
   #sweepPct {
     font-family: "RigMono";
-    font-size: 10px;
+    font-size: 12px;
     width: 30px;
   }
 
@@ -93,14 +90,14 @@
     flex-direction: row;
     justify-content: center;
     padding: 1px 3px;
-    height: 14px;
+    height: 16px;
   }
   #invert {
     font-family: "RigMono";
-    font-size: 10px;
+    font-size: 12px;
     width: 90px;
     min-height: 0;
-    height: 12px;
+    height: 14px;
     padding: 0 4px;
     border: 1px solid #ffffff;
     color: #ffffff;
@@ -110,19 +107,11 @@
     color: #000000;
   }
 
-  #row5 {
-    padding: 0 3px;
-    height: 11px;
-  }
-  #alt {
-    font-family: "RigMono";
-    font-size: 10px;
-  }
 </style>
 
 <screen>
   <view id="titlebar">
-    <text id="title">SSD1309 · MONO RIG</text>
+    <text id="title">SSD1309 · MONO</text>
   </view>
   <view id="row2">
     <text id="uptime">t=0s</text>
@@ -133,8 +122,5 @@
   </view>
   <view id="row4">
     <button id="invert">INVERT</button>
-  </view>
-  <view id="row5">
-    <text id="alt">frame: full redraw</text>
   </view>
 </screen>

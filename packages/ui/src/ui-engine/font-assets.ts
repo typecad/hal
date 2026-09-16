@@ -622,6 +622,11 @@ const MONO_HINT_STEM_OVERLAP = 0.55;
 // to the zone. Half the stem-pairing window — wide enough to catch drift,
 // narrow enough that x-height and cap-height never collide (≥1px apart).
 const MONO_HINT_ZONE_TOL_PX = 0.35;
+// Max width deformation a snapped stem may impose on its stroke. Strokes
+// near integer width snap; anything needing more distortion stays designed
+// (the deformation squeezes the curves attached to the stroke — the 'd'
+// bowl bars and 'm' arch thinned below the draw threshold before this).
+const MONO_HINT_MAX_DEFORM_PX = 0.3;
 
 /** A y-axis blue zone: a shared design height in path coordinates (negative
  *  above the baseline) and the integer row every near edge should land on. */
@@ -726,6 +731,12 @@ function monoAxisShift(
     // (the R's leg collapsed to a nub: it read as a P on the panel).
     if (inkBetween && !inkBetween(a.pos, b.pos, Math.max(a.lo, b.lo), Math.min(a.hi, b.hi))) continue;
     const stemW = Math.max(1, Math.round(gap));
+    // Snapping deforms the stroke by |stemW - gap| (distributed to both
+    // edges) and the surrounding curve points interpolate that squeeze.
+    // Strokes already near an integer width (within 0.3px) snap cleanly;
+    // anything further would visibly thin or fatten the stroke and smear
+    // the attached curves — leave those at their designed width.
+    if (Math.abs(stemW - gap) > MONO_HINT_MAX_DEFORM_PX) continue;
     const newLeft = Math.round(a.pos + (stemW - gap) / 2);
     a.delta = clamp(newLeft - a.pos);
     b.delta = clamp(newLeft + stemW - b.pos);
