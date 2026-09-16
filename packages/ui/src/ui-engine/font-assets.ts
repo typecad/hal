@@ -223,6 +223,15 @@ export function buildUIFontAssets(
   const assets: UIFontAssetModel[] = [];
   let id = 1;
   for (const plan of plans) {
+    // LVGL font-converter output (.c) is a bitmap source: glyphs come from
+    // the file as-is (its own size/metrics), not from an outline raster.
+    if (plan.sourcePath.endsWith(".c")) {
+      const lvgl = parseLvglFontC(fs.readFileSync(plan.sourcePath, "utf8"));
+      if (lvgl) {
+        assets.push(bakeLvglFontAsset({ id: id++, family: plan.family, sourcePath: plan.sourcePath, px: plan.px, fontWeight: plan.fontWeight, fontStyle: plan.fontStyle, subset: plan.subset, chars: plan.chars, lvgl }));
+        continue;
+      }
+    }
     let font = parsedFonts.get(plan.sourcePath);
     if (!font) {
       const bytes = fs.readFileSync(plan.sourcePath);
@@ -912,6 +921,137 @@ function monoSmoothDiagonals(bits: number[], w: number, h: number): void {
       }
     }
   }
+}
+
+// ── LVGL font-converter sources (.c) ────────────────────────────────────────
+// `lv_font_conv --format lvgl --bpp 1 --no-compress` output is a bitmap font:
+// per-glyph byte-aligned 1bpp bitmaps (bit-continuous MSB-first within a
+// glyph — our mono1 cell layout), metrics in glyph_dsc (adv_w in 1/16 px),
+// codepoint ranges in cmaps, line geometry in the trailing lv_font_t.
+// Empirically (verified against 'A'/'g' shapes): a bitmap's BOTTOM sits
+// −ofs_y relative to the baseline, so our top-relative yOffset is
+// −ofs_y − box_h, and the baseline sits line_height − base_line from the
+// cell top. kern_dsc is NULL unless the converter is asked for kerning.
+
+interface LvglGlyph {
+  codepoint: number;
+  advPx: number;
+  boxW: number;
+  boxH: number;
+  ofsX: number;
+  ofsY: number;
+  bitmapIndex: number;
+}
+
+interface LvglFont {
+  bitmap: number[];
+  glyphs: LvglGlyph[];
+  lineHeight: number;
+  baseline: number;
+}
+
+export function parseLvglFontC(text: string): LvglFont | undefined {
+  if (!text.includes("lv_font_fmt_txt") && !text.includes("lv_font_t")) return undefined;
+  const bitmapMatch = /glyph_bitmap\[\]\s*=\s*\{([\s\S]*?)\};/.exec(text);
+  const dscMatch = /glyph_dsc\[\]\s*=\s*\{([\s\S]*?)\};/.exec(text);
+  if (!bitmapMatch || !dscMatch) return undefined;
+  const bitmap = [...bitmapMatch[1].matchAll(/0x([0-9a-fA-F]+)/g)].map((m) => parseInt(m[1]!, 16));
+  const glyphRows = [...dscMatch[1].matchAll(
+    /\{\s*\.bitmap_index\s*=\s*(\d+)\s*,\s*\.adv_w\s*=\s*(\d+)\s*,\s*\.box_w\s*=\s*(\d+)\s*,\s*\.box_h\s*=\s*(\d+)\s*,\s*\.ofs_x\s*=\s*(-?\d+)\s*,\s*\.ofs_y\s*=\s*(-?\d+)\s*\}/g,
+  )];
+  if (glyphRows.length === 0) return undefined;
+  // cmaps map codepoints to glyph-table rows (FORMAT0_TINY: contiguous
+  // range starting at glyph_id_start; row 0 is reserved).
+  const glyphByCodepoint = new Map<number, number>();
+  for (const cm of text.matchAll(/\.range_start\s*=\s*(\d+)\s*,\s*\.range_length\s*=\s*(\d+)\s*,\s*\.glyph_id_start\s*=\s*(\d+)/g)) {
+    const start = parseInt(cm[1]!, 10);
+    const length = parseInt(cm[2]!, 10);
+    const gidStart = parseInt(cm[3]!, 10);
+    for (let i = 0; i < length; i++) glyphByCodepoint.set(start + i, gidStart + i);
+  }
+  const glyphs: LvglGlyph[] = [];
+  for (let row = 1; row < glyphRows.length; row++) {
+    const g = glyphRows[row]!;
+    const cp = [...glyphByCodepoint.entries()].find(([, gid]) => gid === row)?.[0];
+    if (cp === undefined) continue;
+    glyphs.push({
+      codepoint: cp,
+      advPx: Math.round(parseInt(g[2]!, 10) / 16),
+      boxW: parseInt(g[3]!, 10),
+      boxH: parseInt(g[4]!, 10),
+      ofsX: parseInt(g[5]!, 10),
+      ofsY: parseInt(g[6]!, 10),
+      bitmapIndex: parseInt(g[1]!, 10),
+    });
+  }
+  const lineHeight = parseInt(/\.line_height\s*=\s*(\d+)/.exec(text)?.[1] ?? "0", 10);
+  const baseLine = parseInt(/\.base_line\s*=\s*(\d+)/.exec(text)?.[1] ?? "0", 10);
+  if (glyphs.length === 0 || lineHeight <= 0) return undefined;
+  return { bitmap, glyphs, lineHeight, baseline: Math.max(0, lineHeight - baseLine) };
+}
+
+/** Bake an LVGL-converted .c font. The file's own size/metrics are the
+ *  truth; `px` only keys asset selection (the author's font-size should
+ *  match the converted size). Characters the file doesn't cover get an
+ *  empty glyph with a space-like advance — the runtime draws a gap. */
+function bakeLvglFontAsset(options: {
+  id: number;
+  family: string;
+  sourcePath: string;
+  px: number;
+  fontWeight: string;
+  fontStyle: string;
+  subset: UIFontSubsetMode;
+  chars: string[];
+  lvgl: LvglFont;
+}): UIFontAssetModel {
+  let monoPack = false;
+  try { monoPack = getDisplayProfile().colorFormat === "mono"; } catch { /* no profile bound */ }
+  if (!monoPack) {
+    throw new Error(
+      `LVGL font ${options.sourcePath} is 1bpp — only mono display profiles can bake it.`,
+    );
+  }
+  const byCp = new Map(options.lvgl.glyphs.map((g) => [g.codepoint, g]));
+  const glyphs: UIFontGlyphModel[] = [];
+  const monoBits: number[] = [];
+  for (const ch of options.chars) {
+    const cp = ch.codePointAt(0) ?? 0;
+    const src = byCp.get(cp);
+    const dataOffset = monoBits.length;
+    let width = 0;
+    let height = 0;
+    let xOffset = 0;
+    let yOffset = 0;
+    let advance = Math.max(1, Math.round(options.lvgl.lineHeight / 2));
+    if (src && src.boxW > 0 && src.boxH > 0) {
+      width = src.boxW;
+      height = src.boxH;
+      xOffset = src.ofsX;
+      yOffset = -src.ofsY - src.boxH;
+      advance = Math.max(1, src.advPx);
+      for (let i = 0; i < width * height; i++) {
+        const bit = src.bitmapIndex * 8 + i;
+        monoBits.push((options.lvgl.bitmap[bit >> 3]! >> (7 - (bit & 7))) & 1);
+      }
+    }
+    glyphs.push({ codepoint: cp, xOffset, yOffset, width, height, advance, dataOffset });
+  }
+  return {
+    id: options.id,
+    family: options.family,
+    sourcePath: options.sourcePath,
+    px: options.px,
+    fontWeight: options.fontWeight,
+    fontStyle: options.fontStyle,
+    subset: options.subset,
+    lineHeight: options.lvgl.lineHeight,
+    baseline: options.lvgl.baseline,
+    glyphs,
+    alpha: packBits(monoBits),
+    kern: [],
+    format: "mono1",
+  };
 }
 
 function flattenPath(commands: OpenTypePathCommand[]): Point[][] {

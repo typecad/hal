@@ -156,6 +156,17 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   Time.now()/nowUs() now follow the runtime's simulated clock (advances
   by each tick's delta — deterministic under explicit deltas), and
   sleep/busyWaitUs resolve immediately (the preview cannot block).
+- LVGL font-converter sources: `@font-face src: url("*.c")` with
+  lv_font_conv output (--format lvgl --bpp 1 --no-compress) bakes the
+  file's glyphs as-is into the mono1 pipeline — parser reads the bitmap
+  table, glyph_dsc metrics (adv_w in 1/16px), cmap ranges, and line
+  geometry; glyph placement follows the empirically derived rule (bitmap
+  bottom sits −ofs_y relative to the baseline; baseline = line_height −
+  base_line). No kern ships in these files. Characters outside the
+  converted symbol set bake as empty advance-only glyphs (gaps) — convert
+  with the full --range you need. The rig demo carries a temporary visual
+  test: title + button in LVGL 20px letters, uptime in our hinted 12px
+  bake, for side-by-side judging on the panel.
 
 Out of scope per the design: band renderer / scroll canvases / OSK on 1bpp.
 Raw display.* ops keep the direct-op runtime beneath the UI path.
