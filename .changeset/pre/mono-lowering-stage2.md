@@ -118,6 +118,22 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   drops the fifth (#alt) line — its bound-text coverage duplicates
   sweepPct's — and shortens the title to "SSD1309 · MONO" (the full
   string overflows 122px at 12px).
+- Stroke-consistency + smoothness round: (1) collinear edge fragments now
+  MERGE before pairing — a stem's edge splits where a curve junction breaks
+  the run, and the interleaved fragment blocked the stem's true partner in
+  sorted-adjacent pairing, leaving h/n/L/T/f walls unsnapped (a 1.1px stem
+  at the wrong phase renders 2px next to snapped 1px neighbors). (2) The
+  deformation cap rises 0.3 → 0.4px so genuinely-wide stems (DejaVu's '1'
+  at 1.64px) snap cleanly to 2px instead of rendering ragged raw. Cap stems
+  are heavier than lowercase BY DESIGN in this face — 2px caps against 1px
+  lowercase is correct optical weight, not inconsistency. (3) The
+  Technoblogy corner-bridge transposed to native scale: a diagonal
+  staircase step (ink at (x,y) and (x+1,y±1), both notch cells empty)
+  fills the notch cell with more surrounding ink, turning disconnected
+  staircases into 8-connected 45-degree runs. (4) 9px is the available
+  small size (bake-verified: digits and lowercase complete, counters
+  open; 8px is this face's floor) — the rig demo's percentage readout
+  uses it.
 
 Out of scope per the design: band renderer / scroll canvases / OSK on 1bpp.
 Raw display.* ops keep the direct-op runtime beneath the UI path.

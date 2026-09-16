@@ -81,7 +81,8 @@
   }
   #sweepPct {
     font-family: "RigMono";
-    font-size: 12px;
+    /* The small size: same face, its own 9px bake (8px is this font's floor). */
+    font-size: 9px;
     width: 30px;
   }
 

@@ -510,6 +510,7 @@ function rasterizeFontAsset(options: {
       }
       if (monoPack) {
         monoDespeckle(monoGlyph, width, height);
+        monoSmoothDiagonals(monoGlyph, width, height);
         for (const b of monoGlyph) monoBits.push(b);
       }
     }
@@ -626,7 +627,13 @@ const MONO_HINT_ZONE_TOL_PX = 0.35;
 // near integer width snap; anything needing more distortion stays designed
 // (the deformation squeezes the curves attached to the stroke — the 'd'
 // bowl bars and 'm' arch thinned below the draw threshold before this).
-const MONO_HINT_MAX_DEFORM_PX = 0.3;
+// 0.4 admits genuinely-wide stems (DejaVu's '1' carries a 1.64px stem that
+// snaps cleanly to 2px at deform 0.36).
+const MONO_HINT_MAX_DEFORM_PX = 0.4;
+// Collinear-fragment merge thresholds: two edges this close in position,
+// with extents this close to touching, are one edge split by a junction.
+const MONO_HINT_MERGE_POS_PX = 0.2;
+const MONO_HINT_MERGE_GAP_PX = 0.5;
 
 /** A y-axis blue zone: a shared design height in path coordinates (negative
  *  above the baseline) and the integer row every near edge should land on. */
@@ -700,6 +707,31 @@ function monoAxisShift(
 ): (v: number) => number {
   if (edges.length === 0) return () => 0;
   edges.sort((a, b) => a.pos - b.pos);
+  // Merge collinear fragments BEFORE pairing. A stem's edge often splits
+  // into two runs where a curve junction breaks the run's direction (an h's
+  // inner-left edge splits at the arch), and the interleaved fragment then
+  // blocks the stem's true partner — pairing only walks sorted-adjacent
+  // edges, so the wall rendered unsnapped (1.1px design at the wrong phase
+  // = a fat 2px stroke next to snapped 1px neighbors).
+  const merged: MonoHintEdge[] = [];
+  for (const e of edges) {
+    const prev = merged[merged.length - 1];
+    if (
+      prev &&
+      Math.abs(e.pos - prev.pos) <= MONO_HINT_MERGE_POS_PX &&
+      e.lo <= prev.hi + MONO_HINT_MERGE_GAP_PX &&
+      prev.lo <= e.hi + MONO_HINT_MERGE_GAP_PX
+    ) {
+      const total = prev.hi - prev.lo + e.hi - e.lo;
+      if (total > 0) prev.pos = (prev.pos * (prev.hi - prev.lo) + e.pos * (e.hi - e.lo)) / total;
+      prev.lo = Math.min(prev.lo, e.lo);
+      prev.hi = Math.max(prev.hi, e.hi);
+    } else {
+      merged.push({ ...e });
+    }
+  }
+  edges.length = 0;
+  edges.push(...merged);
   const clamp = (d: number) => Math.max(-MONO_HINT_MAX_SHIFT, Math.min(MONO_HINT_MAX_SHIFT, d));
   // Blue zones (y axis): an edge within tolerance of a shared design height
   // (baseline, x-height, cap-height) snaps to the ZONE's integer rather than
@@ -865,6 +897,38 @@ function monoDespeckle(bits: number[], w: number, h: number): void {
         }
       } else if (n4 === 4) {
         bits[i] = 1;
+      }
+    }
+  }
+}
+
+// Diagonal corner bridging — the Technoblogy "Smooth Big Text" rule
+// (technoblogy.com/show?3AJ7) transposed from its 2x home to native scale:
+// when ink at (x,y) and (x+1,y±1) forms a staircase step with both notch
+// cells empty, the 2x version fills the two inner-corner sub-pixels; at 1x
+// the equivalent is filling ONE notch cell, which turns the disconnected
+// staircase into an 8-connected diagonal that reads as a smooth 45-degree
+// run on the panel. The candidate with more existing ink around it wins, so
+// fills tuck into the stroke instead of protruding.
+function monoSmoothDiagonals(bits: number[], w: number, h: number): void {
+  if (w < 3 || h < 3) return;
+  const src = bits.slice();
+  const at = (x: number, y: number): number =>
+    x < 0 || y < 0 || x >= w || y >= h ? 0 : src[y * w + x];
+  const neighbors = (x: number, y: number): number =>
+    at(x - 1, y - 1) + at(x, y - 1) + at(x + 1, y - 1) +
+    at(x - 1, y) + at(x + 1, y) +
+    at(x - 1, y + 1) + at(x, y + 1) + at(x + 1, y + 1);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x + 1 < w; x++) {
+      if (at(x, y) !== 1) continue;
+      for (const dy of [1, -1] as const) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= h) continue;
+        // A staircase step: diagonal ink with BOTH orthogonal notch cells empty.
+        if (at(x + 1, ny) !== 1 || at(x + 1, y) !== 0 || at(x, ny) !== 0) continue;
+        if (neighbors(x + 1, y) >= neighbors(x, ny)) bits[y * w + (x + 1)] = 1;
+        else bits[ny * w + x] = 1;
       }
     }
   }

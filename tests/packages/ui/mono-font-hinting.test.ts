@@ -18,10 +18,10 @@ import { setDisplayProfile, resetDisplayProfile } from "@typecad/cuttlefish/stor
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FONTS = path.resolve(HERE, "../../../packages/ui/assets/fonts/dejavu");
 
-function bake(chars: string, ttf: string, mono: boolean): UIFontAssetModel {
+function bake(chars: string, ttf: string, mono: boolean, px = 10): UIFontAssetModel {
   const css = `
     @font-face { font-family: "HintTest"; src: url("${ttf}"); font-weight: 400; }
-    #t { font-family: "HintTest"; font-size: 10px; }
+    #t { font-family: "HintTest"; font-size: ${px}px; }
   `;
   const html = `<screen><text id="t">${chars}</text></screen>`;
   const rules = parseCss(css);
@@ -82,7 +82,8 @@ describe("mono bake stem snapping", () => {
   });
 
   it("keeps the verticals of a round glyph straight through its mid-height", () => {
-    const asset = bake("0", "DejaVuSans.ttf", true);
+    // 12px: the supported size (10px is this face's sub-pixel floor).
+    const asset = bake("0", "DejaVuSans.ttf", true, 12);
     const rows = glyphRows(asset, "0".codePointAt(0)!);
     const on = rows.filter((r) => r.some(Boolean));
     const mid = on.slice(Math.floor(on.length / 4), Math.ceil((on.length * 3) / 4));
@@ -184,5 +185,75 @@ describe("mono hinting regressions (panel-verified shapes)", () => {
     for (const ch of "2547cony.") {
       expect(cps.has(ch.codePointAt(0)!), `glyph '${ch}' present`).toBe(true);
     }
+  });
+});
+
+describe("stroke consistency + diagonal smoothing", () => {
+  it("pairs fragmented stem edges: h/n left stems hold one constant width", () => {
+    const asset = bake("hn", "DejaVuSans.ttf", true, 12);
+    for (const ch of "hn") {
+      const rows = glyphRows(asset, ch.codePointAt(0)!);
+      const inked = rows.filter((r) => r.some(Boolean));
+      // The pure stem rows are the ones with exactly two ink runs (left
+      // stem + bowl wall). In every one, the stem occupies the SAME single
+      // column — a fragmented-edge stem instead wobbles between 1px and 2px.
+      const runs = (r: number[]): number =>
+        r.reduce((acc, b, i) => (b && (i === 0 || !r[i - 1]) ? acc + 1 : acc), 0);
+      const firstRunLen = (r: number[]): number => {
+        let n = 0;
+        for (const b of r) {
+          if (b) n++;
+          else if (n) break;
+        }
+        return n;
+      };
+      const stemRows = inked.filter((r) => runs(r) === 2 && firstRunLen(r) === 1);
+      expect(stemRows.length, `'${ch}' stem rows`).toBeGreaterThanOrEqual(3);
+      const stemCols = new Set(stemRows.map((r) => r.findIndex((b) => b)));
+      expect(stemCols.size, `'${ch}' stem columns: ${[...stemCols].join(",")}`).toBe(1);
+      const col = [...stemCols][0]!;
+      for (const r of stemRows) {
+        expect(r[col + 1], `'${ch}' stem is 1px`).toBe(0);
+      }
+    }
+  });
+
+  it("renders diagonal-stroke glyphs as single 8-connected components", () => {
+    const asset = bake("z7s2", "DejaVuSans.ttf", true, 12);
+    for (const ch of "z7s2") {
+      const rows = glyphRows(asset, ch.codePointAt(0)!);
+      const h = rows.length, w = rows[0]?.length ?? 0;
+      const seen = new Set<number>();
+      let start = -1;
+      let total = 0;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        if (rows[y]![x]) { if (start < 0) start = y * w + x; total++; }
+      }
+      const stack = [start];
+      seen.add(start);
+      while (stack.length) {
+        const i = stack.pop()!;
+        const y = Math.floor(i / w), x = i % w;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const j = ny * w + nx;
+          if (rows[ny]![nx] && !seen.has(j)) { seen.add(j); stack.push(j); }
+        }
+      }
+      expect(seen.size, `'${ch}' should be 8-connected (${seen.size}/${total})`).toBe(total);
+    }
+  });
+
+  it("bakes a legible 9px small size (digits complete, o counter open)", () => {
+    const asset = bake("12so", "DejaVuSans.ttf", true, 9);
+    for (const ch of "12s") {
+      const rows = glyphRows(asset, ch.codePointAt(0)!);
+      expect(rows.flat().reduce((a, b) => a + b, 0), `'${ch}' has ink`).toBeGreaterThan(3);
+    }
+    const rows = glyphRows(asset, "o".codePointAt(0)!);
+    const inked = rows.filter((r) => r.some(Boolean));
+    const midRow = inked[Math.floor(inked.length / 2)]!;
+    expect(midRow.some((b) => !b), "o counter open at 9px").toBe(true);
   });
 });
