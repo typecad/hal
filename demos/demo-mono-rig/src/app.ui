@@ -2,11 +2,14 @@
   // app.ui — Stage 2 mono rig test (SSD1309 128x64, self-driving).
   //
   // Everything on screen animates from BINDINGS only (they re-evaluate every
-  // ui_tick), so the panel shows motion with no wiring beyond power + I2C:
+  // ui_tick), so the panel shows motion with no wiring beyond power + I2C.
+  // The WHOLE screen uses the built-in Classic bitmap family: native 5x7
+  // pixels at 8px, and the Technoblogy smooth-doubled 16px for the hero
+  // uptime reading (connected 45° diagonals, integer stems).
   //
   //   ┌────────────────────┐  What to verify visually:
-  //   │ SSD1309 · MONO RIG │  1. Crisp 1bpp text (subset font, no AA)
-  //   │ t=12.5s            │  2. Uptime counts ~2x/s in smoothed Classic 16px digits
+  //   │ SSD1309 · MONO RIG │  1. Native 8px Classic cells, crisp by design
+  //   │ t=12.5s            │  2. Smoothed Classic 16px digits (no staircases)
   //   │ ▓▓▓▓▓▓░░░░░░  47%  │  3. Bar sweeps 0→100% every 5s
   //   │ ██ INVERT ██       │  4. Button face inverts every second
   //   │ alternating line   │  5. Second line alternates text
@@ -35,29 +38,24 @@
 </script>
 
 <style>
-  @font-face {
-    font-family: "RigMono";
-    src: url("../../../packages/ui/assets/fonts/dejavu/DejaVuSans.ttf");
-    font-weight: 400;
-    font-style: normal;
-  }
-
   :root {
     background: #000000;
     color: #ffffff;
     flex-direction: column;
   }
 
+  /* No @font-face: "Classic" is the built-in glcdfont 5x7 bitmap family —
+     8px is the native cell, 16px the smooth doubling. */
+
   #titlebar {
     background: #ffffff;
     padding: 1px 3px;
-    height: 12px;
+    height: 10px;
   }
   #title {
     color: #000000;
-    font-family: "RigMono";
-    font-size: 10px;
-    font-weight: 400;
+    font-family: "Classic";
+    font-size: 8px;
   }
 
   #row2 {
@@ -83,8 +81,8 @@
     border: 1px solid #ffffff;
   }
   #sweepPct {
-    font-family: "RigMono";
-    font-size: 10px;
+    font-family: "Classic";
+    font-size: 8px;
     width: 30px;
   }
 
@@ -92,12 +90,12 @@
     display: flex;
     flex-direction: row;
     justify-content: center;
-    padding: 0 3px;
-    height: 12px;
+    padding: 1px 3px;
+    height: 14px;
   }
   #invert {
-    font-family: "RigMono";
-    font-size: 10px;
+    font-family: "Classic";
+    font-size: 8px;
     width: 90px;
     min-height: 0;
     height: 12px;
@@ -111,11 +109,12 @@
   }
 
   #row5 {
-    padding: 0 3px;
+    padding: 1px 3px;
     height: 11px;
   }
   #alt {
-    font-size: 10px;
+    font-family: "Classic";
+    font-size: 8px;
   }
 </style>
 
