@@ -8,7 +8,18 @@ records the agreed design so implementation doesn't re-litigate it.
 Status: Stage 1 shipped (SSD I²C direct ops, commit history in git).
 Stage 2 shipped (mono lowering — full-frame adapter, flattening rules with
 build warnings, 1bpp fonts/images, native_sim CI gate; demos/demo-mono-oled
-west-compiles on esp32s3, demos/demo-mono-sim is the CI target).
+west-compiles on esp32s3, demos/demo-mono-sim is the CI target). Hardware-
+verified through the SSD1309 rig and the font-size ladder
+(demos/demo-font-sizes). Font rendering final form: **TrueType hinting
+executes on the mono bake** (opentype.js 2.0 interpreter; the geometric
+fallback stack — stem snapping + coalescing + despeckle — covers
+uninstructed fonts; zones/corner-bridge toggles currently OFF), pair
+kerning baked per face, threshold 5 (4 at <=10px). Panel-established size
+floor: 10px legible, 13px comfortable. Display i2c buses declare 400kHz
+fast mode (the 1KB full-frame push is bandwidth-bound). Per-node text
+background clears are skipped under UI_FULL_FRAME_REDRAW (they erased
+sibling descenders and were redundant — full-frame repaints in z order).
+Golden glyph bitmaps pinned in tests/packages/ui/golden-mono-glyphs.test.ts.
 Stage 3 grayscale, Stage 4 e-ink.
 
 ## Stage 2 — mono (same UI API, flattened)

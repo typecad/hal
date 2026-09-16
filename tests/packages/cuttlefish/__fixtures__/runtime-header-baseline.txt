@@ -4983,6 +4983,13 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
             textBoxPainted = 1;
           }
           {
+#if !defined(UI_FULL_FRAME_REDRAW)
+            // Incremental repaint path: the clear wipes this node's previous
+            // glyphs (and stale paint wider/taller than the box). On the mono
+            // full-frame path the whole frame is re-seeded by display_fillScreen
+            // and every node repaints in z order, so the clear is redundant —
+            // and worse, it ERASES previous siblings' descenders that dip into
+            // this box (the ladder's cut g tails).
             uint16_t clearW = __ui_nodes[i].box.w;
             int16_t paintedTextW = static_cast<int16_t>(__ui_nodes[i].lastTextWidth) + insetL + insetR;
             if (__ui_nodes[i].lastTextWidth > 0 && paintedTextW > static_cast<int16_t>(clearW)) {
@@ -5012,6 +5019,9 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
             if (!textBoxPainted) {
               ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH, clearCol);
             }
+#else
+            (void)insetL; (void)insetR; (void)insetT; (void)textW; (void)textBoxPainted;
+#endif
             __ui_nodes[i].lastTextWidth = tw;
             __ui_nodes[i].lastTextHeight = th;
           }

@@ -113,6 +113,19 @@ export function cssCompatDiagnostics(
             source: sourceFile,
           });
         }
+        // Sub-floor sizes on mono: below ~10px DejaVu's features (counters,
+        // thin diagonals) collide with the 1bpp pixel grid no matter how the
+        // outline is hinted — the size-ladder panel trials established 10px
+        // as the smallest generally-legible size and 13px the comfortable one.
+        if (mono && px < 10) {
+          push(`mono-tiny:${px}`, {
+            severity: "warning",
+            code: "css-mono-font-size-floor",
+            message: `${label}: font-size ${px}px is below the 1bpp legibility floor (10px) — glyph features will drop out.`,
+            hint: `Use 10px minimum for captions, 13px+ for body text on monochrome displays.`,
+            source: sourceFile,
+          });
+        }
       }
     }
 

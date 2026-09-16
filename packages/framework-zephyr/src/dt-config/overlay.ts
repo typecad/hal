@@ -1101,6 +1101,11 @@ function emitDisplayNode(
     const panel = (display.dtCompatible ?? display.driver).split(',')[1] ?? 'ssd1306';
     lines.push('&i2c0 {');
     lines.push('    status = "okay";');
+    // Fast mode: the full-frame mono push is bandwidth-bound (a 128x64 frame
+    // is 1KB — ~25ms at the 100kHz default, ~7ms at 400kHz), so animations
+    // step without it. OLED modules and the esp32s3/nRF i2c controllers all
+    // handle 400kHz; declare it whenever we own the bus node generation.
+    lines.push('    clock-frequency = <400000>;');
     if (sda !== undefined && scl !== undefined) {
       lines.push('    pinctrl-0 = <&i2c0_display>;');
       lines.push('    pinctrl-names = "default";');

@@ -156,6 +156,18 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   Time.now()/nowUs() now follow the runtime's simulated clock (advances
   by each tick's delta — deterministic under explicit deltas), and
   sleep/busyWaitUs resolve immediately (the preview cannot block).
+- Panel-trial round: the generated display I2C node declares
+  `clock-frequency = <400000>` (the 1KB full-frame push is
+  bandwidth-bound: ~25ms at the default 100kHz, ~7ms at fast mode —
+  animations stepped without it). Per-node text background clears are
+  skipped under UI_FULL_FRAME_REDRAW (the frame is re-seeded and
+  repainted in z order, so the clear was redundant AND erased previous
+  siblings' descenders that dipped into the box — the ladder's cut g
+  tails). New golden-bitmap suite pins the exact hinted 10/11/13px
+  A/g/R/% glyphs — rasterizer changes now fail a reviewable diff
+  instead of drifting silently. compat-report warns when a mono UI
+  uses font-size below the 10px legibility floor
+  (css-mono-font-size-floor).
 - TrueType hinting is now the primary mono raster path: for fonts
   shipping hinting bytecode (DejaVu does), the bake executes the
   designer's own per-size grid fitting through opentype.js 2.0's
