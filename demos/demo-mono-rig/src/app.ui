@@ -6,7 +6,7 @@
   //
   //   ┌────────────────────┐  What to verify visually:
   //   │ SSD1309 · MONO RIG │  1. Crisp 1bpp text (subset font, no AA)
-  //   │ t=12.5s            │  2. Uptime counts ~2x/s → full-frame redraw
+  //   │ t=12.5s            │  2. Uptime counts ~2x/s in smoothed Classic 16px digits
   //   │ ▓▓▓▓▓▓░░░░░░  47%  │  3. Bar sweeps 0→100% every 5s
   //   │ ██ INVERT ██       │  4. Button face inverts every second
   //   │ alternating line   │  5. Second line alternates text
@@ -62,11 +62,11 @@
 
   #row2 {
     padding: 0 3px;
-    height: 11px;
+    height: 17px;
   }
   #uptime {
-    font-family: "RigMono";
-    font-size: 10px;
+    font-family: "Classic";
+    font-size: 16px;
   }
 
   #row3 {
@@ -74,7 +74,7 @@
     flex-direction: row;
     align-items: center;
     padding: 0 3px;
-    height: 14px;
+    height: 12px;
   }
   #sweep {
     width: 90px;
@@ -92,8 +92,8 @@
     display: flex;
     flex-direction: row;
     justify-content: center;
-    padding: 1px 3px;
-    height: 14px;
+    padding: 0 3px;
+    height: 12px;
   }
   #invert {
     font-family: "RigMono";

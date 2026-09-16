@@ -4,6 +4,7 @@ import opentype from "opentype.js";
 import type { CSSFontFace, CSSProperty } from "./css-parser.js";
 import type { StyledNode } from "./style-resolver.js";
 import { getDisplayProfile } from "@typecad/cuttlefish/stores/display-profile-store";
+import { GLCDFONT_BYTES } from "@typecad/cuttlefish/api/shared";
 
 export interface UIFontGlyphModel {
   codepoint: number;
@@ -84,6 +85,19 @@ const SUPERSAMPLE = 4;
 // for emissive 1bpp panels.
 export const MONO_ALPHA_THRESHOLD = 5;
 
+// ── Built-in Classic bitmap family ──────────────────────────────────────────
+// The shared Adafruit glcdfont 5x7 table, baked as a first-class font asset
+// so `font-family: "Classic"` works with no @font-face. At native size the
+// pixels are the hand-designed bitmap (perfect stems by construction); at 2x
+// the doubling gets the Technoblogy diagonal-corner smoothing ("Smooth Big
+// Text", David Johnson-Davies): when two horizontally adjacent source pixels
+// form a one-row step (a staircase corner), the two sub-pixels at the step's
+// inner corner are filled, so doubled diagonals read as connected 45° runs.
+const CLASSIC_FONT_SRC = "builtin:classic";
+const CLASSIC_FAMILY_RE = /^(?:classic|classic5x7|classic 5x7)$/i;
+const CLASSIC_CELL_W = 5;
+const CLASSIC_CELL_H = 8;
+
 export function normalizeFontFamily(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const first = value.split(",")[0]?.trim();
@@ -132,7 +146,16 @@ export function selectFontFaceForStyle(fontFaces: CSSFontFace[], style: CSSPrope
   const family = normalizeFontFamily(style.fontFamily);
   if (!family) return undefined;
   const candidates = fontFaces.filter((face) => face.fontFamily.toLowerCase() === family.toLowerCase());
-  if (candidates.length === 0) return undefined;
+  if (candidates.length === 0) {
+    // The built-in bitmap family needs no @font-face: `font-family: "Classic"`
+    // bakes from the shared glcdfont table (native 5x7 pixels, plus the
+    // smooth 2x doubling — see bakeClassicFontAsset). An explicit @font-face
+    // with the same family name wins, so authors can override it.
+    if (CLASSIC_FAMILY_RE.test(family)) {
+      return { fontFamily: family, src: CLASSIC_FONT_SRC, fontWeight: "400", fontStyle: "normal" };
+    }
+    return undefined;
+  }
   const desiredWeight = Number(normalizeFontWeight(style.fontWeight));
   const desiredStyle = normalizeFontStyle(style.fontStyle);
   return [...candidates].sort((a, b) =>
@@ -197,6 +220,18 @@ export function buildUIFontAssets(
   const assets: UIFontAssetModel[] = [];
   let id = 1;
   for (const plan of plans) {
+    if (plan.sourcePath === CLASSIC_FONT_SRC) {
+      assets.push(bakeClassicFontAsset({
+        id: id++,
+        family: plan.family,
+        px: plan.px,
+        fontWeight: plan.fontWeight,
+        fontStyle: plan.fontStyle,
+        subset: plan.subset,
+        chars: plan.chars,
+      }));
+      continue;
+    }
     let font = parsedFonts.get(plan.sourcePath);
     if (!font) {
       const bytes = fs.readFileSync(plan.sourcePath);
@@ -226,8 +261,8 @@ export function planUIFontAssets(
   baseDir: string,
   dynamicNodeIds?: Set<string>,
 ): UIFontAssetPlan[] {
-  if (fontFaces.length === 0) return [];
-
+  // No early return on empty fontFaces: the built-in Classic family resolves
+  // without any @font-face, so planning must walk the tree regardless.
   const requests = new Map<string, FontAssetRequest>();
   const collect = (node: StyledNode) => {
     const face = selectFontFaceForStyle(fontFaces, node.style);
@@ -323,6 +358,7 @@ export function planUIFontAssets(
 }
 
 function resolveFontPath(src: string, baseDir: string): string {
+  if (src === CLASSIC_FONT_SRC) return src;
   if (/^https?:\/\//i.test(src)) {
     throw new Error(`@font-face src "${src}" is remote; use a local font file for embedded builds.`);
   }
@@ -490,6 +526,124 @@ function rasterizeFontAsset(options: {
     subset: options.subset,
     lineHeight,
     baseline,
+    glyphs,
+    alpha: monoPack ? packBits(monoBits) : packNibbles(unpackedAlpha),
+    format: monoPack ? "mono1" : "alpha4",
+  };
+}
+
+/** Decode a glcdfont character into its 5x8 on/off grid (row 0 = top; the
+ * table packs each column as a byte whose bit r is cell row r). */
+function classicGlyphGrid(codepoint: number): boolean[][] | undefined {
+  if (codepoint < 0 || codepoint * CLASSIC_CELL_W + CLASSIC_CELL_W > GLCDFONT_BYTES.length) return undefined;
+  const grid: boolean[][] = [];
+  for (let y = 0; y < CLASSIC_CELL_H; y++) grid.push(new Array<boolean>(CLASSIC_CELL_W).fill(false));
+  for (let x = 0; x < CLASSIC_CELL_W; x++) {
+    const col = GLCDFONT_BYTES[codepoint * CLASSIC_CELL_W + x] ?? 0;
+    for (let y = 0; y < CLASSIC_CELL_H; y++) grid[y][x] = ((col >> y) & 1) === 1;
+  }
+  return grid;
+}
+
+/** Double a source grid (each pixel → a 2x2 block). When `smooth`, fill the
+ * two sub-pixels at the inner corner of every one-row diagonal step between
+ * horizontally adjacent source pixels — the Technoblogy "Smooth Big Text"
+ * rule, which turns blocky doubled staircases into connected 45° runs
+ * without touching stems (integer widths stay integer). */
+function classicDoubleGrid(src: boolean[][], smooth: boolean): boolean[][] {
+  const h = src.length;
+  const w = src[0]?.length ?? 0;
+  const big: boolean[][] = [];
+  for (let y = 0; y < h * 2; y++) big.push(new Array<boolean>(w * 2).fill(false));
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!src[y]![x]) continue;
+      for (let dy = 0; dy < 2; dy++) {
+        for (let dx = 0; dx < 2; dx++) big[y * 2 + dy]![x * 2 + dx] = true;
+      }
+    }
+  }
+  if (!smooth) return big;
+  const on = (x: number, y: number): boolean =>
+    x >= 0 && x < w && y >= 0 && y < h && src[y]![x] === true;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x + 1 < w; x++) {
+      for (const dy of [1, -1] as const) {
+        // A staircase step: ink at (x,y) and (x+1,y+dy) with both orthogonal
+        // neighbor cells empty. The step's inner corner is bridged by the
+        // sub-pixel of each empty cell that diagonally touches the other ink.
+        if (on(x, y) && on(x + 1, y + dy) && !on(x + 1, y) && !on(x, y + dy)) {
+          if (dy === 1) {
+            big[y * 2 + 2]![x * 2 + 1] = true;
+            big[y * 2 + 1]![x * 2 + 2] = true;
+          } else {
+            big[y * 2 - 1]![x * 2 + 1] = true;
+            big[y * 2]![x * 2 + 2] = true;
+          }
+        }
+      }
+    }
+  }
+  return big;
+}
+
+/** Bake the built-in Classic (glcdfont 5x7) family. Sizes quantize to whole
+ * cells: scale n = floor(px/8) (min 1) — 8px is the hand-designed native
+ * bitmap, 16px doubles it with diagonal-corner smoothing, other scales
+ * double cleanly without smoothing. Works for both mono1 and alpha4 targets
+ * (bitmap bits are 0/15 alpha). */
+function bakeClassicFontAsset(options: {
+  id: number;
+  family: string;
+  px: number;
+  fontWeight: string;
+  fontStyle: string;
+  subset: UIFontSubsetMode;
+  chars: string[];
+}): UIFontAssetModel {
+  const n = Math.max(1, Math.floor(options.px / 8));
+  const smooth = n === 2;
+  let monoPack = false;
+  try { monoPack = getDisplayProfile().colorFormat === "mono"; } catch { /* no profile bound */ }
+  const glyphs: UIFontGlyphModel[] = [];
+  const monoBits: number[] = [];
+  const unpackedAlpha: number[] = [];
+  for (const ch of options.chars) {
+    const codepoint = ch.codePointAt(0) ?? 0;
+    const grid = classicGlyphGrid(codepoint);
+    const hasInk = grid !== undefined && grid.some((row) => row.some(Boolean));
+    const width = hasInk ? CLASSIC_CELL_W * n : 0;
+    const height = hasInk ? CLASSIC_CELL_H * n : 0;
+    const dataOffset = monoPack ? monoBits.length : unpackedAlpha.length;
+    if (hasInk) {
+      const bits = n === 1 ? grid! : classicDoubleGrid(grid!, smooth);
+      for (const row of bits) {
+        for (const b of row) {
+          if (monoPack) monoBits.push(b ? 1 : 0);
+          else unpackedAlpha.push(b ? 15 : 0);
+        }
+      }
+    }
+    glyphs.push({
+      codepoint,
+      xOffset: 0,
+      yOffset: -(CLASSIC_CELL_H * n - 1),
+      width,
+      height,
+      advance: (CLASSIC_CELL_W + 1) * n,
+      dataOffset,
+    });
+  }
+  return {
+    id: options.id,
+    family: options.family,
+    sourcePath: CLASSIC_FONT_SRC,
+    px: options.px,
+    fontWeight: options.fontWeight,
+    fontStyle: options.fontStyle,
+    subset: options.subset,
+    lineHeight: CLASSIC_CELL_H * n,
+    baseline: CLASSIC_CELL_H * n - 1,
     glyphs,
     alpha: monoPack ? packBits(monoBits) : packNibbles(unpackedAlpha),
     format: monoPack ? "mono1" : "alpha4",
