@@ -454,6 +454,7 @@ function rasterizeFontAsset(options: {
   const glyphs: UIFontGlyphModel[] = [];
   const unpackedAlpha: number[] = [];
   const monoBits: number[] = [];
+  const yZones = monoPack ? monoYZoneTable(options.font, options.px) : undefined;
 
   for (const ch of options.chars) {
     const glyph = options.font.charToGlyph(ch);
@@ -465,7 +466,9 @@ function rasterizeFontAsset(options: {
     // between 1 and 2 pixels along its length (the "bumps" plain coverage
     // thresholding shows at small sizes). Alpha4 keeps the raw outline and
     // its original path bbox, byte-identical to the pre-hinting bake.
-    const contours = monoPack && rawContours.length > 0 ? monoHintContours(rawContours) : rawContours;
+    // Blue zones align the shared design heights (baseline, x-height,
+    // cap-height) across every glyph of the face.
+    const contours = monoPack && rawContours.length > 0 ? monoHintContours(rawContours, yZones) : rawContours;
     const bbox = contours !== rawContours ? contoursBBox(contours) : path.getBoundingBox();
     const empty = !Number.isFinite(bbox.x1) || !Number.isFinite(bbox.y1) || bbox.x1 === bbox.x2 || bbox.y1 === bbox.y2;
     const xOffset = empty ? 0 : Math.floor(bbox.x1) - 1;
@@ -601,6 +604,17 @@ const MONO_HINT_STEM_MAX_PX = 2.6;
 const MONO_HINT_RUN_MIN_PX = 0.7;
 const MONO_HINT_MAX_SHIFT = 0.85;
 const MONO_HINT_STEM_OVERLAP = 0.55;
+// Blue-zone tolerance: an edge within this many px of a design height snaps
+// to the zone. Half the stem-pairing window — wide enough to catch drift,
+// narrow enough that x-height and cap-height never collide (≥1px apart).
+const MONO_HINT_ZONE_TOL_PX = 0.35;
+
+/** A y-axis blue zone: a shared design height in path coordinates (negative
+ *  above the baseline) and the integer row every near edge should land on. */
+export interface MonoYZone {
+  coord: number;
+  snap: number;
+}
 
 interface MonoHintEdge {
   pos: number;
@@ -660,10 +674,23 @@ function collectMonoEdges(contours: Point[][], axis: "x" | "y"): MonoHintEdge[] 
   return edges;
 }
 
-function monoAxisShift(edges: MonoHintEdge[]): (v: number) => number {
+function monoAxisShift(edges: MonoHintEdge[], zones?: MonoYZone[]): (v: number) => number {
   if (edges.length === 0) return () => 0;
   edges.sort((a, b) => a.pos - b.pos);
   const clamp = (d: number) => Math.max(-MONO_HINT_MAX_SHIFT, Math.min(MONO_HINT_MAX_SHIFT, d));
+  // Blue zones (y axis): an edge within tolerance of a shared design height
+  // (baseline, x-height, cap-height) snaps to the ZONE's integer rather than
+  // its own nearest — glyph-to-glyph drift that crosses an integer boundary
+  // (tops at -5.36 vs -5.51) would otherwise round to different rows.
+  const zoneTarget = (pos: number): number | undefined => {
+    if (!zones || zones.length === 0) return undefined;
+    let best: { snap: number; dist: number } | undefined;
+    for (const z of zones) {
+      const dist = Math.abs(pos - z.coord);
+      if (dist <= MONO_HINT_ZONE_TOL_PX && (!best || dist < best.dist)) best = { snap: z.snap, dist };
+    }
+    return best?.snap;
+  };
   const paired = new Array<boolean>(edges.length).fill(false);
   for (let i = 0; i + 1 < edges.length; i++) {
     const a = edges[i];
@@ -678,11 +705,22 @@ function monoAxisShift(edges: MonoHintEdge[]): (v: number) => number {
     const newLeft = Math.round(a.pos + (stemW - gap) / 2);
     a.delta = clamp(newLeft - a.pos);
     b.delta = clamp(newLeft + stemW - b.pos);
+    // A paired bar sitting at a zone (an E's top bar at cap height) shifts
+    // WHOLE — both edges by the same amount, preserving the integer width.
+    const zone = zoneTarget(a.pos);
+    if (zone !== undefined) {
+      const shift = clamp((zone - a.pos) - a.delta);
+      a.delta = clamp(a.delta + shift);
+      b.delta = clamp(b.delta + shift);
+    }
     paired[i] = true;
     paired[i + 1] = true;
   }
   for (let i = 0; i < edges.length; i++) {
-    if (!paired[i]) edges[i].delta = clamp(Math.round(edges[i].pos) - edges[i].pos);
+    if (!paired[i]) {
+      const target = zoneTarget(edges[i].pos) ?? Math.round(edges[i].pos);
+      edges[i].delta = clamp(target - edges[i].pos);
+    }
   }
   return (v: number): number => {
     if (v <= edges[0].pos) return edges[0].delta;
@@ -700,10 +738,44 @@ function monoAxisShift(edges: MonoHintEdge[]): (v: number) => number {
   };
 }
 
-/** Snap a glyph's stems onto the pixel grid (mono bake only). */
-export function monoHintContours(contours: Point[][]): Point[][] {
+/** Derive the face's blue zones at a pixel size: baseline (0), x-height,
+ *  cap-height — in glyph path coordinates (y down, negative above baseline).
+ *  Heights come from OS/2 sxHeight/sCapHeight when the font carries them
+ *  (version 2+) and from the 'x'/'H' glyph metrics otherwise (DejaVu ships
+ *  an older OS/2). Returns undefined when nothing beyond the baseline is
+ *  derivable — hinting then behaves exactly as before. */
+export function monoYZoneTable(font: any, px: number): MonoYZone[] | undefined {
+  const metricOf = (units: number | undefined, fallbackChar: string): number | undefined => {
+    if (units && units > 0) return units;
+    try {
+      const g = font.charToGlyph(fallbackChar);
+      const yMax = g?.getMetrics?.()?.yMax;
+      return yMax && yMax > 0 ? yMax : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const upm = font.unitsPerEm;
+  if (!upm) return undefined;
+  const os2 = font.tables?.os2;
+  const heights = [
+    metricOf(os2?.sxHeight, "x"),
+    metricOf(os2?.sCapHeight, "H"),
+  ].filter((u): u is number => u !== undefined);
+  if (heights.length === 0) return undefined;
+  const zones: MonoYZone[] = [{ coord: 0, snap: 0 }];
+  for (const units of heights) {
+    const coord = (units * -px) / upm;
+    zones.push({ coord, snap: Math.round(coord) });
+  }
+  return zones;
+}
+
+/** Snap a glyph's stems onto the pixel grid (mono bake only). yZones (blue
+ * zones) align shared design heights across glyphs when provided. */
+export function monoHintContours(contours: Point[][], yZones?: MonoYZone[]): Point[][] {
   const shiftX = monoAxisShift(collectMonoEdges(contours, "x"));
-  const shiftY = monoAxisShift(collectMonoEdges(contours, "y"));
+  const shiftY = monoAxisShift(collectMonoEdges(contours, "y"), yZones);
   return contours.map((c) =>
     c.map((p) => ({ x: p.x + shiftX(p.x), y: p.y + shiftY(p.y) })),
   );

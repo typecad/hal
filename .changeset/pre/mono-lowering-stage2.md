@@ -80,6 +80,22 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   layout measurement (assetTextWidth), and the preview draw/width paths
   all mirror it, so wrapping and centering measure what drawing renders.
   Works for color and mono targets alike.
+- Mono blue zones: the light hinting now derives the face's shared design
+  heights (baseline, x-height, cap-height — OS/2 sxHeight/sCapHeight when
+  present, 'x'/'H' glyph metrics otherwise; DejaVu ships an older OS/2) and
+  snaps horizontal edges within 0.35px of a zone to the zone's integer row
+  instead of their own rounding, so glyph-to-glyph drift that crosses an
+  integer boundary no longer puts one letter's x-height a row off. Paired
+  bars at a zone shift whole, preserving integer stem widths.
+- Variable-weight bakes — investigated, deliberately not shipped yet:
+  opentype.js ^2 supports everything needed (glyph.getPath accepts
+  { variation: { wght } }, and font.variation.getTransform updates
+  advanceWidth from HVAR), but the repo bundles only static faces, so the
+  plan-key/CSS-weight-range semantics would land unverified. The verified
+  recipe when a variable TTF arrives: detect font.tables.fvar, clamp the
+  requested weight into the wght axis, pass variation coords to getPath,
+  read the advance from the transformed glyph, and key the parsed-font
+  cache by (path, weight) since getTransform mutates glyph.advanceWidth.
 
 Out of scope per the design: band renderer / scroll canvases / OSK on 1bpp.
 Raw display.* ops keep the direct-op runtime beneath the UI path.

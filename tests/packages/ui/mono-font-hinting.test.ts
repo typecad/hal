@@ -9,7 +9,9 @@ import { fileURLToPath } from "node:url";
 import { parseCss, parseFontFaces } from "@typecad/ui/ui-engine/css-parser";
 import { parseHtmlWithKeyboards } from "@typecad/ui/ui-engine/html-parser";
 import { resolveStyles } from "@typecad/ui/ui-engine/style-resolver";
-import { buildUIFontAssets } from "@typecad/ui/ui-engine/font-assets";
+import { buildUIFontAssets, monoHintContours, monoYZoneTable } from "@typecad/ui/ui-engine/font-assets";
+import opentype from "opentype.js";
+import fs from "node:fs";
 import type { UIFontAssetModel } from "@typecad/ui/ui-engine/font-assets";
 import { setDisplayProfile, resetDisplayProfile } from "@typecad/cuttlefish/stores/display-profile-store";
 
@@ -101,5 +103,49 @@ describe("mono bake stem snapping", () => {
     const asset = bake("|", "DejaVuSans.ttf", false);
     expect(asset.format).toBe("alpha4");
     expect(asset.alpha.length).toBeGreaterThan(0);
+  });
+});
+
+describe("mono blue zones", () => {
+  const ttf = fs.readFileSync(path.resolve(FONTS, "DejaVuSans.ttf"));
+  const font = opentype.parse(
+    ttf.buffer.slice(ttf.byteOffset, ttf.byteOffset + ttf.byteLength) as ArrayBuffer,
+  );
+
+  it("derives x-height/cap-height zones (OS/2 fallback via glyph metrics)", () => {
+    const zones = monoYZoneTable(font, 10);
+    expect(zones).toBeDefined();
+    expect(zones).toContainEqual({ coord: 0, snap: 0 });
+    const xUnits = font.charToGlyph("x").getMetrics().yMax;
+    const capUnits = font.charToGlyph("H").getMetrics().yMax;
+    const xZone = zones!.find((z) => Math.abs(z.coord - (xUnits * -10) / font.unitsPerEm) < 1e-9);
+    const capZone = zones!.find((z) => Math.abs(z.coord - (capUnits * -10) / font.unitsPerEm) < 1e-9);
+    expect(xZone, "x-height zone").toBeDefined();
+    expect(capZone, "cap-height zone").toBeDefined();
+    expect(xZone!.snap).toBe(Math.round(xZone!.coord));
+    expect(capZone!.snap).toBe(Math.round(capZone!.coord));
+  });
+
+  it("snaps a drifting x-height edge to the zone instead of its own rounding", () => {
+    // A stem whose flat top drifted to -5.51: plain rounding gives -6, the
+    // zone (design -5.4 → -5) keeps it on the shared row.
+    const rect = [[
+      { x: 0, y: -5.51 }, { x: 6, y: -5.51 }, { x: 6, y: 0 }, { x: 0, y: 0 },
+    ]];
+    const zones = [{ coord: 0, snap: 0 }, { coord: -5.4, snap: -5 }];
+    const hinted = monoHintContours(rect as never, zones);
+    const topY = Math.min(...hinted[0]!.map((p: { y: number }) => p.y));
+    expect(topY).toBeCloseTo(-5, 9);
+    const unzoned = monoHintContours(rect as never);
+    const topYPlain = Math.min(...unzoned[0]!.map((p: { y: number }) => p.y));
+    expect(topYPlain).toBeCloseTo(-6, 9);
+  });
+
+  it("leaves hinting unchanged when no zones are derivable", () => {
+    expect(monoYZoneTable({ unitsPerEm: 0 }, 10)).toBeUndefined();
+    const rect = [[{ x: 0, y: -5.51 }, { x: 6, y: -5.51 }, { x: 6, y: 0 }, { x: 0, y: 0 }]];
+    const a = monoHintContours(rect as never, undefined);
+    const b = monoHintContours(rect as never);
+    expect(a).toEqual(b);
   });
 });
