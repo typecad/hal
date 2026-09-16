@@ -259,8 +259,11 @@ describe("Stage 2 mono: 1bpp glyph packing (2d)", () => {
     }
     expect(setBits).toBeGreaterThan(10);
     expect(setBits).toBeLessThan(totalBits);
-    // Byte budget: 1bpp is at most half the 4-bit size for the same coverage.
-    expect(a.alpha.length).toBeLessThanOrEqual(Math.ceil(totalBits / 8) + 1);
+    // Byte budget: the packed stream is at most bits/8 over ALL glyphs of
+    // the asset (the face carries the whole fallback charset on mono, not
+    // just the sample text's glyphs).
+    const totalAssetBits = a.glyphs.reduce((sum, g) => sum + g.width * g.height, 0);
+    expect(a.alpha.length).toBeLessThanOrEqual(Math.ceil(totalAssetBits / 8));
   });
 
   it("keeps alpha4 packing on color targets", () => {

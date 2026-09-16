@@ -156,6 +156,19 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   Time.now()/nowUs() now follow the runtime's simulated clock (advances
   by each tick's delta — deterministic under explicit deltas), and
   sleep/busyWaitUs resolve immediately (the preview cannot block).
+- TrueType hinting is now the primary mono raster path: for fonts
+  shipping hinting bytecode (DejaVu does), the bake executes the
+  designer's own per-size grid fitting through opentype.js 2.0's
+  interpreter (glyph.getPath(..., { hinting: true }, font) — pixel-space
+  commands), and the geometric hinting stack (stem snapping, coalescing,
+  blue zones, corner bridging) is SKIPPED — double-hinting would fight
+  the instructions. Measured on the ladder: even 1px walls and
+  connected thin diagonals at 10px, clean round glyphs at 12, textbook
+  capitals at 17 — strictly better than the hand-built stack at every
+  size. Fonts without instructions (CFF, stripped TTFs) keep the
+  fallback stack; the alpha4 color path is untouched. Also: a stale
+  byte-budget assertion in the mono-lowering suite now budgets the
+  whole asset (the fallback charset) rather than one glyph.
 - LVGL font-converter sources: `@font-face src: url("*.c")` with
   lv_font_conv output (--format lvgl --bpp 1 --no-compress) bakes the
   file's glyphs as-is into the mono1 pipeline — parser reads the bitmap

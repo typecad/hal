@@ -492,16 +492,35 @@ function rasterizeFontAsset(options: {
   for (const ch of options.chars) {
     const glyph = options.font.charToGlyph(ch);
     const advance = Math.max(1, Math.ceil((glyph.advanceWidth ?? options.font.unitsPerEm / 2) * scale));
-    const path = glyph.getPath(0, 0, options.px);
+    // Mono raster path — TrueType hinting FIRST: fonts shipping hinting
+    // bytecode (DejaVu does) get the designer's own per-size grid fitting
+    // executed by opentype.js's interpreter (getPath with { hinting: true }
+    // + font returns pixel-space commands). It outperforms our geometric
+    // snapping at every size we've measured — even 1px walls, connected
+    // thin diagonals, clean round glyphs at 10px — so when it applies, our
+    // hinting stack below is SKIPPED (double-hinting would fight it).
+    // Fonts without instructions (CFF, stripped) fall back to the stack.
+    let path = glyph.getPath(0, 0, options.px);
+    let ttHinted = false;
+    if (monoPack && options.font.hinting) {
+      try {
+        path = glyph.getPath(0, 0, options.px, { hinting: true }, options.font);
+        ttHinted = true;
+      } catch { /* interpreter refused — fall back to the raw outline */ }
+    }
     const rawContours = flattenPath(path.commands as OpenTypePathCommand[]);
-    // Mono light hinting: snap stems onto the pixel grid BEFORE sampling, so
-    // a 1.4px stem renders one constant integer width instead of wobbling
-    // between 1 and 2 pixels along its length (the "bumps" plain coverage
-    // thresholding shows at small sizes). Alpha4 keeps the raw outline and
-    // its original path bbox, byte-identical to the pre-hinting bake.
+    // Mono light hinting (fallback path): snap stems onto the pixel grid
+    // BEFORE sampling, so a 1.4px stem renders one constant integer width
+    // instead of wobbling between 1 and 2 pixels along its length (the
+    // "bumps" plain coverage thresholding shows at small sizes). Alpha4
+    // keeps the raw outline and its original path bbox, byte-identical to
+    // the pre-hinting bake.
     // Blue zones align the shared design heights (baseline, x-height,
     // cap-height) across every glyph of the face.
-    const contours = monoPack && rawContours.length > 0 ? monoHintContours(rawContours, yZones) : rawContours;
+    const contours =
+      monoPack && !ttHinted && rawContours.length > 0
+        ? monoHintContours(rawContours, yZones)
+        : rawContours;
     const bbox = contours !== rawContours ? contoursBBox(contours) : path.getBoundingBox();
     const empty = !Number.isFinite(bbox.x1) || !Number.isFinite(bbox.y1) || bbox.x1 === bbox.x2 || bbox.y1 === bbox.y2;
     const xOffset = empty ? 0 : Math.floor(bbox.x1) - 1;
