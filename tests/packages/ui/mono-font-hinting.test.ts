@@ -149,3 +149,40 @@ describe("mono blue zones", () => {
     expect(a).toEqual(b);
   });
 });
+
+describe("mono hinting regressions (panel-verified shapes)", () => {
+  it("keeps the R leg: the bowl must not swallow the diagonal (pairing never crosses a counter)", () => {
+    const asset = bake("R", "DejaVuSans.ttf", true);
+    const rows = glyphRows(asset, "R".codePointAt(0)!);
+    const inked = rows.filter((r) => r.some(Boolean));
+    // The bowl close is the widest ink row in the top half; the leg must
+    // continue BELOW it for at least 2 rows and reach right of the stem.
+    // The bowl close is the LAST densely-inked row in the glyph's upper half
+    // (the top bar and the close both carry 3+ px; the counter rows don't).
+    const upper = inked.slice(0, Math.ceil(inked.length / 2));
+    const bowlClose = upper.filter((r) => r.reduce((a, b) => a + b, 0) >= 3).pop()!;
+    const closeIdx = rows.indexOf(bowlClose);
+    const below = rows.slice(closeIdx + 1).filter((r) => r.some(Boolean));
+    expect(below.length, `rows below bowl close: ${JSON.stringify(rows)}`).toBeGreaterThanOrEqual(2);
+    const stemX = bowlClose.indexOf(1);
+    const legBeyondStem = below.some((r) => r.some((b, i) => b && i >= stemX + 2));
+    expect(legBeyondStem, `leg diagonal right of stem: ${JSON.stringify(rows)}`).toBe(true);
+  });
+
+  it("keeps the 0 counter open (inner walls must not pair)", () => {
+    const asset = bake("0", "DejaVuSans.ttf", true);
+    const rows = glyphRows(asset, "0".codePointAt(0)!);
+    const mid = rows.filter((r) => r.some(Boolean))[Math.floor(rows.filter((r) => r.some(Boolean)).length / 2)]!;
+    const lit = mid.reduce((a, b) => a + b, 0);
+    expect(lit, `middle row ${JSON.stringify(mid)}`).toBeLessThan(mid.length);
+    expect(mid.includes(0) && mid.includes(1), "gap between walls").toBe(true);
+  });
+
+  it("widens every mono face to the fallback charset (bound text renders any digit)", () => {
+    const asset = bake("SSD1309 · MONO RIG", "DejaVuSans.ttf", true);
+    const cps = new Set(asset.glyphs.map((g) => g.codepoint));
+    for (const ch of "2547cony.") {
+      expect(cps.has(ch.codePointAt(0)!), `glyph '${ch}' present`).toBe(true);
+    }
+  });
+});

@@ -96,6 +96,17 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   requested weight into the wght axis, pass variation coords to getPath,
   read the advance from the transformed glyph, and key the parsed-font
   cache by (path, weight) since getTransform mutates glyph.advanceWidth.
+- Panel-verified fixes from the SSD1309 rig photo: (1) stem pairing could
+  pair the two edges of a COUNTER (an R bowl's top and bottom bars, an o's
+  inner walls) because they are adjacent with overlapping extents — snapping
+  them shut sheared the R's diagonal leg into a P and squashed the 9's
+  bowl. Pairs now require INK between the edges (a point-in-glyph probe at
+  the midpoint of the overlap), so only true strokes snap. (2) The mono
+  face subset carried only the static text's glyphs — script-level
+  ui.bind(..., 'text') targets are invisible at planning time, so bound
+  values drew with gaps ("t=12.5s" rendered "t=1 s"). Mono faces now widen
+  to the fallback charset unconditionally (~0.7KB mono1 bits; color targets
+  keep the precise per-node widening).
 
 Out of scope per the design: band renderer / scroll canvases / OSK on 1bpp.
 Raw display.* ops keep the direct-op runtime beneath the UI path.

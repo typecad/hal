@@ -257,6 +257,17 @@ export function planUIFontAssets(
   if (fontFaces.length === 0) return [];
 
   const requests = new Map<string, FontAssetRequest>();
+  // Mono panels exist to show runtime values — uptimes, counts, sensor
+  // strings arrive through ui.bind(..., 'text'), which THIS layer cannot see
+  // (the bindings live in the script the engine parses separately; only
+  // markup-level bind attributes and {expr} are visible here). The rig demo
+  // proved the gap: its face subset carried exactly the static text's 31
+  // glyphs, so the bound "t=12.5s" drew "t=1 s" on the panel — 2, ., 5 were
+  // never baked. On mono, every face widens to the fallback charset
+  // unconditionally (~0.7KB of mono1 bits); color targets keep the precise
+  // per-node conditions below.
+  let monoDisplay = false;
+  try { monoDisplay = getDisplayProfile().colorFormat === "mono"; } catch { /* no profile bound */ }
   const collect = (node: StyledNode) => {
     const face = selectFontFaceForStyle(fontFaces, node.style);
     if (face) {
@@ -287,7 +298,10 @@ export function planUIFontAssets(
         };
         requests.set(key, request);
       }
-      if ((fontSubsetOf(node.style) === "fallback" || dynamicText) && request.subset !== "fallback") {
+      if (
+        (fontSubsetOf(node.style) === "fallback" || dynamicText || monoDisplay) &&
+        request.subset !== "fallback"
+      ) {
         request.subset = "fallback";
         addText(request.chars, FALLBACK_CHARS);
       }
@@ -674,7 +688,11 @@ function collectMonoEdges(contours: Point[][], axis: "x" | "y"): MonoHintEdge[] 
   return edges;
 }
 
-function monoAxisShift(edges: MonoHintEdge[], zones?: MonoYZone[]): (v: number) => number {
+function monoAxisShift(
+  edges: MonoHintEdge[],
+  zones?: MonoYZone[],
+  inkBetween?: (aPos: number, bPos: number, lo: number, hi: number) => boolean,
+): (v: number) => number {
   if (edges.length === 0) return () => 0;
   edges.sort((a, b) => a.pos - b.pos);
   const clamp = (d: number) => Math.max(-MONO_HINT_MAX_SHIFT, Math.min(MONO_HINT_MAX_SHIFT, d));
@@ -701,6 +719,12 @@ function monoAxisShift(edges: MonoHintEdge[], zones?: MonoYZone[]): (v: number) 
     const minExtent = Math.min(a.hi - a.lo, b.hi - b.lo);
     if (gap < MONO_HINT_STEM_MIN_PX || gap > MONO_HINT_STEM_MAX_PX) continue;
     if (minExtent <= 0 || overlap < MONO_HINT_STEM_OVERLAP * minExtent) continue;
+    // A pair is a STROKE only when ink fills the space between its edges
+    // (the two sides of one bar/stem). Adjacent edges can also bound a
+    // COUNTER — an o's inner walls, an R bowl's top and bottom bars — and
+    // pairing those snaps the bowl shut and shears everything attached
+    // (the R's leg collapsed to a nub: it read as a P on the panel).
+    if (inkBetween && !inkBetween(a.pos, b.pos, Math.max(a.lo, b.lo), Math.min(a.hi, b.hi))) continue;
     const stemW = Math.max(1, Math.round(gap));
     const newLeft = Math.round(a.pos + (stemW - gap) / 2);
     a.delta = clamp(newLeft - a.pos);
@@ -774,8 +798,16 @@ export function monoYZoneTable(font: any, px: number): MonoYZone[] | undefined {
 /** Snap a glyph's stems onto the pixel grid (mono bake only). yZones (blue
  * zones) align shared design heights across glyphs when provided. */
 export function monoHintContours(contours: Point[][], yZones?: MonoYZone[]): Point[][] {
-  const shiftX = monoAxisShift(collectMonoEdges(contours, "x"));
-  const shiftY = monoAxisShift(collectMonoEdges(contours, "y"), yZones);
+  // Pair-legitimacy probe: is there glyph ink halfway between the two
+  // candidate edges, at the middle of their overlap? Ink → the edges bound
+  // one stroke; blank → they bound a counter (o's inner walls, an R bowl's
+  // top/bottom bars) and must not pair.
+  const inkBetweenX = (aPos: number, bPos: number, lo: number, hi: number): boolean =>
+    hi > lo && pointInContours((aPos + bPos) / 2, (lo + hi) / 2, contours);
+  const inkBetweenY = (aPos: number, bPos: number, lo: number, hi: number): boolean =>
+    hi > lo && pointInContours((lo + hi) / 2, (aPos + bPos) / 2, contours);
+  const shiftX = monoAxisShift(collectMonoEdges(contours, "x"), undefined, inkBetweenX);
+  const shiftY = monoAxisShift(collectMonoEdges(contours, "y"), yZones, inkBetweenY);
   return contours.map((c) =>
     c.map((p) => ({ x: p.x + shiftX(p.x), y: p.y + shiftY(p.y) })),
   );
