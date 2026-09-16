@@ -148,6 +148,14 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   rgb565 approximation; and mono drop-in demos declare colorFormat:
   'mono' explicitly in their config — the preview server has no
   framework strategy to infer it from the driver.
+- The preview's script sandbox gains a Time shim: scripts import
+  { Time } from '@typecad/hal' and call Time.now() in ui.bind callbacks
+  (the device lowers that to the uptime clock), but the preview evaluates
+  the authored expression verbatim — every timing binding threw
+  "Time is not defined" once per tick, spamming the diagnostics panel.
+  Time.now()/nowUs() now follow the runtime's simulated clock (advances
+  by each tick's delta — deterministic under explicit deltas), and
+  sleep/busyWaitUs resolve immediately (the preview cannot block).
 
 Out of scope per the design: band renderer / scroll canvases / OSK on 1bpp.
 Raw display.* ops keep the direct-op runtime beneath the UI path.

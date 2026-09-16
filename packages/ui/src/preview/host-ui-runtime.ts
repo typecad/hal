@@ -319,6 +319,10 @@ export class PreviewUIRuntime {
   private lastTouchTime = -UI_TOUCH_DEBOUNCE_MS;
   private lastReleaseTime = -UI_TOUCH_DEBOUNCE_MS;
   private lastTickTime = Date.now();
+  /** Simulated ms since boot — advances by each tick's delta (wall-clock
+   *  delta when the caller passes none). Backs the script sandbox's Time
+   *  shim, mirroring the device's Time.now() uptime semantics. */
+  private clockMs = 0;
   private dragStartX = 0;
   private dragStartY = 0;
   private lastTouchX = 0;
@@ -468,6 +472,7 @@ export class PreviewUIRuntime {
     const now = Date.now();
     const delta = deltaMs ?? Math.max(0, now - this.lastTickTime);
     this.lastTickTime = now;
+    this.clockMs += delta;
     if (this.debugCapture) this.debugPaintedRects = [];
     this.evaluateBindings();
     this.advanceTransitions(delta);
@@ -3997,7 +4002,7 @@ export class PreviewUIRuntime {
     const seen = new Set<string>();
     const names: string[] = [];
     for (const name of this.snapshot.uiTreeNames ?? []) {
-      if (!validIdentifier.test(name) || name === "screen" || name === "ui" || seen.has(name)) continue;
+      if (!validIdentifier.test(name) || name === "screen" || name === "ui" || name === "Time" || seen.has(name)) continue;
       seen.add(name);
       names.push(name);
     }
@@ -4129,7 +4134,22 @@ export class PreviewUIRuntime {
   }
 
   private scriptValues(aliases: string[], locals: Record<string, unknown> = {}): unknown[] {
-    return [this.screen, this.createUiFacade(), this.moduleScope, ...aliases.map(() => this.screen), ...Object.values(locals)];
+    return [this.screen, this.createUiFacade(), this.moduleScope, this.timeShim(), ...aliases.map(() => this.screen), ...Object.values(locals)];
+  }
+
+  /** The @typecad/hal Time surface for the script sandbox. Device callbacks
+   *  lower Time.now() to the uptime clock; the preview runs the authored
+   *  expression verbatim, so without this shim every timing binding throws
+   *  "Time is not defined" once per tick. sleep/busyWait resolve immediately
+   *  (the preview cannot block); now/nowUs follow the simulated clock and
+   *  stay deterministic under explicit tick deltas. */
+  private timeShim(): { now(): number; nowUs(): number; sleep(): Promise<void>; busyWaitUs(): void } {
+    return {
+      now: () => this.clockMs,
+      nowUs: () => this.clockMs * 1000,
+      sleep: () => Promise.resolve(),
+      busyWaitUs: () => { /* no-op */ },
+    };
   }
 
   private listLocal(param: string | undefined, row: number): Record<string, unknown> {
@@ -4143,7 +4163,7 @@ export class PreviewUIRuntime {
     const localValues = Object.fromEntries(localNames.map((name) => [name, locals[name]]));
     const normalized = this.normalizeScript(expression);
     try {
-      return Function("screen", "ui", "moduleScope", ...aliases, ...localNames, `"use strict"; return (${normalized});`)(...this.scriptValues(aliases, localValues));
+      return Function("screen", "ui", "moduleScope", "Time", ...aliases, ...localNames, `"use strict"; return (${normalized});`)(...this.scriptValues(aliases, localValues));
     } catch (error) {
       this.onDiagnostics?.(`Preview expression failed: ${expression} (${error instanceof Error ? error.message : String(error)})`);
       return undefined;
@@ -4157,7 +4177,7 @@ export class PreviewUIRuntime {
     const localValues = Object.fromEntries(localNames.map((name) => [name, locals[name]]));
     const normalized = this.normalizeScript(body);
     try {
-      Function("screen", "ui", "moduleScope", ...aliases, ...localNames, `"use strict"; ${normalized}`)(...this.scriptValues(aliases, localValues));
+      Function("screen", "ui", "moduleScope", "Time", ...aliases, ...localNames, `"use strict"; ${normalized}`)(...this.scriptValues(aliases, localValues));
     } catch (error) {
       this.onDiagnostics?.(`Preview callback failed: ${body} (${error instanceof Error ? error.message : String(error)})`);
     }
