@@ -26,6 +26,13 @@ describe("LVGL font source", () => {
     expect(g.ofsY).toBe(-4); // descender: bottom −ofs_y below baseline
   });
 
+  it("parses the 9px variant (line geometry, glyph count)", () => {
+    const font = parseLvglFontC(fs.readFileSync(path.resolve(HERE, "../../../demos/demo-mono-rig/src/dejavu9.c"), "utf8"))!;
+    expect(font.lineHeight).toBe(9);
+    expect(font.baseline).toBe(7); // 9 - 2
+    expect(font.glyphs.length).toBe(51); // letters (X missing from the symbol list, K duplicated)
+  });
+
   it("round-trips a glyph's bits through the mono1 cell layout", () => {
     const font = parseLvglFontC(fs.readFileSync(C_FILE, "utf8"))!;
     const a = font.glyphs.find((x) => x.codepoint === 65)!;
