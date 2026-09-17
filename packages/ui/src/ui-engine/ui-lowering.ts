@@ -45,7 +45,7 @@ export interface LoweredUI {
   diagnostics: Diagnostic[];
 }
 
-type ColorFormat = "rgb565" | "rgb666" | "rgb888" | "mono";
+type ColorFormat = "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8";
 type Storage = "progmem" | "flash";
 
 export function lowerUIToCpp(

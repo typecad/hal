@@ -8,7 +8,7 @@ import path from "node:path";
 import type { StyledNode } from "./style-resolver.js";
 import { getCachedDecodedImage } from "./image-decode.js";
 
-type ColorFormat = "rgb565" | "rgb666" | "rgb888" | "mono";
+type ColorFormat = "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8";
 
 export interface UIImageAsset {
   /** C++-safe unique id used for the generated data symbol. */
@@ -122,6 +122,13 @@ function rgb565ToRgb888(v: number): number {
 function emitPixelValue(v: number, colorFormat: ColorFormat): string {
   if (colorFormat === "rgb666" || colorFormat === "rgb888") {
     return "0x" + rgb565ToRgb888(v).toString(16).padStart(6, "0");
+  }
+  if (colorFormat === "gray8") {
+    // 565 source → 8-bit luminance byte (Rec. 601 weights; the runtime
+    // stores/blends gray8 as single bytes, the panel nibble-reduces).
+    const r5 = (v >> 11) & 0x1f, g6 = (v >> 5) & 0x3f, b5 = v & 0x1f;
+    const r = (r5 << 3) | (r5 >> 2), g = (g6 << 2) | (g6 >> 4), b = (b5 << 3) | (b5 >> 2);
+    return "0x" + Math.round((299 * r + 587 * g + 114 * b) / 1000).toString(16).padStart(2, "0");
   }
   return "0x" + (v & 0xffff).toString(16).padStart(4, "0");
 }

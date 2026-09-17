@@ -20,7 +20,10 @@ fast mode (the 1KB full-frame push is bandwidth-bound). Per-node text
 background clears are skipped under UI_FULL_FRAME_REDRAW (they erased
 sibling descenders and were redundant — full-frame repaints in z order).
 Golden glyph bitmaps pinned in tests/packages/ui/golden-mono-glyphs.test.ts.
-Stage 3 grayscale, Stage 4 e-ink.
+Stage 3 SHIPPED as gray8 (8-bit luminance, SSD1327-class L_8 panels): UI_COLOR_T
+uint8_t + ui_blend8/lerp_color_8, AA + opacity return, gradients still flatten,
+keyframes still elided; drop-in solomon,ssd1327; demos/demo-gray compile-
+verified on esp32s3. Stage 4 e-ink.
 
 ## Stage 2 — mono (same UI API, flattened)
 

@@ -248,7 +248,7 @@ export interface AnimationModel {
 export interface UIProgram {
   width: number;
   height: number;
-  colorFormat: "rgb565" | "rgb666" | "rgb888" | "mono";
+  colorFormat: "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8";
   display?: DisplayProfile;
   fontAssets: UIFontAssetModel[];
   imageAssets: UIImageAsset[];
@@ -258,7 +258,7 @@ export interface UIProgram {
   animations: AnimationModel[];
 }
 
-type ColorFormat = "rgb565" | "rgb666" | "rgb888" | "mono";
+type ColorFormat = "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8";
 
 interface FlatModelSource {
   index: number;

@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 /** Native pixel format the panel stores / the shim quantizes to at push. */
-export type NativeFormat = "rgb888" | "rgb666" | "rgb565" | "mono" | "palette";
+export type NativeFormat = "rgb888" | "rgb666" | "rgb565" | "mono" | "gray8" | "palette";
 
 /** How the panel accepts refreshed pixels. */
 export type RefreshModel = "immediate" | "deferred-partial" | "deferred-full";
@@ -63,7 +63,7 @@ export function defaultTftCapabilities(): DisplayCapabilities {
 interface ProfileLike {
   width: number;
   height: number;
-  colorFormat: "rgb565" | "rgb666" | "rgb888" | "mono";
+  colorFormat: "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8";
   displayClass?: "tft" | "eink" | "oled";
   capabilities?: DisplayCapabilities;
 }
@@ -81,6 +81,28 @@ interface ProfileLike {
  *  off (Stage 4 owns that path). */
 export function deriveCapabilities(profile: ProfileLike): DisplayCapabilities {
   if (profile.capabilities) return profile.capabilities;
+  // Gray8 (Stage 3): the format alone derives its capability set — 8-bit
+  // luminance (the panel nibble-reduces to 16 levels), a backing store for
+  // the full-frame compose, antialiasing ON (grays blend — the luminance
+  // ramp returns what mono's threshold dropped), gradients still off (a
+  // gradient flattens to its first-stop gray), transitions/keyframes ELIDED
+  // (an 8KB frame at I2C fast mode is ~50-100ms — keyframe animation dies
+  // by lowering decision).
+  if (profile.colorFormat === "gray8") {
+    return {
+      nativeFormat: "gray8",
+      refreshModel: "immediate",
+      partialRefresh: "none",
+      requiresBackingStore: true,
+      features: {
+        antialias: true,
+        gradients: false,
+        opacityBlend: true,
+        smoothScroll: false,
+        animation: false,
+      },
+    };
+  }
   if (profile.colorFormat === "mono" || profile.displayClass === "eink" || profile.displayClass === "oled") {
     const eink = profile.displayClass === "eink";
     return {

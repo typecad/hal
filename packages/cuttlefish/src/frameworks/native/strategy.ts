@@ -718,7 +718,7 @@ export class NativeStrategy implements PlatformStrategy {
     return new Set<string>();
   }
 
-  colorFormat(): "rgb565" | "rgb666" | "rgb888" | "mono" {
+  colorFormat(): "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8" {
     // Honor the resolved display profile's colorFormat so an rgb888 SDL target
     // lowers colors at full 888 precision (and emits UI_COLOR_DEPTH 888).
     // Defaults to rgb565 for non-display native programs (byte-identical).

@@ -251,7 +251,7 @@ export class GenericStrategy implements PlatformStrategy {
     return new Set<string>();
   }
 
-  colorFormat(): "rgb565" | "rgb666" | "rgb888" | "mono" {
+  colorFormat(): "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8" {
     return "rgb565";
   }
 

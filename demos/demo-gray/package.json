@@ -1,0 +1,16 @@
+{
+  "name": "demo-gray",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stage 3 gray8 — 16-gray SSD1327 OLED: AA text, gray shades, luminance images, opacity blend (ESP32-S3)",
+  "type": "module",
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload"
+  },
+  "dependencies": {
+    "@typecad/framework-zephyr": "*",
+    "@typecad/ui": "*"
+  }
+}

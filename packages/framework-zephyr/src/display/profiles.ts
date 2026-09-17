@@ -19,7 +19,7 @@ export interface ZephyrDisplayProfile {
    *  effective size (e.g. a 320x480 panel mounted landscape = 480x320). */
   readonly nativeWidth?: number;
   readonly nativeHeight?: number;
-  readonly colorFormat: 'rgb565' | 'mono';
+  readonly colorFormat: 'rgb565' | 'mono' | 'gray8';
   /** Applied via display_set_orientation (0/90/180/270). */
   readonly rotation?: number;
   /** DT alias for the backlight GPIO (set high at init), if any. */
@@ -208,6 +208,21 @@ const MONO_PANEL_COMPATIBLES: ReadonlySet<string> = new Set([
   'sinowealth,sh1106',
 ]);
 
+/** 16-gray panels (Stage 3): Zephyr's solomon,ssd1327 driver accepts
+ *  PIXEL_FORMAT_L_8 (8-bit luminance in, nibble-reduced to the panel's 16
+ *  levels) — the Stage 3 gray8 lowering target. Same drop-in rule as mono. */
+const GRAY_PANEL_COMPATIBLES: ReadonlySet<string> = new Set([
+  'solomon,ssd1327',
+]);
+
+/** True when a drop-in compatible (or explicit config) selects the gray8
+ *  (8-bit luminance) lowering target. */
+export function isGrayDisplay(display: { driver: string; colorFormat?: string }): boolean {
+  if (display.colorFormat === 'gray8') return true;
+  if (display.colorFormat && display.colorFormat !== 'gray8') return false;
+  return GRAY_PANEL_COMPATIBLES.has(display.driver);
+}
+
 /** True when a drop-in compatible (or explicit config) selects the mono
  *  (1bpp) lowering target. */
 export function isMonoDisplay(display: { driver: string; colorFormat?: string }): boolean {
@@ -242,7 +257,7 @@ export function synthesizeZephyrProfile(display: {
     height: display.height,
     nativeWidth: display.nativeWidth,
     nativeHeight: display.nativeHeight,
-    colorFormat: isMonoDisplay(display) ? 'mono' : 'rgb565',
+    colorFormat: isMonoDisplay(display) ? 'mono' : isGrayDisplay(display) ? 'gray8' : 'rgb565',
     controller: undefined,
     transport: 'zephyr-display',
     dbiHost: display.csHold === true ? 'local-hold-cs' : undefined,

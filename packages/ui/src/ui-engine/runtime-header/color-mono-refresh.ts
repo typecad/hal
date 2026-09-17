@@ -19,7 +19,16 @@ export function emitColorMonoRefresh(): string {
 // 565 holds 16-bit. Draw wrappers and locals use UI_COLOR_T so 888 is not
 // narrowed before reaching the HAL. Under 565/mono this is uint16_t and the
 // emitted code is byte-identical with the pre-widening runtime.
-#if UI_COLOR_DEPTH == 888
+#if UI_COLOR_DEPTH == 8
+  // Gray8 (Stage 3): UI_COLOR_T is the 8-bit luminance byte (the panel
+  // driver nibble-reduces to its 16 display levels).
+  #ifndef UI_COLOR_T
+    #define UI_COLOR_T uint8_t
+  #endif
+  #ifndef UI_DIM_MASK
+    #define UI_DIM_MASK 0x7Fu       // halve the luminance byte
+  #endif
+#elif UI_COLOR_DEPTH == 888
   #ifndef UI_COLOR_T
     #define UI_COLOR_T uint32_t
   #endif
@@ -36,9 +45,14 @@ export function emitColorMonoRefresh(): string {
 #endif
 static inline uint16_t ui_blend565(uint16_t fg, uint16_t bg, uint8_t opacity);
 static inline uint32_t ui_blend888(uint32_t fg, uint32_t bg, uint8_t opacity);
+static inline uint8_t ui_blend8(uint8_t fg, uint8_t bg, uint8_t opacity);
 static inline uint16_t lerp_color(uint16_t a, uint16_t b, uint8_t k100);
 static inline uint32_t lerp_color_888(uint32_t a, uint32_t b, uint8_t k100);
-#if UI_COLOR_DEPTH == 888
+static inline uint8_t lerp_color_8(uint8_t a, uint8_t b, uint8_t k100);
+#if UI_COLOR_DEPTH == 8
+  #define ui_blend(fg, bg, op)        ui_blend8(static_cast<uint8_t>(fg), static_cast<uint8_t>(bg), (op))
+  #define UI_LERP_COLOR(a, b, k)      lerp_color_8(static_cast<uint8_t>(a), static_cast<uint8_t>(b), (k))
+#elif UI_COLOR_DEPTH == 888
   #define ui_blend(fg, bg, op)        ui_blend888(static_cast<uint32_t>(fg), static_cast<uint32_t>(bg), (op))
   #define UI_LERP_COLOR(a, b, k)      lerp_color_888(static_cast<uint32_t>(a), static_cast<uint32_t>(b), (k))
 #else

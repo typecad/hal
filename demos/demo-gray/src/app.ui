@@ -1,0 +1,122 @@
+<script lang="ts">
+  // app.ui — Stage 3 gray8 demo (SSD1327-class 16-gray OLED, 128x128, I2C).
+  //
+  // Exercises what gray8 ADDS over mono:
+  //   1. AA text returns (the luminance ramp replaces the 1bpp threshold)
+  //   2. Gray shades as first-class colors (#202020 / #808080 / #e0e0e0)
+  //   3. Photographic images — luminance-sampled, not dithered
+  //   4. Opacity blending (the shadow row dims toward the background)
+  //
+  // The full-frame push is 16KB (128*128) at ~7ms/frame fast-mode I2C —
+  // bound text updates animate; keyframes are elided by design.
+
+  import { ui } from '@typecad/ui';
+  import { Time } from '@typecad/hal';
+
+  ui.mount(screen);
+
+  ui.bind(screen.uptime, 'text', () => `up ${Math.floor(Time.now() / 1000)}s`);
+  ui.bind(screen.shadeEcho, 'text', () => `level ${62 + Math.floor(Time.now() / 3000) - Math.floor(Time.now() / 15000) * 5}`);
+</script>
+
+<style>
+  @font-face {
+    font-family: "Gray";
+    src: url("../../../packages/ui/assets/fonts/dejavu/DejaVuSansMono.ttf");
+    font-weight: 400;
+    font-style: normal;
+  }
+
+  :root {
+    background: #000000;
+    color: #e0e0e0;
+    flex-direction: column;
+  }
+
+  view, text, progress {
+    font-family: "Gray";
+    font-size: 13px;
+  }
+
+  #titlebar {
+    background: #e0e0e0;
+    padding: 1px 3px;
+    height: 17px;
+  }
+  #title {
+    color: #101010;
+    white-space: nowrap;
+    margin-top: -2px;
+  }
+
+  #shades {
+    display: flex;
+    flex-direction: row;
+    padding: 3px 3px;
+    height: 18px;
+  }
+  #shDark { color: #202020; width: 40px; }
+  #shMid { color: #808080; width: 40px; }
+  #shBright { color: #e0e0e0; width: 40px; }
+
+  #imgRow {
+    display: flex;
+    flex-direction: row;
+    padding: 1px 3px;
+    height: 30px;
+  }
+  #gradImg {
+    margin: 2px 0 0 2px;
+  }
+  #shadeEcho {
+    margin: 6px 0 0 10px;
+  }
+
+  #progRow {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 1px 3px;
+    height: 15px;
+  }
+  #sweep {
+    width: 100px;
+    height: 11px;
+    min-height: 0;
+    border: 1px solid #e0e0e0;
+  }
+
+  #uptimeRow {
+    padding: 1px 3px;
+    height: 15px;
+  }
+
+  #dimRow {
+    padding: 1px 3px;
+    height: 15px;
+  }
+  #dimText {
+    color: #606060;
+    opacity: 60;
+    height: 12px;
+    min-height: 0;
+  }
+</style>
+
+<screen>
+  <view id="titlebar"><text id="title">GRAY 16 LEVELS</text></view>
+  <view id="shades">
+    <text id="shDark">20</text>
+    <text id="shMid">80</text>
+    <text id="shBright">E0</text>
+  </view>
+  <view id="imgRow">
+    <img id="gradImg" src="grad.png"></img>
+    <text id="shadeEcho">level 62</text>
+  </view>
+  <view id="progRow">
+    <progress id="sweep" value="0"></progress>
+  </view>
+  <view id="uptimeRow"><text id="uptime">up 0s</text></view>
+  <view id="dimRow"><text id="dimText">60% opacity blend</text></view>
+</screen>

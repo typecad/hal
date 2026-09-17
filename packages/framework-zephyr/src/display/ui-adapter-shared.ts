@@ -75,7 +75,13 @@ static inline void display_deleteCanvas(CuttlefishCanvas16* canvas) {
 }
 static inline int16_t display_canvasWidth(CuttlefishCanvas16* c) { return c->width(); }
 static inline int16_t display_canvasHeight(CuttlefishCanvas16* c) { return c->height(); }
-static inline uint16_t* display_canvasBuffer(CuttlefishCanvas16* c) { return c->getBuffer(); }
+// Canvas buffers are addressed in UI_COLOR_T units by every runtime caller;
+// the underlying CuttlefishCanvas16 storage is 16-bit (the 565/mono world the
+// canvas machinery was built for). Gray8/full-frame targets never allocate
+// canvases, so the reinterpret never dereferences on those builds.
+static inline UI_COLOR_T* display_canvasBuffer(CuttlefishCanvas16* c) {
+  return reinterpret_cast<UI_COLOR_T*>(c->getBuffer());
+}
 static inline uint16_t display_canvasGetPixel(CuttlefishCanvas16* c, int16_t x, int16_t y) { return c->getPixel(x, y); }
 static inline void display_canvasFillScreen(CuttlefishCanvas16* c, UI_COLOR_T color) { c->fillScreen(static_cast<uint16_t>(color)); }
 static inline void display_canvasFillRect(CuttlefishCanvas16* c, int16_t x, int16_t y, int16_t cw, int16_t ch, UI_COLOR_T color) {
@@ -90,8 +96,8 @@ export const TARGET_FORWARDERS_SECTION = `
 static inline void display_targetDrawPixel(CuttlefishDisplayTarget* t, int16_t x, int16_t y, UI_COLOR_T color) { t->drawPixel(x, y, static_cast<uint16_t>(color)); }
 static inline int16_t display_targetWidth(CuttlefishDisplayTarget* t) { return t->width(); }
 static inline int16_t display_targetHeight(CuttlefishDisplayTarget* t) { return t->height(); }
-static inline void display_targetDrawRGBBitmap(CuttlefishDisplayTarget* t, int16_t x, int16_t y, const uint16_t* bitmap, int16_t bw, int16_t bh) {
-  t->drawRGBBitmap(x, y, bitmap, bw, bh);
+static inline void display_targetDrawRGBBitmap(CuttlefishDisplayTarget* t, int16_t x, int16_t y, const UI_COLOR_T* bitmap, int16_t bw, int16_t bh) {
+  t->drawRGBBitmap(x, y, reinterpret_cast<const uint16_t*>(bitmap), bw, bh);
 }
 static inline void display_targetFillRect(CuttlefishDisplayTarget* t, int16_t x, int16_t y, int16_t bw, int16_t bh, UI_COLOR_T color) { t->fillRect(x, y, bw, bh, static_cast<uint16_t>(color)); }
 static inline void display_targetDrawFastHLine(CuttlefishDisplayTarget* t, int16_t x, int16_t y, int16_t bw, UI_COLOR_T color) { t->drawFastHLine(x, y, bw, static_cast<uint16_t>(color)); }

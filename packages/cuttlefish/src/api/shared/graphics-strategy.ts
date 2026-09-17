@@ -77,7 +77,7 @@ export interface PlatformGraphicsStrategy {
    *  rgb666/rgb888/palette, at which point resolveColor888 is the resolution
    *  entry point. Widening only the return type now would break assignment to
    *  the "rgb565" | "mono" field types downstream. */
-  colorFormat(): "rgb565" | "rgb666" | "rgb888" | "mono";
+  colorFormat(): "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8";
 
   /** Per-driver color-format default for drop-in configs (driver = DT
    *  compatible, no registry profile, no explicit config.colorFormat). The
@@ -87,7 +87,7 @@ export interface PlatformGraphicsStrategy {
    *  compatible would flatten colors at rgb565 while the framework adapter
    *  dispatches the mono path. Return undefined (or omit the hook) to keep
    *  the generic rgb565 default. */
-  colorFormatForDriver?(driver: string): "rgb565" | "rgb666" | "rgb888" | "mono" | undefined;
+  colorFormatForDriver?(driver: string): "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8" | undefined;
 
   /** Per-target capacity caps (node/binding/transition limits, storage). */
   graphicsCapacity(): GraphicsCapacity;

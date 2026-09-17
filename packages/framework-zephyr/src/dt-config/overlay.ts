@@ -27,6 +27,14 @@ function monoPropFallback(prop: string, info: RequiredProp | undefined, nativeHe
   if (prop === 'multiplex-ratio') return `multiplex-ratio = <${nativeHeight - 1}>`;
   if (prop === 'prechargep') return 'prechargep = <0x22>';
   if (prop === 'segment-offset' || prop === 'page-offset' || prop === 'display-offset') return `${prop} = <0>`;
+  // SSD1327-class (Stage 3 gray): required by solomon,ssd1327_5-common.yaml
+  // with no binding default. Panel-tunable — these are the datasheet/common-
+  // module starting points (scanline artifacts: raise oscillator-freq toward
+  // 0x70; striping: add 0x40 to remap-value per the binding's bit table).
+  if (prop === 'oscillator-freq') return 'oscillator-freq = <0x00>';
+  if (prop === 'start-line') return 'start-line = <0>';
+  if (prop === 'remap-value') return 'remap-value = <0x51>';
+  if (prop === 'phase-length') return 'phase-length = <0x1f>';
   return undefined;
 }
 

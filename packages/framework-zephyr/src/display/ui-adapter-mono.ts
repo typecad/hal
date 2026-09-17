@@ -213,7 +213,7 @@ static inline void display_endWrite() { }
 static inline void display_setAddrWindow(int16_t x, int16_t y, int16_t winW, int16_t winH) {
   (void)x; (void)y; (void)winW; (void)winH;
 }
-static inline void display_writePixels(uint16_t* pixels, uint32_t count) {
+static inline void display_writePixels(const UI_COLOR_T* pixels, uint32_t count) {
   (void)pixels; (void)count;
 }
 ${CANVAS_LIFECYCLE_SECTION}${TARGET_FORWARDERS_SECTION}`;

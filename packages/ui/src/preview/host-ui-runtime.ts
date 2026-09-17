@@ -134,6 +134,10 @@ function findMatchingCloseParen(text: string, openIdx: number): number {
  *  (device parity — the C++ ui_lerp macro switches the same way). Exported
  *  for tests. */
 export function lerpColor(a: number, b: number, k100: number): number {
+  if (runtimeColorFormat === "gray8") {
+    if (k100 >= 100) return b & 0xff;
+    return (a + Math.trunc((((b & 0xff) - (a & 0xff)) * k100) / 100)) & 0xff;
+  }
   if (runtimeColorFormat === "rgb666" || runtimeColorFormat === "rgb888") {
     if (k100 >= 100) return b & 0xffffff;
     const mix = (shift: number): number => {
@@ -160,15 +164,18 @@ export function lerpColor(a: number, b: number, k100: number): number {
 // Lets the free resolveRuntimeColor helper resolve at the target's depth without
 // `this` access (keyboard + binding callbacks are module-scope functions).
 // rgb666 → 888 (blends keep precision, quantize at the canvas push); else 565.
-let runtimeColorFormat: "rgb565" | "rgb666" | "rgb888" | "mono" = "rgb565";
+let runtimeColorFormat: "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8" = "rgb565";
 
 function resolveRuntimeColor(value: unknown): number {
   // rgb666 and rgb888 both store full 888 internally (quantization happens at
-  // the push boundary for rgb666; rgb888 carries 888 to the surface).
+  // the push boundary for rgb666; rgb888 carries 888 to the surface). gray8
+  // stores the 8-bit luminance byte.
   const is888 = runtimeColorFormat === "rgb666" || runtimeColorFormat === "rgb888";
-  const mask = is888 ? 0xffffff : 0xffff;
+  const isGray8 = runtimeColorFormat === "gray8";
+  const mask = is888 ? 0xffffff : isGray8 ? 0xff : 0xffff;
   if (typeof value === "number") return value & mask;
   if (typeof value === "string") {
+    if (isGray8) return resolveColor(value, "gray8") & 0xff;
     return (is888 ? resolveColor888(value) : resolveColor(value, "rgb565")) & mask;
   }
   return 0;
@@ -178,6 +185,12 @@ function resolveRuntimeColor(value: unknown): number {
  *  Mirrors the device's UI_COLOR_DEPTH-driven ui_blend macro — the value depth
  *  and the blend math switch together (see Phase 1 counterexample). */
 function blendRuntime(fg: number, bg: number, opacity: number): number {
+  if (runtimeColorFormat === "gray8") {
+    if (opacity >= 100) return fg;
+    if (opacity <= 0) return bg;
+    const k = opacity / 100;
+    return Math.round(fg * k + bg * (1 - k));
+  }
   return (runtimeColorFormat === "rgb666" || runtimeColorFormat === "rgb888")
     ? blendRgb888(fg, bg, opacity)
     : blendRgb565(fg, bg, opacity);
@@ -187,6 +200,7 @@ function blendRuntime(fg: number, bg: number, opacity: number): number {
  *  565, 0x7F7F7F per channel on 888/666). The 565-only form channel-shifts
  *  on rgb888 targets. */
 function dimRuntimeColor(c: number): number {
+  if (runtimeColorFormat === "gray8") return c >> 1;
   return c & ((runtimeColorFormat === "rgb666" || runtimeColorFormat === "rgb888") ? 0x7f7f7f : 0x7bef);
 }
 
@@ -400,7 +414,8 @@ export class PreviewUIRuntime {
     this.gfx.setStorageMode(
       snapshot.program.colorFormat === "rgb888" ? "rgb888"
         : snapshot.program.colorFormat === "rgb666" ? "rgb666"
-          : "rgb565",
+          : snapshot.program.colorFormat === "gray8" ? "gray8"
+            : "rgb565",
     );
     this.createScreenProxy();
   }
@@ -1192,7 +1207,10 @@ export class PreviewUIRuntime {
     if (txStart >= txEnd || tyStart >= tyEnd) return;
     // Mono: sample the baked 1bpp bits (parity with the device's build-time
     // flatten — per-pixel thresholding here would miss Floyd–Steinberg).
+    // Gray8: sample 565 → 8-bit luminance (parity with the emitted L_8
+    // table — same Rec. 601 conversion at the emit boundary).
     let monoBits: number[] | undefined;
+    const gray8 = runtimeColorFormat === "gray8";
     if (this.monoFormat) {
       monoBits = this.monoBitsByAsset.get(asset.id);
       if (!monoBits) {
@@ -1212,6 +1230,11 @@ export class PreviewUIRuntime {
         if (monoBits) {
           const idx = srcY * srcW + srcX;
           color = (monoBits[idx >> 3] & (0x80 >> (idx & 7))) ? 0xffff : 0x0000;
+        } else if (gray8) {
+          const v5 = asset.data[srcY * srcW + srcX] ?? 0;
+          const r5 = (v5 >> 11) & 0x1f, g6 = (v5 >> 5) & 0x3f, b5 = v5 & 0x1f;
+          const r = (r5 << 3) | (r5 >> 2), g = (g6 << 2) | (g6 >> 4), b = (b5 << 3) | (b5 >> 2);
+          color = Math.round((299 * r + 587 * g + 114 * b) / 1000);
         } else {
           color = asset.data[srcY * srcW + srcX] ?? 0;
         }

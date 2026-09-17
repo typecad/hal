@@ -38,6 +38,7 @@ import type { ZephyrDisplayProfile } from "./profiles.js";
 import { CANVAS_LIFECYCLE_SECTION, TARGET_FORWARDERS_SECTION, profileMarkerLine } from "./ui-adapter-shared.js";
 import { zephyrDisplayApiAdapter } from "./ui-adapter-native.js";
 import { zephyrMonoDisplayAdapter } from "./ui-adapter-mono.js";
+import { zephyrGrayDisplayAdapter } from "./ui-adapter-gray.js";
 
 /**
  * Build the Zephyr UI display adapter for a profile. Emits the full
@@ -666,8 +667,9 @@ static inline void display_endWrite() { __tc_op_endWrite(nullptr); }
 static inline void display_setAddrWindow(int16_t x, int16_t y, int16_t winW, int16_t winH) {
   __tc_op_setAddrWindow(nullptr, x, y, winW, winH);
 }
-static inline void display_writePixels(uint16_t* pixels, uint32_t count) {
-  __tc_op_writePixels(nullptr, pixels, count);
+static inline void display_writePixels(const UI_COLOR_T* pixels, uint32_t count) {
+  uint16_t* px = const_cast<uint16_t*>(static_cast<const uint16_t*>(pixels));
+  __tc_op_writePixels(nullptr, px, count);
 }
 ${CANVAS_LIFECYCLE_SECTION}${TARGET_FORWARDERS_SECTION}`;
 
@@ -692,6 +694,7 @@ export const zephyrDisplayAdapterGenerator: DisplayAdapterGenerator = (display) 
     const synth = synthesizeZephyrProfile(display);
     if (synth) {
       if (synth.colorFormat === 'mono') return zephyrMonoDisplayAdapter(synth);
+      if (synth.colorFormat === 'gray8') return zephyrGrayDisplayAdapter(synth);
       return zephyrDisplayApiAdapter(synth);
     }
     return undefined as unknown as DisplayAdapterCode;
@@ -702,6 +705,11 @@ export const zephyrDisplayAdapterGenerator: DisplayAdapterGenerator = (display) 
   // ssd1306-class I2C node owns init/geometry.
   if (profile.colorFormat === 'mono') {
     return zephyrMonoDisplayAdapter(profile);
+  }
+  // Gray panels (Stage 3): the full-frame L_8 adapter — same full-frame
+  // semantic as mono at 8-bit luminance fidelity.
+  if (profile.colorFormat === 'gray8') {
+    return zephyrGrayDisplayAdapter(profile);
   }
   // Transport switch: 'zephyr-display' profiles get the display-API adapter
   // (display_write on the DT device, in-tree panel driver); everything else

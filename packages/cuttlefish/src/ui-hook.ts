@@ -50,7 +50,7 @@ export interface UIModule {
 }
 
 export interface LowerOptions {
-  colorFormat: "rgb565" | "rgb666" | "rgb888" | "mono";
+  colorFormat: "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8";
   storage: "progmem" | "flash";
   viewport: { width: number; height: number };
 }
@@ -82,8 +82,8 @@ export interface TranspilerUIHook {
   lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI;
 
   // ── Color resolution (used by IR transformers) ──────────────────────────
-  resolveColor(input: string, format: "rgb565" | "rgb666" | "rgb888" | "mono"): number;
-  resolveColorInternal(input: string, format: "rgb565" | "rgb666" | "rgb888" | "mono"): number;
+  resolveColor(input: string, format: "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8"): number;
+  resolveColorInternal(input: string, format: "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8"): number;
 
   // ── Runtime header emission ─────────────────────────────────────────────
   /**

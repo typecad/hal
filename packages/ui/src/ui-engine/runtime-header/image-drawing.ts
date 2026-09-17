@@ -286,7 +286,7 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
     // Simple case: no rotation, draw with scaling. The row-bitmap fast path
     // hands the display UI_COLOR_T rows — mono's packed bytes always take the
     // per-pixel loop below (ui_image_pixel unpacks the bits).
-#if !defined(UI_NATIVE_MONO)
+#if !defined(UI_NATIVE_MONO) && !defined(UI_NATIVE_GRAY8)
     if (drawW == img->w && drawH == img->h) {
       int16_t rows = static_cast<int16_t>(dyEnd - dyStart);
       int16_t cols = static_cast<int16_t>(dxEnd - dxStart);
@@ -305,7 +305,7 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
           ui_display_draw_pixel(x + dx, y + dy, color);
         }
       }
-#if !defined(UI_NATIVE_MONO)
+#if !defined(UI_NATIVE_MONO) && !defined(UI_NATIVE_GRAY8)
     }
 #endif
     return;
@@ -344,7 +344,7 @@ static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t 
      int16_t sw = ui_clamp_i16(clipW, 0, static_cast<int16_t>(img->w - sx0));
      int16_t sh = ui_clamp_i16(clipH, 0, static_cast<int16_t>(img->h - sy0));
      // Mono's packed data has no UI_COLOR_T rows — per-pixel via ui_image_pixel.
-#if !defined(UI_NATIVE_MONO)
+#if !defined(UI_NATIVE_MONO) && !defined(UI_NATIVE_GRAY8)
      for (int16_t row = 0; row < sh; row++) {
        ui_display_draw_rgb_bitmap(static_cast<int16_t>(x + sx0), static_cast<int16_t>(y + sy0 + row),
          img->data + static_cast<int32_t>(sy0 + row) * img->w + sx0, sw, 1);

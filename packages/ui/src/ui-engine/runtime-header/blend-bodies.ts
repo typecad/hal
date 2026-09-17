@@ -40,6 +40,15 @@ static inline uint16_t ui_blend565(uint16_t fg, uint16_t bg, uint8_t opacity) {
   return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
 }
 
+// Blend two 8-bit luminance bytes by opacity (0-100) — the gray8 (Stage 3)
+// ui_blend. Same LUT amortization as the channel blenders; one channel.
+static inline uint8_t ui_blend8(uint8_t fg, uint8_t bg, uint8_t opacity) {
+  if (opacity >= 100) return fg;
+  if (opacity == 0) return bg;
+  ui_blend_lut_build(opacity);
+  return static_cast<uint8_t>(__ui_blend_lut_fg[fg] + __ui_blend_lut_bg[bg]);
+}
+
 // Blend two RGB888 colors by opacity (0-100). Added for Phase 2 (RGB888/RGB666
 // targets); unused in Phase 1, whose TFT path keeps 565 node values and blends
 // via ui_blend565 above. Kept alongside so the 888 path is ready when the

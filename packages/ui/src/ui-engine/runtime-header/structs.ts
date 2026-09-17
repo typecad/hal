@@ -223,6 +223,14 @@ static inline uint16_t lerp_color(uint16_t a, uint16_t b, uint8_t k100) {
   return (static_cast<uint16_t>((r >> 3) & 0x1f) << 11) | (static_cast<uint16_t>((g >> 2) & 0x3f) << 5) | static_cast<uint16_t>((bl >> 3) & 0x1f);
 }
 
+// Gray8 lerp — for transitions on the gray8 target (Stage 3; the target
+// elides keyframes, but transition elision is a lowering decision and the
+// lerp stays total).
+static inline uint8_t lerp_color_8(uint8_t a, uint8_t b, uint8_t k100) {
+  if (k100 >= 100) return b;
+  return static_cast<uint8_t>(a + static_cast<int16_t>((static_cast<int16_t>(b) - static_cast<int16_t>(a)) * k100 / 100));
+}
+
 // RGB888 lerp — for transitions on RGB888/RGB666 targets (Phase 2+). Unused in
 // Phase 1; the 565 lerp_color above remains the active path for TFT targets,
 // whose node colors are still emitted as 565 values stored in uint32_t fields.

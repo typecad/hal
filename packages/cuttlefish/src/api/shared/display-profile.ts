@@ -63,7 +63,7 @@ export interface DisplayProfile {
   /** Native panel dimensions before rotation, when they differ from layout size. */
   nativeWidth?: number;
   nativeHeight?: number;
-  colorFormat: "rgb565" | "rgb666" | "rgb888" | "mono";
+  colorFormat: "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8";
   /** Display class: "tft" (default) for fast-refresh panels, "eink" for
    *  bistable/slow-refresh panels. Drives capability derivation + @media. */
   displayClass?: "tft" | "eink" | "oled";

@@ -313,16 +313,26 @@ export function resolveColor888(input: string): number {
   return pack888(r, g, b);
 }
 
+/** RGB888 → 8-bit luminance (Rec. 601 weights, matching the mono
+ *  threshold's 299/587/114 ratios). The gray8 target's color space: the
+ *  runtime blends in 8-bit and the panel (L_8, e.g. SSD1327) nibble-reduces
+ *  to its 16 display levels at the driver. */
+export function rgb888ToGray8(c: number): number {
+  const r = (c >> 16) & 0xff, g = (c >> 8) & 0xff, b = c & 0xff;
+  return Math.round((299 * r + 587 * g + 114 * b) / 1000);
+}
+
 /**
  * Resolve a CSS color string and quantize to a target format. Backwards-
  * compatible wrapper over resolveColor888 + quantizer. Existing call sites
  * keep their behavior (565/mono output unchanged).
  */
-export function resolveColor(input: string, format: "rgb565" | "rgb666" | "rgb888" | "mono"): number {
+export function resolveColor(input: string, format: "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8"): number {
   const c = resolveColor888(input);
   if (format === "rgb565") return rgb888To565(c);
   if (format === "rgb666") return rgb888To666(c);
   if (format === "rgb888") return c;
+  if (format === "gray8") return rgb888ToGray8(c);
   return rgb888ToMono(c);
 }
 
@@ -330,9 +340,11 @@ export function resolveColor(input: string, format: "rgb565" | "rgb666" | "rgb88
  * Resolve a CSS color to the INTERNAL representation value stored in node
  * fields. For rgb666 targets this is RGB888 (666 quantization happens at the
  * push boundary so blends keep full precision); for rgb565 it is RGB565
- * (byte-identical with pre-Phase-3 behavior); for mono it is 0/1. The value
- * depth and the runtime blend math switch together (see UI_COLOR_DEPTH). */
-export function resolveColorInternal(input: string, format: "rgb565" | "rgb666" | "rgb888" | "mono"): number {
+ * (byte-identical with pre-Phase-3 behavior); for mono it is 0/1; for gray8
+ * it is the 8-bit luminance byte (blends run in 8-bit, the panel reduces to
+ * 16 levels). The value depth and the runtime blend math switch together
+ * (see UI_COLOR_DEPTH). */
+export function resolveColorInternal(input: string, format: "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8"): number {
   if (format === "rgb666" || format === "rgb888") return resolveColor888(input);
   return resolveColor(input, format);
 }

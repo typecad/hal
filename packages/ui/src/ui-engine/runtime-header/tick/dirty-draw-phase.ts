@@ -127,14 +127,18 @@ export function emitTickDirtyDrawPhase(): string {
       if (__ui_nodes[i].screenId != __ui_active_screen) { __ui_nodes[i].dirty = 0; continue; }
 
       // Clip scroll subtrees to their viewport (the adapter's mono clip).
-#if defined(UI_NATIVE_MONO)
+#if defined(UI_NATIVE_MONO) || defined(UI_NATIVE_GRAY8)
+      // Full-frame scroll clipping: shared by mono and gray8 (the canvas
+      // compositors that clip on color targets don't exist on either).
       int16_t __ui_mcx = 0, __ui_mcy = 0, __ui_mcw = 0, __ui_mch = 0;
       uint8_t __ui_mclip = ui_mono_scroll_clip(i, &__ui_mcx, &__ui_mcy, &__ui_mcw, &__ui_mch);
       if (__ui_mclip) display_mono_set_clip(__ui_mcx, __ui_mcy, __ui_mcw, __ui_mch);
-      // :pressed → face inversion — mono's native highlight (flattening rule).
-      // Colors are pre-snapped 0/1: the face takes the old fg, the content
-      // takes its complement. Patched on the node so text/body draws see it;
-      // restored below.
+#endif
+#if defined(UI_NATIVE_MONO)
+      // :pressed → face inversion — mono's native highlight (flattening
+      // rule; gray8 keeps real colors, no inversion). Colors are pre-snapped
+      // 0/1: the face takes the old fg, the content its complement. Patched
+      // on the node so text/body draws see it; restored below.
       uint32_t __ui_save_fg = 0, __ui_save_bg = 0, __ui_save_bc = 0;
       uint8_t __ui_save_hasBg = 0;
       uint8_t __ui_minv = (__ui_nodes[i].monoPressInvert && __ui_nodes[i].value > 0) ? 1 : 0;
@@ -215,6 +219,8 @@ export function emitTickDirtyDrawPhase(): string {
         __ui_nodes[i].borderColor = __ui_save_bc;
         __ui_nodes[i].hasBg = __ui_save_hasBg;
       }
+#endif
+#if defined(UI_NATIVE_MONO) || defined(UI_NATIVE_GRAY8)
       if (__ui_mclip) display_mono_clear_clip();
 #endif
       __ui_nodes[i].dirty = 0;

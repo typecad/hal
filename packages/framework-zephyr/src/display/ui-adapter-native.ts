@@ -294,8 +294,9 @@ static inline void display_endWrite() { }
 static inline void display_setAddrWindow(int16_t x, int16_t y, int16_t winW, int16_t winH) {
   __tc_op_setAddrWindow(nullptr, x, y, winW, winH);
 }
-static inline void display_writePixels(uint16_t* pixels, uint32_t count) {
-  __tc_op_writePixels(nullptr, pixels, count);
+static inline void display_writePixels(const UI_COLOR_T* pixels, uint32_t count) {
+  uint16_t* px = const_cast<uint16_t*>(static_cast<const uint16_t*>(pixels));
+  __tc_op_writePixels(nullptr, px, count);
 }
 ${CANVAS_LIFECYCLE_SECTION}${TARGET_FORWARDERS_SECTION}`;
 

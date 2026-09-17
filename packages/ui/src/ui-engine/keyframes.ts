@@ -13,7 +13,7 @@ import {
   type KeyframeSetModel,
 } from "./model.js";
 
-export function buildKeyframeSets(rawKeyframes: KeyframeSet[], colorFormat: "rgb565" | "rgb666" | "rgb888" | "mono"): KeyframeSetModel[] {
+export function buildKeyframeSets(rawKeyframes: KeyframeSet[], colorFormat: "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8"): KeyframeSetModel[] {
   return rawKeyframes.map((ks) => ({
     name: ks.name,
     stops: ks.stops.map((stop) => {

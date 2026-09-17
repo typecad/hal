@@ -213,9 +213,11 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     // these resolve to uint16_t/0x7BEF — byte-identical with history.
     const is888 = profile.colorFormat === "rgb666" || profile.colorFormat === "rgb888";
     ctx.sourceLines.push(
-      is888
-        ? "#define UI_COLOR_DEPTH 888\n#define UI_COLOR_T uint32_t\n#define UI_DIM_MASK 0x7F7F7Fu"
-        : "#define UI_COLOR_DEPTH 565\n#define UI_COLOR_T uint16_t\n#define UI_DIM_MASK 0x7BEFu",
+      profile.colorFormat === "gray8"
+        ? "#define UI_COLOR_DEPTH 8\n#define UI_COLOR_T uint8_t\n#define UI_DIM_MASK 0x7Fu"
+        : is888
+          ? "#define UI_COLOR_DEPTH 888\n#define UI_COLOR_T uint32_t\n#define UI_DIM_MASK 0x7F7F7Fu"
+          : "#define UI_COLOR_DEPTH 565\n#define UI_COLOR_T uint16_t\n#define UI_DIM_MASK 0x7BEFu",
     );
     // The native CuttlefishGFX/CuttlefishCanvas16 class slice is emitted ONLY
     // for adapters that instantiate CuttlefishGFX by value (the planned
@@ -313,6 +315,13 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   if (caps.nativeFormat === "mono") {
     ctx.sourceLines.push("#define UI_NATIVE_MONO 1");
   }
+  // Gray8 (Stage 3): 8-bit luminance in UI_COLOR_T (the panel driver
+  // nibble-reduces to its 16 display levels). Antialiasing and opacity
+  // blending return — the flattening kept the alpha4 glyph path; only the
+  // COLORS are ramped (resolveColorInternal gray8 → luminance byte).
+  if (caps.nativeFormat === "gray8") {
+    ctx.sourceLines.push("#define UI_NATIVE_GRAY8 1");
+  }
   if (caps.requiresBackingStore) {
     ctx.sourceLines.push("#define UI_REQUIRES_BACKING_STORE 1");
   }
@@ -323,7 +332,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   //         not ported; scroll works because every frame is a full repaint.
   //         The OSK is hidden (porting the 6×4 grid to 1bpp is out of scope);
   //         the editing session still runs, so real-keyboard targets type.
-  if (caps.nativeFormat === "mono") {
+  if (caps.nativeFormat === "mono" || caps.nativeFormat === "gray8") {
     ctx.sourceLines.push("#define UI_FULL_FRAME_REDRAW 1");
     ctx.sourceLines.push("#define UI_HIDE_OSK 1");
   }

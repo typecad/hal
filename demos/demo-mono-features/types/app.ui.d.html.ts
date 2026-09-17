@@ -7,8 +7,6 @@ interface FeaturesScreenGroup {
   logoImg: TextElement;
   progRow: ViewElement;
   featProgress: ProgressElement;
-  echoRow: ViewElement;
-  pressEcho: TextElement;
   hintRow: ViewElement;
   hintA: TextElement;
   pgB: ViewElement;
@@ -16,8 +14,11 @@ interface FeaturesScreenGroup {
   barBTitle: TextElement;
   gradRow: ViewElement;
   gradImg: TextElement;
-  featSel: SelectElement;
-  featList: TextElement;
+  roSel: TextElement;
+  readouts: ViewElement;
+  ro1: TextElement;
+  ro2: TextElement;
+  ro3: TextElement;
   featToast: TextElement;
   featDialog: TextElement;
   dlgTitle: TextElement;
@@ -44,8 +45,6 @@ export interface ScreenTree {
   logoImg: TextElement;
   progRow: ViewElement;
   featProgress: ProgressElement;
-  echoRow: ViewElement;
-  pressEcho: TextElement;
   hintRow: ViewElement;
   hintA: TextElement;
   pgB: ViewElement;
@@ -53,8 +52,11 @@ export interface ScreenTree {
   barBTitle: TextElement;
   gradRow: ViewElement;
   gradImg: TextElement;
-  featSel: SelectElement;
-  featList: TextElement;
+  roSel: TextElement;
+  readouts: ViewElement;
+  ro1: TextElement;
+  ro2: TextElement;
+  ro3: TextElement;
   featToast: TextElement;
   featDialog: TextElement;
   dlgTitle: TextElement;
