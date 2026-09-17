@@ -501,7 +501,7 @@ import { randomInitLines } from './lowering/random.js';
 import { generateStaticAsyncRuntime } from '@typecad/cuttlefish/api/shared';
 import { resolveZephyrDisplayOp, newDisplayState, type DisplayState } from './display/index.js';
 import { buildDisplayRuntime } from './display/gfx.js';
-import { ZEPHYR_DISPLAY_PROFILES, BUILT_IN_PROFILES, isDtCompatible, isMonoDisplay, isGrayDisplay } from './display/profiles.js';
+import { ZEPHYR_DISPLAY_PROFILES, BUILT_IN_PROFILES, isDtCompatible, isMonoDisplay, isGrayDisplay, isEinkDisplay } from './display/profiles.js';
 import { listBoundDisplayCompatibles } from './display/bindings.js';
 import { zephyrDisplayAdapterGenerator } from './display/ui-adapter.js';
 import { zephyrTouchAdapter } from './display/touch-adapter.js';
@@ -2420,7 +2420,14 @@ struct __tc_StaticArray {
     // adapter that cannot show them. Registry profiles carry their own
     // colorFormat; non-compatible driver ids keep the default.
     if (isDtCompatible(driver) && isMonoDisplay({ driver })) return 'mono';
+    if (isDtCompatible(driver) && isEinkDisplay({ driver })) return 'mono';
     if (isDtCompatible(driver) && isGrayDisplay({ driver })) return 'gray8';
+    return undefined;
+  }
+
+  displayClassForDriver(driver: string): 'eink' | 'oled' | undefined {
+    // The compatible table decides (DATA) — ssd16xx/uc81xx are e-ink.
+    if (isDtCompatible(driver) && isEinkDisplay({ driver })) return 'eink';
     return undefined;
   }
 

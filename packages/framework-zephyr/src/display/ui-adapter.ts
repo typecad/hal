@@ -39,6 +39,7 @@ import { CANVAS_LIFECYCLE_SECTION, TARGET_FORWARDERS_SECTION, profileMarkerLine 
 import { zephyrDisplayApiAdapter } from "./ui-adapter-native.js";
 import { zephyrMonoDisplayAdapter } from "./ui-adapter-mono.js";
 import { zephyrGrayDisplayAdapter } from "./ui-adapter-gray.js";
+import { zephyrEinkDisplayAdapter } from "./ui-adapter-eink.js";
 
 /**
  * Build the Zephyr UI display adapter for a profile. Emits the full
@@ -693,7 +694,10 @@ export const zephyrDisplayAdapterGenerator: DisplayAdapterGenerator = (display) 
   if (!profile) {
     const synth = synthesizeZephyrProfile(display);
     if (synth) {
-      if (synth.colorFormat === 'mono') return zephyrMonoDisplayAdapter(synth);
+      if (synth.colorFormat === 'mono') {
+        if (synth.displayClass === 'eink') return zephyrEinkDisplayAdapter(synth);
+        return zephyrMonoDisplayAdapter(synth);
+      }
       if (synth.colorFormat === 'gray8') return zephyrGrayDisplayAdapter(synth);
       return zephyrDisplayApiAdapter(synth);
     }
@@ -704,6 +708,9 @@ export const zephyrDisplayAdapterGenerator: DisplayAdapterGenerator = (display) 
   // split: mono profiles ride the in-tree driver (zephyr-display); the
   // ssd1306-class I2C node owns init/geometry.
   if (profile.colorFormat === 'mono') {
+    // E-ink (Stage 4): same 1bpp adapter retuned for the deferred refresh
+    // model — MONO10-always + flash-cycle-throttled flushes.
+    if (profile.displayClass === 'eink') return zephyrEinkDisplayAdapter(profile);
     return zephyrMonoDisplayAdapter(profile);
   }
   // Gray panels (Stage 3): the full-frame L_8 adapter — same full-frame

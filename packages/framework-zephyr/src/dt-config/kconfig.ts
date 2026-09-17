@@ -64,7 +64,7 @@ export interface KconfigUsage {
    *  none — their driver symbol auto-defaults on from the DT node
    *  (`default y depends on DT_HAS_<COMPATIBLE>_ENABLED`), so no symbol
    *  is assigned at all. */
-  displayController?: 'st7796s' | 'ili9341';
+  displayController?: 'st7796s' | 'ili9341' | 'ssd16xx' | 'uc81xx';
   /** Panel bus family from the binding harvest: i2c-family panels (mono
    *  OLEDs) get I2C and no SPI/MIPI/DMA block at all. */
   displayBus?: 'i2c' | 'spi';
@@ -313,6 +313,13 @@ export function resolveKconfigFragments(
         m.set('CONFIG_ILI9341', 'y');
       } else {
         m.set('CONFIG_MIPI_DBI_SPI', 'y');
+      }
+      // E-ink families (Stage 4): the panel driver under the mipi-dbi SPI
+      // bridge — ssd16xx/uc81xx own the flash-cycle refresh + BUSY wait.
+      if (usage.displayController === 'ssd16xx') {
+        m.set('CONFIG_SSD16XX', 'y');
+      } else if (usage.displayController === 'uc81xx') {
+        m.set('CONFIG_UC81XX', 'y');
       }
     } else {
       // Direct-spi transport (default): the display adapter drives the panel

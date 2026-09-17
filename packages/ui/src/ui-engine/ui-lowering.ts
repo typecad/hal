@@ -69,7 +69,11 @@ export function lowerUIToCpp(
   // frame), so no PROGMEM/flash storage keyword — those imply read-only.
   const fontTables = emitFontTables(model);
   const nodeTable = emitNodeTable(model);
-  const transitionTable = emitTransitionTable(model);
+  // E-ink (Stage 4): transitions deleted outright — a 1-4s flash cycle
+  // cannot animate; emitting the table invites per-tick transition churn
+  // that would trigger throttled flushes for no visual change.
+  const deferredRefresh = display?.displayClass === "eink";
+  const transitionTable = deferredRefresh ? "UITransition __ui_trans[] = {};" : emitTransitionTable(model);
   const typeDecl = emitTypeDecl(root);
 
   // Keyboard loaders + dispatch: collect input nodes in tree order, resolve
@@ -115,7 +119,9 @@ export function lowerUIToCpp(
 
   const screenCount = model.nodes.length > 0 ? Math.max(...model.nodes.map(n => n.screenId)) + 1 : 1;
   const imageTables = "const UIImage __ui_images[] = {};\nconst uint16_t __ui_image_count = 0;";
-  const keyframeTables = emitKeyframeTables(model, keyframeNs);
+  const keyframeTables = deferredRefresh
+    ? emitKeyframeTables({ ...model, keyframeSets: [], animations: [] } as typeof model, keyframeNs)
+    : emitKeyframeTables(model, keyframeNs);
   return { fontTables, nodeTable, transitionTable, typeDecl, keyboardLoaders, keyboardDispatch, screenCount, imageTables, keyframeTables, diagnostics: [] };
 }
 

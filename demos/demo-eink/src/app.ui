@@ -1,0 +1,94 @@
+<script lang="ts">
+  // app.ui — Stage 4 e-ink demo (SSD1680-class 296x176, SPI + BUSY).
+  //
+  // The refresh-model proof: same 1bpp lowering as mono, but the panel
+  // flashes 1-4s per refresh — the adapter throttles pushes to one flash
+  // per 2s minimum (TC_EINK_MIN_REFRESH_MS), transitions/keyframes are
+  // deleted outright, and the panel sleeps between flashes. Content is
+  // designed for glanceable static display: bound values update the frame;
+  // the NEXT flash lands when the throttle allows.
+  //
+  //   ┌──────────────────────────┐
+  //   │ E-INK 296x176            │
+  //   │ ======================== │  divider
+  //   │ up 12s                   │  bound readout
+  //   │ [###########   ] 47%     │  progress (fills, no animation)
+  //   │ BOOT: force refresh      │
+  //   └──────────────────────────┘
+
+  import { ui } from '@typecad/ui';
+  import { Time } from '@typecad/hal';
+
+  ui.mount(screen);
+
+  ui.bind(screen.uptime, 'text', () => `up ${Math.floor(Time.now() / 1000)}s`);
+  ui.bind(screen.sweep, 'value', () => Math.floor(Time.now() / 50) - Math.floor(Time.now() / 5000) * 100);
+</script>
+
+<style>
+  @font-face {
+    font-family: "Paper";
+    src: url("../../../packages/ui/assets/fonts/dejavu/DejaVuSansMono.ttf");
+    font-weight: 400;
+    font-style: normal;
+  }
+
+  :root {
+    background: #000000;
+    color: #ffffff;
+    flex-direction: column;
+  }
+
+  view, text, progress {
+    font-family: "Paper";
+    font-size: 16px;
+  }
+
+  #titlebar {
+    padding: 4px 6px;
+    height: 26px;
+  }
+  #title {
+    white-space: nowrap;
+  }
+
+  #divider {
+    height: 2px;
+    margin: 2px 6px;
+    background: #ffffff;
+  }
+
+  #uptimeRow {
+    padding: 8px 6px;
+    height: 32px;
+  }
+
+  #progRow {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 6px 6px;
+    height: 32px;
+  }
+  #sweep {
+    width: 200px;
+    height: 14px;
+    min-height: 0;
+    border: 2px solid #ffffff;
+  }
+
+  #hintRow {
+    padding: 10px 6px;
+    height: 34px;
+  }
+</style>
+
+<screen>
+  <view id="titlebar"><text id="title">E-INK 296x176</text></view>
+  <view id="divider"></view>
+  <view id="uptimeRow"><text id="uptime">up 0s</text></view>
+  <view id="progRow">
+    <progress id="sweep" value="0"></progress>
+  </view>
+  <view id="hintRow"><text id="hint">static display; flashes on change</text></view>
+</screen>

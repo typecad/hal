@@ -32,8 +32,12 @@ import { CANVAS_LIFECYCLE_SECTION, TARGET_FORWARDERS_SECTION, profileMarkerLine 
  * Build the mono (1bpp) UI adapter for a profile. The profile's dtLabel must
  * name a display node an in-tree mono driver binds (ssd1306-class over I²C —
  * the overlay generates the node; the driver self-builds from it).
+ * `opts.eink` retunes it for the e-ink refresh model (Stage 4): skip the
+ * MONO01 negotiation (ssd16xx/uc81xx are MONO10-only) and throttle pushes
+ * to the panel's flash-cycle economics.
  */
-export function zephyrMonoDisplayAdapter(profile: ZephyrDisplayProfile): DisplayAdapterCode {
+export function zephyrMonoDisplayAdapter(profile: ZephyrDisplayProfile, opts?: { eink?: boolean }): DisplayAdapterCode {
+  const eink = opts?.eink === true;
   const w = profile.width;
   const h = profile.height;
   const dtLabel = profile.dtLabel;
@@ -67,7 +71,11 @@ export function zephyrMonoDisplayAdapter(profile: ZephyrDisplayProfile): Display
     `static uint8_t __tc_mono_inv[(${w} * ${h} + 7) / 8];`,
     `// Rig diagnostics: frames pushed since boot (see display_partial_refresh).`,
     `static uint32_t __tc_mono_frames = 0;`,
-    `// Set when the panel insists on MONO10 (1=black): pushes invert the frame.`,
+    `// E-ink flush floor: one flash per push at most this often (the drivers
+// block through BUSY inside display_write — an unthrottled binding tick
+// would stall the app loop for seconds).
+#define TC_EINK_MIN_REFRESH_MS 2000u
+// Set when the panel insists on MONO10 (1=black): pushes invert the frame.`,
     `static bool __tc_mono_invert = false;`,
     `// Scroll-viewport clip in display coords (w <= 0 ⇒ no clip). Enforced in`,
     `// ZephyrMonoTarget's drawPixel/fillRect so EVERY pixel — including ones`,
@@ -130,6 +138,14 @@ static inline void display_mono_clear_clip() {
 // to optimize.
 static inline void display_partial_refresh(int16_t x, int16_t y, int16_t rw, int16_t rh) {
   (void)x; (void)y; (void)rw; (void)rh;
+${eink ? `  // E-ink deferred flush: the flash cycle blocks inside display_write for
+  // 1-4s — rate-limit pushes, keep the newest frame pending in between.
+  static uint32_t last_push_ms = 0;
+  static bool pending = false;
+  const uint32_t now_ms = k_uptime_get_32();
+  if (pending && (now_ms - last_push_ms) < TC_EINK_MIN_REFRESH_MS) return;
+  pending = true;
+  last_push_ms = now_ms;` : ""}
   struct display_buffer_descriptor __desc = {};
   __desc.width = ${w}u;
   __desc.height = ${h}u;
@@ -160,7 +176,7 @@ static inline void display_partial_refresh(int16_t x, int16_t y, int16_t rw, int
 // ── display_init (called from setup) ───────────────────────────────────────
 
 static inline void display_init() {
-  printk("TC_DISPLAY: mono full-frame transport (${dtLabel}, ${w}x${h})\\n");
+  printk("TC_DISPLAY: ${eink ? 'e-ink deferred' : 'mono full-frame'} transport (${dtLabel}, ${w}x${h})\\n");
   if (!device_is_ready(__tc_zd_dev)) {
     printk("TC_DISPLAY: device not ready — is the panel driver enabled?\\n");
     return;
@@ -175,14 +191,14 @@ static inline void display_init() {
          static_cast<unsigned int>(__tc_zd_caps.screen_info));
   // MONO01 (0=black, 1=white) matches our packing. A MONO10 panel gets asked
   // to switch once; if it refuses, frames push bit-inverted (still correct).
-  if (__tc_zd_caps.current_pixel_format == PIXEL_FORMAT_MONO10) {
+  if (${!eink} && __tc_zd_caps.current_pixel_format == PIXEL_FORMAT_MONO10) {
     if (display_set_pixel_format(__tc_zd_dev, PIXEL_FORMAT_MONO01) == 0) {
       display_get_capabilities(__tc_zd_dev, &__tc_zd_caps);
     }
   }
   if (__tc_zd_caps.current_pixel_format == PIXEL_FORMAT_MONO10) {
     __tc_mono_invert = true;
-  } else if (__tc_zd_caps.current_pixel_format != PIXEL_FORMAT_MONO01) {
+  } else if (${!eink} && __tc_zd_caps.current_pixel_format != PIXEL_FORMAT_MONO01) {
     printk("TC_DISPLAY: unexpected pixel format %u (expected MONO01) — rendering best-effort\\n",
            static_cast<unsigned int>(__tc_zd_caps.current_pixel_format));
   }
@@ -195,7 +211,7 @@ static inline void display_init() {
   for (size_t i = 0; i < sizeof(__tc_mono_fb); i++) __tc_mono_fb[i] = 0u;
   (void)display_blanking_off(__tc_zd_dev);
   display_partial_refresh(0, 0, ${w}, ${h});
-  printk("TC_DISPLAY: mono init done (1bpp full-frame)\\n");
+  printk("TC_DISPLAY: ${eink ? 'e-ink init done (1bpp deferred, min 2s/flash)' : 'mono init done (1bpp full-frame)'}\\n");
 }
 
 static inline void display_fillScreen(UI_COLOR_T color) {

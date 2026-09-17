@@ -16,6 +16,7 @@ import { controllerNodelabelForPin, controllerRawPinForPin } from '../chips/cont
 import type { ZephyrDisplayProfile } from '../display/profiles.js';
 import { PANEL_CONTROLLER_DEFAULTS, panelControllerFor, transportFor, isDtCompatible } from '../display/profiles.js';
 import { readDisplayBinding, type RequiredProp } from '../display/bindings.js';
+import { isEinkDisplay } from '../display/profiles.js';
 
 /** Standard values for the mono-OLED family's default-free required props
  *  (segment/page/display offsets, multiplex ratio, precharge period) — the
@@ -92,6 +93,9 @@ export interface DisplayWiring {
   /** Tearing-effect (TE) GPIO from display.tearingEffectPin — emitted as
    *  te-gpios on the display DT node. Opt-in; most boards don't wire TE. */
   tearingEffectPin?: number;
+  /** E-ink BUSY GPIO from display.busyPin — emitted as busy-gpios on the
+   *  panel child (required by the ssd16xx/uc81xx bindings, active-high). */
+  busyPin?: number;
   spiFrequency?: number;
   /** I2C address for i2c-family panels (mono OLEDs, ssd1306-class). */
   address?: number;
@@ -1137,14 +1141,24 @@ function emitDisplayNode(
   }
   // Compatible resolution: explicit override → the registry controllers →
   // the drop-in path (driver IS a compatible string) → a safe default.
+  // Drop-in drivers (DT-compatible shape) ARE the compatible — they win over
+  // the controller-default table (which only serves registry driver ids whose
+  // id isn't itself a compatible; the e-ink family entries exist for the
+  // Kconfig layer, not for node naming).
   const compatible = display.dtCompatible
-    ?? (controller !== undefined
-      ? PANEL_CONTROLLER_DEFAULTS[controller].dtCompatible
-      : (isDtCompatible(display.driver) ? display.driver : PANEL_CONTROLLER_DEFAULTS.ili9341.dtCompatible));
+    ?? (isDtCompatible(display.driver)
+      ? display.driver
+      : (controller !== undefined
+        ? PANEL_CONTROLLER_DEFAULTS[controller].dtCompatible
+        : PANEL_CONTROLLER_DEFAULTS.ili9341.dtCompatible));
   const dc = wiring?.dc ?? 17;
   const rst = wiring?.rst ?? 16;
   const cs = wiring?.cs ?? DEFAULT_DISPLAY_CS;
-  const freq = wiring?.spiFrequency ?? 80000000;
+  // E-ink SPI tops out far below TFTs (the reel board runs ssd1673 at 4MHz;
+  // the controllers' shift registers clock 4-10MHz). Cap the default for the
+  // e-ink families; explicit spiFrequency always wins.
+  const einkFamily = isEinkDisplay({ driver: display.driver, displayClass: display.displayClass });
+  const freq = wiring?.spiFrequency ?? (einkFamily ? 4000000 : 80000000);
   // DT node describes the NATIVE panel geometry; the effective (rotated)
   // dimensions live in the display profile.
   const nativeW = display.nativeWidth ?? display.width;
@@ -1220,6 +1234,12 @@ function emitDisplayNode(
             }
             lines.push(`            mipi-max-frequency = <${freq}>;`);
             lines.push('            mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";');
+            if (wiring?.busyPin !== undefined) {
+              // E-ink BUSY line — required by the ssd16xx/uc81xx bindings
+              // (the drivers block on it through the flash cycle). Active
+              // level fixed per family: ssd16xx BUSY is active-high.
+              lines.push(`            busy-gpios = <&${gpioController(wiring.busyPin)} ${wiring.busyPin} GPIO_ACTIVE_HIGH>;`);
+            }
   lines.push(`            width = <${nativeW}>;`);
   lines.push(`            height = <${nativeH}>;`);
   if (controller === 'st7796s') {
@@ -1265,7 +1285,11 @@ function emitDisplayNode(
         // Skip structural properties the generator emits itself.
         if (prop === 'width' || prop === 'height' || prop === 'mipi-max-frequency'
             || prop === 'pixel-format' || prop === 'reg' || prop === 'compatible'
-            || prop === 'status' || prop === 'mipi-mode') {
+            || prop === 'status' || prop === 'mipi-mode'
+            // phandle-array props are structural (GPIO routing) — the
+            // generator emits them from config wiring (busy-gpios above),
+            // never from a numeric fallback.
+            || prop === 'busy-gpios' || prop === 'reset-gpios' || prop === 'dc-gpios') {
           continue;
         }
         emitBindingProp(lines, prop, def);

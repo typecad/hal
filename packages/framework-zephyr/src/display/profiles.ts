@@ -20,6 +20,9 @@ export interface ZephyrDisplayProfile {
   readonly nativeWidth?: number;
   readonly nativeHeight?: number;
   readonly colorFormat: 'rgb565' | 'mono' | 'gray8';
+  /** Panel class — drives the capability derivation (eink ⇒ deferred
+   *  refresh, all dynamic features off). */
+  readonly displayClass?: 'tft' | 'eink' | 'oled';
   /** Applied via display_set_orientation (0/90/180/270). */
   readonly rotation?: number;
   /** DT alias for the backlight GPIO (set high at init), if any. */
@@ -166,7 +169,7 @@ export function profileFromEmittedSource(src: string): ZephyrDisplayProfile | un
 }
 
 /** Panel controllers the direct-drive UI adapter knows how to init. */
-export type ZephyrPanelController = 'st7796s' | 'ili9341';
+export type ZephyrPanelController = 'st7796s' | 'ili9341' | 'ssd16xx' | 'uc81xx';
 
 /** Per-controller DT + transport defaults, shared by the overlay generator
  *  (DT node props) and the UI adapter (init sequence + wire format). */
@@ -176,6 +179,10 @@ export const PANEL_CONTROLLER_DEFAULTS: Record<
 > = {
   st7796s: { dtCompatible: 'sitronix,st7796s' },
   ili9341: { dtCompatible: 'ilitek,ili9341' },
+  // E-ink families: no single dtCompatible (the drop-in driver IS one of the
+  // many panel compatibles) — the overlay branch keys off the driver string.
+  ssd16xx: { dtCompatible: 'solomon,ssd16xx' },
+  uc81xx: { dtCompatible: 'ultrachip,uc81xx' },
 };
 
 /** Resolve a profile's panel controller, inferring it from the driver id when
@@ -188,6 +195,10 @@ export function panelControllerFor(
   if (profile.controller) return profile.controller;
   if (profile.driver.startsWith('ili9341')) return 'ili9341';
   if (profile.driver.startsWith('st7796')) return 'st7796s';
+  // E-ink families (drop-in compatibles): the driver symbol the Kconfig
+  // layer enables under the mipi-dbi SPI branch.
+  if (profile.driver.startsWith('solomon,ssd16')) return 'ssd16xx';
+  if (profile.driver.startsWith('ultrachip,uc81')) return 'uc81xx';
   return undefined;
 }
 
@@ -214,6 +225,29 @@ const MONO_PANEL_COMPATIBLES: ReadonlySet<string> = new Set([
 const GRAY_PANEL_COMPATIBLES: ReadonlySet<string> = new Set([
   'solomon,ssd1327',
 ]);
+
+/** E-Ink panels (Stage 4): the ssd16xx/uc81xx SPI families — same 1bpp
+ *  format as mono, the new axis is the REFRESH MODEL (deferred: render on
+ *  signal change, flush with the panel's flash cycle, panel sleeps). Grows
+ *  as e-ink drivers are verified. */
+const EINK_PANEL_COMPATIBLES: ReadonlySet<string> = new Set([
+  'solomon,ssd1608',
+  'solomon,ssd1673',
+  'solomon,ssd1675a',
+  'solomon,ssd1680',
+  'solomon,ssd1681',
+  'ultrachip,uc8151d',
+  'ultrachip,uc8175',
+  'ultrachip,uc8176',
+  'ultrachip,uc8179',
+]);
+
+/** True when a drop-in compatible (or explicit config) selects the e-ink
+ *  lowering target — mono format + deferred refresh. */
+export function isEinkDisplay(display: { driver: string; displayClass?: string }): boolean {
+  if (display.displayClass === 'eink') return true;
+  return EINK_PANEL_COMPATIBLES.has(display.driver);
+}
 
 /** True when a drop-in compatible (or explicit config) selects the gray8
  *  (8-bit luminance) lowering target. */
@@ -257,7 +291,11 @@ export function synthesizeZephyrProfile(display: {
     height: display.height,
     nativeWidth: display.nativeWidth,
     nativeHeight: display.nativeHeight,
-    colorFormat: isMonoDisplay(display) ? 'mono' : isGrayDisplay(display) ? 'gray8' : 'rgb565',
+    // E-ink compatibles are mono-format panels with a deferred refresh
+    // model — displayClass drives deriveCapabilities' eink branch (all
+    // features off, deferred-partial) and the e-ink adapter dispatch.
+    displayClass: isEinkDisplay(display) ? 'eink' : undefined,
+    colorFormat: isMonoDisplay(display) || isEinkDisplay(display) ? 'mono' : isGrayDisplay(display) ? 'gray8' : 'rgb565',
     controller: undefined,
     transport: 'zephyr-display',
     dbiHost: display.csHold === true ? 'local-hold-cs' : undefined,

@@ -990,6 +990,7 @@ export const Toolchain = {
             scl: typeof i2cPins?.scl === 'number' ? i2cPins.scl : undefined,
             backlightPin: typeof dispCfg.backlightPin === 'number' ? dispCfg.backlightPin : undefined,
             tearingEffectPin: typeof dispCfg.tearingEffectPin === 'number' ? dispCfg.tearingEffectPin : undefined,
+            busyPin: typeof (dispCfg as { busyPin?: number }).busyPin === 'number' ? (dispCfg as { busyPin?: number }).busyPin : undefined,
             address: typeof dispCfg.address === 'number' ? dispCfg.address : undefined,
           }
         : undefined;

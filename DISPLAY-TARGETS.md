@@ -24,7 +24,14 @@ Stage 3 shipped UNTESTED ON HARDWARE (gray8: UI_COLOR_T uint8_t + ui_blend8/
 lerp_color_8, AA + opacity return, gradients still flatten, keyframes elided;
 drop-in solomon,ssd1327; demos/demo-gray compile-verified on esp32s3 + preview-
 verified ~100 gray levels — awaiting an SSD1327 module; panel tuning props are
-the oscillator-freq/remap-value/phase-length knobs). Stage 4 e-ink.
+the oscillator-freq/remap-value/phase-length knobs). Stage 4 SHIPPED UNTESTED
+ON HARDWARE (e-ink: the refresh-model proof — ssd16xx/uc81xx drop-ins via
+EINK_PANEL_COMPATIBLES + displayClassForDriver; deferred refresh with the
+dirty-rect accumulator; adapter throttles flushes to one 1-4s flash per 2s
+minimum with MONO10-always complemented pushes; transitions/keyframes deleted
+outright; busyPin wiring → busy-gpios; SPI capped 4MHz; CONFIG_SSD16XX/
+UC81XX by family; demos/demo-eink compile-verified on esp32s3 + ssd1680
+296x176 — awaiting a panel). Tri-color palette lowering remains open.
 
 ## Stage 2 — mono (same UI API, flattened)
 

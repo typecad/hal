@@ -91,6 +91,9 @@ export interface DisplayProfile {
    *  When wired, panel updates wait for the TE frame pulse instead of the
    *  GET_SCANLINE readback (no MISO needed; see also scanlineSync). */
   tearingEffectPin?: number;
+  /** E-ink BUSY GPIO (active level per the panel driver — ssd16xx is
+   *  active-high). Required by the ssd16xx/uc81xx bindings. */
+  busyPin?: number;
   /** Panel quirk (drop-in driver path): swap the R and B channels of each
    *  RGB565 pixel at pack time, for clone panels whose 16-bit channel
    *  routing is crossed. Frameworks that don't need it ignore it. */
@@ -185,6 +188,9 @@ export interface DisplayConfig {
    *  TE frame pulse (tear-free writes, no MISO readback); the Zephyr overlay
    *  emits te-gpios on the display DT node and the adapter raises TEON. */
   tearingEffectPin?: number;
+  /** E-ink BUSY GPIO (active level per the panel driver — ssd16xx is
+   *  active-high). Required by the ssd16xx/uc81xx bindings. */
+  busyPin?: number;
   /** R/B channel swap at pack time (clone-panel quirk; see DisplayConfig). */
   channelSwapRb?: boolean;
   /** RGB565 byte-order inversion (clone-panel quirk; see DisplayConfig). */
@@ -375,6 +381,7 @@ export function resolveDisplayProfile(
       colorOrder: config.colorOrder,
       invertDisplay: config.invertDisplay,
       tearingEffectPin: config.tearingEffectPin,
+      busyPin: config.busyPin,
       touch: config.touch === false ? undefined : config.touch,
       displayClass: config.displayClass,
       capabilities: config.capabilities,

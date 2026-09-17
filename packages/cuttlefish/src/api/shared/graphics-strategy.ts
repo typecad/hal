@@ -88,6 +88,11 @@ export interface PlatformGraphicsStrategy {
    *  dispatches the mono path. Return undefined (or omit the hook) to keep
    *  the generic rgb565 default. */
   colorFormatForDriver?(driver: string): "rgb565" | "rgb666" | "rgb888" | "mono" | "gray8" | undefined;
+  /** Panel CLASS for a drop-in driver (engine-side capability derivation —
+   *  'eink' switches the refresh model to deferred; mirrors how
+   *  colorFormatForDriver keeps build-time lowering consistent with the
+   *  framework's adapter dispatch). */
+  displayClassForDriver?(driver: string): "eink" | "oled" | undefined;
 
   /** Per-target capacity caps (node/binding/transition limits, storage). */
   graphicsCapacity(): GraphicsCapacity;

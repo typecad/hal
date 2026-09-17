@@ -437,6 +437,13 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     let profile = resolved.profile;
     if ((configDisplay as any).colorFormat === undefined && strategy.colorFormatForDriver) {
       const fmt = strategy.colorFormatForDriver(profile.driver);
+      const cls = strategy.displayClassForDriver?.(profile.driver);
+      if (cls && profile.displayClass === undefined) {
+        // Panel class rides with the format derivation — 'eink' flips the
+        // refresh model to deferred (UI_REFRESH_DEFERRED) engine-side,
+        // matching the framework's e-ink adapter dispatch.
+        profile = { ...profile, displayClass: cls };
+      }
       if (fmt && fmt !== profile.colorFormat) {
         profile = { ...profile, colorFormat: fmt };
         displayFormatDiags.push({
