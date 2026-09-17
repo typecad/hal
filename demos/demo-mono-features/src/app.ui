@@ -48,13 +48,13 @@
   // Sweep 0..99 every 5s (int arithmetic — see the mono-rig notes).
   ui.bind(screen.featProgress, 'value', () => Math.floor(Time.now() / 50) % 100);
 
-  // Virtualized list: 30 items, tap rows reserved for touch builds.
-  ui.bindList(
-    screen.featList,
-    () => 30,
-    (i: number) => `Item ${i + 1}`,
-    (i: number) => { void i; },
-  );
+  // Readouts: the inputless-display idiom — live values, no interaction.
+  ui.bind(screen.roSel, 'text', () => `t=${Math.floor(Time.now() / 100) / 10}s`);
+  ui.bind(screen.ro1, 'text', () => `up ${Math.floor(Time.now() / 1000)}s`);
+  // NOTE: % on Math.floor() doubles doesn't lower inside text bindings (the
+// known engine gap) — the subtraction form of modulo is used instead.
+  ui.bind(screen.ro2, 'text', () => `cyc ${Math.floor(Time.now() / 500) - Math.floor(Time.now() / 49500) * 99}`);
+    ui.bind(screen.ro3, 'text', () => `rssi ${62 + Math.floor(Time.now() / 3000) - Math.floor(Time.now() / 15000) * 5}`);
 </script>
 
 <style>
@@ -131,14 +131,19 @@
   #gradImg {
     margin: 2px 0 0 2px;
   }
-  #featSel {
+  #roSel {
     margin: 4px 0 0 8px;
     height: 15px;
+    white-space: nowrap;
   }
 
-  #featList {
+  #readouts {
+    flex-direction: column;
     margin: 1px 3px 0 3px;
     height: 26px;
+  }
+  #readouts text {
+    height: 8px;
   }
 
   #featToast {
@@ -165,13 +170,13 @@
     <view id="barB"><text id="barBTitle">FEATURES 2/2</text></view>
     <view id="gradRow">
       <img id="gradImg" src="grad.png" dither="floyd-steinberg"></img>
-      <select id="featSel">
-        <option>Alpha</option>
-        <option>Beta</option>
-        <option>Gamma</option>
-      </select>
+      <text id="roSel">t=0s</text>
     </view>
-    <list id="featList" item-height="15"></list>
+    <view id="readouts">
+      <text id="ro1">up 0s</text>
+      <text id="ro2">cyc 0</text>
+      <text id="ro3">rssi 62</text>
+    </view>
   </view>
   <toast id="featToast" duration="2000">page flipped</toast>
   <dialog id="featDialog">

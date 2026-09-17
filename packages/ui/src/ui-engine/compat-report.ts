@@ -16,6 +16,7 @@ import type { UIFontAssetModel } from "./font-assets.js";
 import { selectFontAssetForStyle } from "./font-assets.js";
 import { hasIgnoredAlpha } from "./color.js";
 import { uaScaleFor } from "./ua-stylesheet.js";
+import { getDisplayProfile } from "@typecad/cuttlefish/stores/display-profile-store";
 
 const COLOR_PROPS = [
   "color", "background", "borderColor", "borderTopColor", "borderRightColor",
@@ -74,6 +75,24 @@ export function cssCompatDiagnostics(
   const walk = (node: StyledNode): void => {
     const style = node.style as Record<string, string | undefined>;
     const label = labelOf(node);
+
+    // Interactive widgets on a touchless target: lists and selects are
+    // interaction surfaces (drag-scroll, dropdown tap) — with no touch
+    // controller wired they render but can never be used. GPIO buttons can
+    // still drive page flips and dialogs; these two widgets cannot.
+    if (node.tag === "list" || node.tag === "select") {
+      let noTouch = false;
+      try { noTouch = !(getDisplayProfile() as { touch?: unknown }).touch; } catch { /* unbound */ }
+      if (noTouch) {
+        push(`no-touch:${label}:${node.tag}`, {
+          severity: "warning",
+          code: "ui-interactive-no-touch",
+          message: `${label}: <${node.tag}> is an interaction widget, but this target has no touch controller wired — it renders but cannot be used.`,
+          hint: `Use bound text readouts for display-only panels, or wire touch (config display.touch) / drive content via ui.watchPin instead.`,
+          source: sourceFile,
+        });
+      }
+    }
 
     // Partial alpha is silently dropped (no blending on bare metal).
     for (const prop of COLOR_PROPS) {

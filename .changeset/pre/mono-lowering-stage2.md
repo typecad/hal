@@ -231,6 +231,13 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   first > last and drew NO rows — a 24px list at item-height 11 showed
   only its scrollbar. The window now scales with item-height, and the
   demo uses item-height 15 to match the 11px face's cell.
+- compat-report warns when a <list> or <select> sits on a target with no
+  touch controller wired (ui-interactive-no-touch): they render but can
+  never be used there. The features demo's page B now models the
+  inputless idiom instead — live bound readouts (uptime, cycle counter,
+  pseudo-rssi) instead of the select and list, which also exercises the
+  documented % -on-doubles text-binding workaround (subtraction-form
+  modulo) on hardware.
 
 
 Out of scope per the design: band renderer / scroll canvases / OSK on 1bpp.
