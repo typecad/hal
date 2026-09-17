@@ -231,6 +231,16 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   first > last and drew NO rows — a 24px list at item-height 11 showed
   only its scrollbar. The window now scales with item-height, and the
   demo uses item-height 15 to match the 11px face's cell.
+- Preview full-frame parity: the browser preview ran the incremental
+  dirty-node path with per-node clears while the device runs
+  fillScreen-and-repaint-all — on mono they disagreed (the preview's
+  white text-clear extended past the header bar's 13px box, reading as
+  a band beneath the bar; the device had no such band after the
+  clear-skip). The preview's drawDirty now mirrors the device: on mono,
+  any dirty node repaints the WHOLE frame (fillScreen with the active
+  screen's background, every visible node in z order), text nodes skip
+  the per-node clear, and progress/range full-draw instead of delta
+  fills. Incremental behavior is untouched on color targets.
 - compat-report warns when a <list> or <select> sits on a target with no
   touch controller wired (ui-interactive-no-touch): they render but can
   never be used there. The features demo's page B now models the

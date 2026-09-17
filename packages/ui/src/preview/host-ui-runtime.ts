@@ -2107,6 +2107,17 @@ export class PreviewUIRuntime {
     // backing canvas, so the equivalent operation is intentionally empty.
   }
 
+  /** The active screen's background color — the mono full-frame seed
+   *  (mirrors the device's __ui_active_screen_bg_node: the first NODE_FILL
+   *  of the active screen, bg when filled else its clear color). */
+  private monoScreenBgColor(): number {
+    for (const node of this.nodes) {
+      if (node.kind !== "fill" || !this.isActiveNode(node)) continue;
+      return node.hasBg ? node.bg : node.clearColor;
+    }
+    return 0;
+  }
+
   private drawDirty(): boolean {
     if (this.keyboardVisible) {
       this.keyboardTick(Date.now());
@@ -2148,6 +2159,32 @@ export class PreviewUIRuntime {
         return true;
       })
       .sort((a, b) => this.compareDrawOrder(a, b));
+    // Mono full-frame parity with the device loop (UI_FULL_FRAME_REDRAW):
+    // any dirty node means the WHOLE frame repaints — fillScreen with the
+    // active screen's background, then every visible node in z order. The
+    // per-node deltas (text clears, incremental progress/range) assume
+    // persistent pixels and drift from the panel otherwise.
+    if (this.monoFormat && dirtyNodes.length > 0) {
+      this.gfx.fillScreen(this.monoScreenBgColor());
+      for (const node of this.nodes) {
+        if (this.isActiveNode(node) && this.isEffectivelyVisible(node) && !this.insideClosedDrawer(node.index)) {
+          node.dirty = true;
+        } else {
+          node.dirty = false;
+        }
+      }
+      dirtyNodes.length = 0;
+      dirtyNodes.push(
+        ...this.nodes
+          .filter((node) => {
+            if (!node.dirty) return false;
+            if (!this.isActiveNode(node)) { node.dirty = false; return false; }
+            if (!this.isEffectivelyVisible(node)) { node.dirty = false; return false; }
+            return true;
+          })
+          .sort((a, b) => this.compareDrawOrder(a, b)),
+      );
+    }
     for (const node of dirtyNodes) {
       if (!node.dirty) continue;
       if (!this.isEffectivelyVisible(node) || this.insideClosedDrawer(node.index)) {
@@ -2506,7 +2543,9 @@ export class PreviewUIRuntime {
       const backdrop = this.parentClearColor(node);
       textClear = blendRuntime(node.hasBg ? node.bg : node.clearColor, backdrop, node.opacity);
     }
-    if (!textBoxPainted) this.gfx.fillRect(node.box.x, drawY, clearW, clearH, textClear);
+    // Mono full-frame: no per-node clear (device parity — the clear erased
+    // sibling descenders dipping into the box; the frame re-seeds instead).
+    if (!textBoxPainted && !this.monoFormat) this.gfx.fillRect(node.box.x, drawY, clearW, clearH, textClear);
     node.lastTextWidth = layout.width;
     node.lastTextHeight = layout.height;
     this.drawNodeShadow(node, drawY, true);
@@ -2917,7 +2956,9 @@ export class PreviewUIRuntime {
     const fillW = Math.trunc(((bw - 2) * pct) / 100);
     const prevW = node.lastTextWidth;
 
-    if (prevW < 0) {
+    if (prevW < 0 || this.monoFormat) {
+      // Mono full-frame: the frame was wiped — always full-draw (the
+      // incremental delta assumes pixels that no longer exist).
       this.gfx.drawRect(bx, by, bw, bh, fgCol);
       this.gfx.fillRect(bx + 1, by + 1, bw - 2, bh - 2, bgCol);
       if (fillW > 0) this.gfx.fillRect(bx + 1, by + 1, fillW, bh - 2, fgCol);
@@ -2947,7 +2988,9 @@ export class PreviewUIRuntime {
     const prevFillW = node.lastTextWidth;
     let newThumbX = bx + 4 + fillW - 3;
 
-    if (prevFillW < 0) {
+    const fullTrack = prevFillW < 0 || this.monoFormat;
+    if (fullTrack) {
+      // Mono full-frame: the frame was wiped — restore the whole track.
       this.gfx.drawFastHLine(bx, trackY, bw, dimFg);
       this.gfx.drawFastHLine(bx + 4, trackY, fillW, fgCol);
     } else {
