@@ -226,6 +226,12 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   UI_FULL_FRAME_REDRAW both now full-draw every frame. And pages must be
   position:absolute to overlay — in flow layout page B stacked at y64,
   off-screen, so the visibility-driven flip showed a black panel.
+- The direct list fallback's visible-row window hardcoded a 16px classic
+  font cell (+15/−16 constants): at item-height < 16 it computed
+  first > last and drew NO rows — a 24px list at item-height 11 showed
+  only its scrollbar. The window now scales with item-height, and the
+  demo uses item-height 15 to match the 11px face's cell.
+
 
 Out of scope per the design: band renderer / scroll canvases / OSK on 1bpp.
 Raw display.* ops keep the direct-op runtime beneath the UI path.

@@ -1669,8 +1669,12 @@ static inline uint8_t ui_render_list_direct(uint16_t i) {
   if (!__ui_fb) display_startWrite();
   ui_display_fill_rect(bx, by, bw, bh, bg);
   char buf[UI_TEXT_BUF + 1];
-  uint16_t first = static_cast<uint16_t>((scrollY + 15) / ih);
-  int16_t lastY = static_cast<int16_t>(scrollY + bh - 16);
+  // Visible-row window in ITEM units — the old +15/−16 constants hardcoded a
+  // 16px classic-font cell, which at item-height < 16 computed first > last
+  // and drew NO rows (a 24px list at item-height 11 showed only its
+  // scrollbar). Scale the window with the row height instead.
+  uint16_t first = scrollY > 0 ? static_cast<uint16_t>(scrollY / ih) : 0;
+  int16_t lastY = static_cast<int16_t>(scrollY + bh - 1);
   uint16_t last = lastY >= 0 ? static_cast<uint16_t>(lastY / ih) : 0;
   if (count > 0 && last >= count) last = count - 1;
   if (count > 0 && first < count && first <= last) {
@@ -1682,7 +1686,7 @@ static inline uint8_t ui_render_list_direct(uint16_t i) {
       int16_t savedY = __ui_draw_off_y;
       __ui_draw_off_x = 0;
       __ui_draw_off_y = 0;
-      ui_draw_list_text_direct(buf, bx + 4, by + itemY + static_cast<int16_t>(ih - 16) / 2,
+      ui_draw_list_text_direct(buf, bx + 4, by + itemY + static_cast<int16_t>(ih > 16 ? (ih - 16) / 2 : 0),
         __ui_nodes[i].fg, bg, 2, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
       __ui_draw_off_x = savedX;
       __ui_draw_off_y = savedY;
