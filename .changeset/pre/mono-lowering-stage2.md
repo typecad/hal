@@ -207,5 +207,25 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   test: title + button in LVGL 20px letters, uptime in our hinted 12px
   bake, for side-by-side judging on the panel.
 
+- GPIO input on Zephyr: ui.watchPin previously emitted raw Arduino
+  pinMode/INPUT_PULLUP and had never been ported — the compile failed the
+  moment a mono UI watched a pin. Pin-mode configuration now goes through
+  the platform-strategy hook (setPinMode): Zephyr lowers to
+  __tc_gpio_configure_input (GPIO_INPUT | GPIO_PULL_UP via the existing
+  controller dispatcher), Arduino keeps pinMode. demos/demo-mono-features
+  exercises the verified-on-hardware set in one flash: 1bpp images
+  (threshold + Floyd-Steinberg), a 30-item list, a select, toast + dialog
+  from the BOOT button via ui.watchPin, visibility-driven pages, and a
+  second screen compiling the href/ui_navigate path (activation needs
+  touch).
+- Hardware round from that demo: NODE_PROGRESS and NODE_RANGE drew
+  INCREMENTALLY on the mono full-frame path — delta fills assume the
+  previous frame's pixels persist, but display_fillScreen wipes the frame
+  before every repaint, so the border/track vanished and only accumulated
+  fill segments survived (a lone horizontal line). Under
+  UI_FULL_FRAME_REDRAW both now full-draw every frame. And pages must be
+  position:absolute to overlay — in flow layout page B stacked at y64,
+  off-screen, so the visibility-driven flip showed a black panel.
+
 Out of scope per the design: band renderer / scroll canvases / OSK on 1bpp.
 Raw display.* ops keep the direct-op runtime beneath the UI path.

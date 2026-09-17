@@ -502,6 +502,10 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
       case NODE_PROGRESS:
         // Progress bar: outline track + filled portion based on .value (0-100).
         // Incremental redraw — only draws/clears the delta to avoid flashing.
+        // NOT on the mono full-frame path: display_fillScreen wipes the frame
+        // before every repaint, so delta drawing assumes pixels that no longer
+        // exist — the border/track vanished and only accumulated fill segments
+        // survived (a lone horizontal line). Full-frame always full-draws.
         {
           int16_t bx = __ui_nodes[i].box.x;
           int16_t by = drawY;
@@ -510,10 +514,15 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
           UI_COLOR_T bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
           UI_COLOR_T fgCol = __ui_nodes[i].fg;
 
-          // On first draw (lastTextWidth < 0), draw everything.
-          // Otherwise incremental: only update the changed portion.
           uint8_t pct = __ui_constrain(__ui_nodes[i].value, 0, 100);
           int16_t fillW = (static_cast<int32_t>(bw - 2) * pct) / 100;
+#if defined(UI_FULL_FRAME_REDRAW)
+          ui_display_draw_rect(bx, by, bw, bh, fgCol);
+          ui_display_fill_rect(bx + 1, by + 1, bw - 2, bh - 2, bgCol);
+          if (fillW > 0) {
+            ui_display_fill_rect(bx + 1, by + 1, fillW, bh - 2, fgCol);
+          }
+#else
           int16_t prevW = __ui_nodes[i].lastTextWidth; // reused as previous fill width
 
           if (prevW < 0) {
@@ -530,6 +539,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
             // Value decreased: clear the removed portion
             ui_display_fill_rect(bx + 1 + fillW, by + 1, prevW - fillW, bh - 2, bgCol);
           }
+#endif
           // Remember current fill width for next incremental update
           __ui_nodes[i].lastTextWidth = fillW;
         }
@@ -565,7 +575,17 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
             // First draw: redraw the whole track + fill from scratch.
             ui_display_draw_fast_hline(bx, trackY, bw, dimFg);
             ui_display_draw_fast_hline(bx + 4, trackY, fillW, fgCol);
-          } else {
+          }
+#if defined(UI_FULL_FRAME_REDRAW)
+          else {
+            // Mono full-frame: the frame was wiped — restore the whole track
+            // (bright to the fill end, dim beyond) like the first draw. The
+            // incremental delta below assumes pixels that no longer exist.
+            ui_display_draw_fast_hline(bx, trackY, bw, dimFg);
+            ui_display_draw_fast_hline(bx + 4, trackY, fillW, fgCol);
+          }
+#else
+          else {
             // Incremental: wipe the strip between the old and new thumb
             // positions (whichever extends further on each side), then restore
             // the track line. This is symmetric — old thumbs disappear whether
@@ -589,6 +609,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
               ui_display_draw_fast_hline(fillEnd, trackY, right - fillEnd, dimFg);
             }
           }
+#endif
 
           // Thumb: small filled rectangle at the current position.
           if (newThumbX < bx + 1) newThumbX = bx + 1;

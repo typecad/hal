@@ -78,6 +78,11 @@
   }
 
   #pgA, #pgB {
+    /* Overlay at the same origin — the visible binding picks the page. In
+       flow layout the second page would stack at y64 (off-screen). */
+    position: absolute;
+    left: 0;
+    top: 0;
     flex-direction: column;
     width: 128px;
     height: 64px;
