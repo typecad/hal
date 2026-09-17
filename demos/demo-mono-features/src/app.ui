@@ -43,8 +43,7 @@
 
   ui.bind(screen.pgA, 'visible', () => page() === 0);
   ui.bind(screen.pgB, 'visible', () => page() === 1);
-  ui.bind(screen.pressEcho, 'text', () => `presses: ${presses()}`);
-  ui.bind(screen.pageEcho, 'text', () => `page: ${page() === 0 ? 'A' : 'B'}`);
+  ui.bind(screen.barBTitle, 'text', () => `FEATURES 2/2  #${presses()}`);
 
   // Sweep 0..99 every 5s (int arithmetic — see the mono-rig notes).
   ui.bind(screen.featProgress, 'value', () => Math.floor(Time.now() / 50) % 100);
@@ -98,7 +97,7 @@
   }
 
   #logoImg {
-    margin: 4px 16px 0 16px;
+    margin: 2px 16px 0 16px;
   }
 
   #progRow {
@@ -115,13 +114,8 @@
     border: 1px solid #ffffff;
   }
 
-  #echoRow {
-    padding: 3px 3px 0 3px;
-    height: 14px;
-  }
-
   #hintRow {
-    padding: 2px 3px 0 3px;
+    padding: 1px 3px 0 3px;
     height: 13px;
   }
   #hintRow text {
@@ -144,7 +138,7 @@
 
   #featList {
     margin: 1px 3px 0 3px;
-    height: 34px;
+    height: 24px;
   }
 
   #featToast {
@@ -165,8 +159,7 @@
     <view id="progRow">
       <progress id="featProgress" value="0"></progress>
     </view>
-    <view id="echoRow"><text id="pressEcho">presses: 0</text></view>
-    <view id="hintRow"><text id="hintA">hold BOOT: next page</text></view>
+      <view id="hintRow"><text id="hintA">BOOT: next page</text></view>
   </view>
   <view id="pgB" style="visible: hidden">
     <view id="barB"><text id="barBTitle">FEATURES 2/2</text></view>
