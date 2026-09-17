@@ -94,6 +94,10 @@
   }
   #barA text, #barB text {
     color: #000000;
+    /* Optical vertical centering: the 11px face's cell is 15px in a 13px
+       bar and NODE_TEXT top-aligns, so the caps sat on the bar's bottom
+       row. Shift up 3px — cap ink lands on rows 2-9 of 13. */
+    margin-top: -3px;
   }
 
   #logoImg {
