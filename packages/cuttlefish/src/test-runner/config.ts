@@ -204,6 +204,38 @@ export function parseConfigAST(configPath: string): RawConfig {
   return result;
 }
 
+/** A config literal value: string / number / boolean, an array of
+ *  literals, or a nested object of literals — the zephyr section (and its
+ *  trace/alarms subtree) is plain data; anything else (identifiers, calls)
+ *  reads as undefined and is dropped, as before. */
+function literalValue(node: ts.Expression): unknown {
+  const u = unwrapExpr(node);
+  if (ts.isStringLiteral(u) || ts.isNoSubstitutionTemplateLiteral(u)) return u.text;
+  if (ts.isNumericLiteral(u)) return Number(u.text);
+  if (u.kind === ts.SyntaxKind.TrueKeyword) return true;
+  if (u.kind === ts.SyntaxKind.FalseKeyword) return false;
+  if (ts.isArrayLiteralExpression(u)) {
+    const arr: unknown[] = [];
+    for (const el of u.elements) {
+      const v = literalValue(el);
+      if (v !== undefined) arr.push(v);
+    }
+    return arr;
+  }
+  if (ts.isObjectLiteralExpression(u)) {
+    const obj: Record<string, unknown> = {};
+    for (const p of u.properties) {
+      if (ts.isPropertyAssignment(p)) {
+        const n = propName(p);
+        const v = literalValue(p.initializer);
+        if (n !== undefined && v !== undefined) obj[n] = v;
+      }
+    }
+    return obj;
+  }
+  return undefined;
+}
+
 function extractConfigProperties(obj: ts.ObjectLiteralExpression, out: RawConfig): void {
   for (const prop of obj.properties) {
     if (!ts.isPropertyAssignment(prop)) continue;
@@ -248,8 +280,10 @@ function extractConfigProperties(obj: ts.ObjectLiteralExpression, out: RawConfig
         break;
       }
       case 'zephyr': {
-        // Parse the zephyr section (kconfig, runner, cmakeArgs) as a generic
-        // object so it can be passed through to the Zephyr toolchain.
+        // Parse the zephyr section (kconfig, runner, trace, ...) as a generic
+        // literal tree so it passes through to the Zephyr toolchain verbatim —
+        // trace carries booleans/numbers and a nested alarms object, not just
+        // the string map kconfig uses.
         const init = unwrapExpr(prop.initializer);
         if (ts.isObjectLiteralExpression(init)) {
           out.zephyr = {};
@@ -257,21 +291,8 @@ function extractConfigProperties(obj: ts.ObjectLiteralExpression, out: RawConfig
             if (!ts.isPropertyAssignment(zProp)) continue;
             const key = propName(zProp);
             if (!key) continue;
-            const zInit = unwrapExpr(zProp.initializer);
-            if (ts.isObjectLiteralExpression(zInit)) {
-              // kconfig: { 'CONFIG_X': 'y' }
-              const sub: Record<string, string> = {};
-              for (const subProp of zInit.properties) {
-                if (!ts.isPropertyAssignment(subProp)) continue;
-                const subKey = propName(subProp);
-                const v = stringLikeText(subProp.initializer);
-                if (subKey !== undefined && v !== undefined) sub[subKey] = v;
-              }
-              (out.zephyr as Record<string, unknown>)[key] = sub;
-            } else {
-              const v = stringLikeText(zInit);
-              if (v !== undefined) (out.zephyr as Record<string, unknown>)[key] = v;
-            }
+            const v = literalValue(zProp.initializer);
+            if (v !== undefined) (out.zephyr as Record<string, unknown>)[key] = v;
           }
         }
         break;

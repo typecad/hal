@@ -14,8 +14,12 @@ import { PROTOCOL_PREFIX } from './types.js';
 export interface SerialReadResult {
   /** Lines starting with [TC: — the protocol data. */
   protocolLines: string[];
-  /** All other serial output — debug prints, boot messages, etc. */
+  /** All other serial output — debug prints, boot messages, etc. ([TR:
+   *  trace lines are structured and live in allLines only). */
   debugLines: string[];
+  /** EVERY line in arrival order — the interleaving of [TC: protocol and
+   *  [TR: trace heartbeats is what in-DSL trace assertions evaluate over. */
+  allLines: string[];
   /** Whether SUITE_END was received before timeout. */
   completed: boolean;
   /** If the read was cut short by an error. */
@@ -52,6 +56,7 @@ export async function readSerialOutput(
 
   const protocolLines: string[] = [];
   const debugLines: string[] = [];
+  const allLines: string[] = [];
   let completed = false;
   let pending = '';
 
@@ -82,11 +87,14 @@ export async function readSerialOutput(
       if (resolved) return;
       resolved = true;
       clearTimeout(timer);
-      cleanup(() => resolve({ protocolLines, debugLines, completed, error }));
+      cleanup(() => resolve({ protocolLines, debugLines, allLines, completed, error }));
     };
 
     const handleLine = (line: string) => {
       const trimmed = line.trim();
+      if (trimmed.length > 0) {
+        allLines.push(trimmed);
+      }
       if (trimmed.startsWith(PROTOCOL_PREFIX)) {
         protocolLines.push(trimmed);
         if (trimmed.includes('SUITE_END')) {
@@ -94,7 +102,7 @@ export async function readSerialOutput(
           // Give a brief delay for any trailing output
           setTimeout(() => finish(), 200);
         }
-      } else if (trimmed.length > 0) {
+      } else if (trimmed.length > 0 && !trimmed.startsWith('[TR:')) {
         debugLines.push(trimmed);
       }
     };

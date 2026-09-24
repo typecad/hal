@@ -27,6 +27,10 @@ const config: TypecadConfig = {
     trace: { enabled: true, intervalMs: 1000 },
   },
 
+  // Hardware tests: the CDC console re-enumerates after upload, so the suite
+  // must be restarted by the reader (DTR/RTS reset) to be observed.
+  test: { resetAfterOpen: true },
+
   output: {
     outDir: './out',
   },

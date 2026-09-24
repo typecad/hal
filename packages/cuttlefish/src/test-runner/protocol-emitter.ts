@@ -35,6 +35,19 @@ export function emitSegments(segments: ChainSegment[], ctx: PreprocessorContext)
         ctx.emit(`${ctx.shim.println(ctx.quote(`[TC:IT:${escapeProtocol(seg.name ?? '')}]`))};`);
         break;
 
+      case 'trace': {
+        if (!seg.gate) break; // trace() without a gate — skip
+        // The host evaluates the gate over heartbeats that closed inside
+        // this it() — a sample group only closes when the NEXT heartbeat
+        // arrives, so a dwell keeps the asserted window populated. (The
+        // gate's colons survive escapeProtocol — it escapes quotes only.)
+        if (seg.dwellMs !== undefined) {
+          ctx.emit(`${ctx.shim.delay.replace(/\d+/, String(seg.dwellMs))};`);
+        }
+        ctx.emit(`${ctx.shim.println(ctx.quote(`[TC:TRACE:${escapeProtocol(seg.gate)}]`))};`);
+        break;
+      }
+
       case 'expect': {
         if (!seg.matcher) break; // expect() without matcher — skip
 

@@ -12,7 +12,7 @@ import { findTestFiles } from './finder.js';
 import { preprocess, zephyrShim } from './preprocessor.js';
 import { transpileTestFile, compileProgram, uploadProgram } from './compiler.js';
 import { readSerialOutput } from './serial.js';
-import { parseProtocolLines } from './parser.js';
+import { parseProtocolLinesWithTrace } from './parser.js';
 import { reportFileResult, reportSummary } from './reporter.js';
 import { boardTestPins, testPinsRolesOf, buildTestPinsSubstitutions } from './test-pins.js';
 import type { TestPinsData } from './test-pins.js';
@@ -291,7 +291,7 @@ const uploadResult = uploadProgram(
   }
 
   // Step 6: Parse protocol lines
-  const describes = parseProtocolLines(serialResult.protocolLines);
+  const describes = parseProtocolLinesWithTrace(serialResult.allLines);
 
   const durationMs = Date.now() - startTime;
   const passed = describes.every(d => d.passed);

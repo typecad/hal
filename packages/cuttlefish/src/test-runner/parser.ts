@@ -8,7 +8,16 @@
 //   [TC:DESCRIBE:name]
 //   [TC:IT:name]
 //   [TC:EXPECT:matcher:expected:actual]
+//   [TC:TRACE:gate]          in-DSL trace assertion (host-evaluated)
 //   [TC:SUITE_END]
+//
+// In-DSL trace assertions: the device emits [TC:TRACE:<gate>] at the
+// assertion point; the interleaved [TR: heartbeat lines feed the shared
+// TraceLineParser in arrival order, and the host evaluates the gate (the
+// trace-gate grammar: cpu-avg:main<=30, frame-max<=20, ...) over the
+// heartbeats that closed inside the enclosing it(). The device does not
+// wait for a verdict — the assertion lands as an ordinary (precomputed)
+// test result.
 // ---------------------------------------------------------------------------
 
 import type {
@@ -20,6 +29,9 @@ import type {
   MatcherName,
 } from './types.js';
 import { evaluate } from './evaluator.js';
+import { TraceLineParser } from '../trace/protocol.js';
+import { buildTraceReport, evaluateGates } from '../trace/report.js';
+import type { TraceCapture, TraceSample } from '../trace/types.js';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -31,6 +43,40 @@ import { evaluate } from './evaluator.js';
 export function parseProtocolLines(rawLines: string[]): DescribeResult[] {
   const lines = rawLines.map(parseSingleLine).filter(Boolean) as ProtocolLine[];
   return buildResults(lines);
+}
+
+/**
+ * Parse an arrival-ordered serial stream — [TC: protocol AND [TR: trace lines
+ * interleaved — evaluating in-DSL trace assertions against the heartbeats
+ * that closed inside each it(). This is the runner's entry point; the
+ * trace-less variant stays for callers holding protocol lines only.
+ */
+export function parseProtocolLinesWithTrace(allLines: string[]): DescribeResult[] {
+  const traceParser = new TraceLineParser();
+  const lines: ProtocolLine[] = [];
+  // Heartbeat watermarks at the arrival of each protocol line. The IT bound
+  // uses OPENED groups (a sample belongs to a test when its heartbeat
+  // arrived inside it); the TRACE bound uses CLOSED groups (an unclosed
+  // group's interval extends past the assertion point).
+  const watermarks: Array<{ opened: number; closed: number }> = [];
+  let sawTraceWire = false;
+  for (const raw of allLines) {
+    if (raw.trim().startsWith('[TR:')) {
+      traceParser.feed(raw);
+      sawTraceWire = true;
+      continue;
+    }
+    const parsed = parseSingleLine(raw);
+    if (parsed !== null) {
+      lines.push(parsed);
+      watermarks.push({ opened: traceParser.openedCount, closed: traceParser.sampleCount });
+    }
+  }
+  return buildResults(lines, {
+    watermarks,
+    closedSamples: () => traceParser.snapshot(),
+    sawTraceWire,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -73,7 +119,7 @@ function parseSingleLine(raw: string): ProtocolLine | null {
 }
 
 function isValidTag(tag: string): tag is ProtocolTag {
-  return ['SUITE_START', 'DESCRIBE', 'IT', 'EXPECT', 'SUITE_END'].includes(tag);
+  return ['SUITE_START', 'DESCRIBE', 'IT', 'EXPECT', 'TRACE', 'SUITE_END'].includes(tag);
 }
 
 /**
@@ -84,8 +130,8 @@ function isValidTag(tag: string): tag is ProtocolTag {
  * For DESCRIBE/IT, there's only one field (the name).
  */
 function splitFields(tag: ProtocolTag, rest: string): string[] {
-  if (tag === 'DESCRIBE' || tag === 'IT') {
-    return [rest]; // name may contain colons — treat as single field
+  if (tag === 'DESCRIBE' || tag === 'IT' || tag === 'TRACE') {
+    return [rest]; // name/gate may contain colons — treat as single field
   }
 
   if (tag === 'EXPECT') {
@@ -123,12 +169,23 @@ function splitExpectFields(rest: string): string[] {
 // Internal — Result building
 // ---------------------------------------------------------------------------
 
-function buildResults(lines: ProtocolLine[]): DescribeResult[] {
+/** Trace context for buildResults: per-protocol-line heartbeat watermarks
+ *  (arrival-ordered), the closed samples, and whether any [TR: line arrived
+ *  at all (an untraced test firmware fails trace gates with the remedy). */
+interface TraceContext {
+  watermarks: Array<{ opened: number; closed: number }>;
+  closedSamples: () => TraceSample[];
+  sawTraceWire: boolean;
+}
+
+function buildResults(lines: ProtocolLine[], trace?: TraceContext): DescribeResult[] {
   const describes: DescribeResult[] = [];
   let currentDescribe: DescribeResult | null = null;
   let currentTest: TestResult | null = null;
+  let itWatermark = 0;
 
-  for (const line of lines) {
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const line = lines[lineIdx];
     switch (line.tag) {
       case 'SUITE_START':
         // No-op — we already know we're starting
@@ -165,6 +222,20 @@ function buildResults(lines: ProtocolLine[]): DescribeResult[] {
           passed: true,
           durationMs: 0,
         };
+        itWatermark = trace !== undefined ? (trace.watermarks[lineIdx]?.opened ?? 0) : 0;
+        break;
+      }
+
+      case 'TRACE': {
+        if (!currentTest) break; // TRACE outside of IT — nothing to attach to
+        if (trace === undefined) break; // protocol-lines-only caller: no heartbeats to evaluate over
+        // The asserted window: samples whose heartbeat arrived after the
+        // it() opened (opened-bound; a heartbeat inside the test owns its
+        // interval even though the NEXT heartbeat closes it later) and
+        // which closed before this assertion point.
+        const end = trace.watermarks[lineIdx]?.closed ?? 0;
+        const section = trace.closedSamples().slice(itWatermark, end);
+        currentTest.assertions.push(evaluateTraceGate(line.fields[0] ?? '', section, trace.sawTraceWire));
         break;
       }
 
@@ -226,4 +297,63 @@ function finalizeTest(test: TestResult): void {
 
 function finalizeDescribe(desc: DescribeResult): void {
   desc.passed = desc.tests.every(t => t.passed);
+}
+
+
+// ---------------------------------------------------------------------------
+// In-DSL trace assertion evaluation
+// ---------------------------------------------------------------------------
+
+/** Evaluate one trace gate over the heartbeats that closed inside the test.
+ *  Never throws — an authoring error (malformed gate) or an unsampleable
+ *  window is a failed assertion with the remedy, not a crashed run. */
+function evaluateTraceGate(gate: string, section: TraceSample[], sawTraceWire: boolean): AssertionResult {
+  const fail = (actual: string): AssertionResult => ({ matcher: 'traceGate', expected: gate, actual, passed: false });
+  if (!sawTraceWire) {
+    return fail('no [TR: heartbeat lines on the wire — build the test firmware with zephyr.trace: { enabled: true }');
+  }
+  if (section.length < 2) {
+    return fail(
+      `only ${section.length} heartbeat${section.length === 1 ? '' : 's'} closed inside the test — dwell before the assertion (.trace(gate, ms)) or lower zephyr.trace.intervalMs`,
+    );
+  }
+  const capture: TraceCapture = {
+    schema: 'typecad-hal/trace@1',
+    capturedAt: '',
+    port: '',
+    baudRate: 115200,
+    intervalMs: null,
+    samples: section,
+  };
+  try {
+    const report = buildTraceReport(capture);
+    const result = evaluateGates(report, [gate]);
+    const intervals = section.length - 1;
+    return {
+      matcher: 'traceGate',
+      expected: gate,
+      actual: `${describeGate(gate, report)} (over ${intervals} interval${intervals === 1 ? '' : 's'})`,
+      passed: result.pass,
+    };
+  } catch (err) {
+    return fail(`gate error: ${(err as Error).message}`);
+  }
+}
+
+/** The gate's actual value(s) from the section report, for the failure
+ *  message — "main: avg 32.1%, max 35.0%" answers what the gate saw. */
+function describeGate(gate: string, report: ReturnType<typeof buildTraceReport>): string {
+  const m = /^(cpu-avg|cpu-max|frame-max|stack-min)(?::([A-Za-z0-9_.-]+))?/.exec(gate);
+  if (m === null) return 'unknown metric';
+  const [, metric, thread] = m;
+  if (metric === 'frame-max') {
+    return report.ui !== undefined ? `worst frame ${report.ui.maxFrameMs} ms` : 'no UI frames';
+  }
+  const row = report.threads.find((t) => t.name === thread);
+  if (row === undefined) return `thread '${thread ?? ''}' absent from the section`;
+  if (metric === 'stack-min') {
+    return row.stackMinUnusedBytes !== null ? `${row.name} headroom ${row.stackMinUnusedBytes} B` : `${row.name} headroom unknown`;
+  }
+  const v = metric === 'cpu-avg' ? row.cpuAvgPct : row.cpuMaxPct;
+  return `${row.name}: avg ${row.cpuAvgPct ?? '—'}%, max ${row.cpuMaxPct ?? '—'}%`;
 }

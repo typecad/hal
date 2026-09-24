@@ -16,7 +16,7 @@ import type { PreprocessorContext } from './preprocessor.js';
  * Represents a single segment of a fluent describe().it().expect().matcher() chain.
  */
 export interface ChainSegment {
-  kind: 'describe' | 'it' | 'expect';
+  kind: 'describe' | 'it' | 'expect' | 'trace';
   /** For describe/it: the label string. */
   name?: string;
   /** For expect: the actual-value expression text. */
@@ -29,6 +29,13 @@ export interface ChainSegment {
   isStringExpect?: boolean;
   /** For expect with function arg: named function definition to emit before the chain. */
   extractedFn?: string;
+  /** For trace: the gate expression ('cpu-avg:main<=30' — the trace-gate
+   *  grammar, evaluated HOST-side over the heartbeats in this it()). */
+  gate?: string;
+  /** For trace: optional dwell emitted before the marker so heartbeats close
+   *  INSIDE the asserted window (a group only closes when the next heartbeat
+   *  arrives). */
+  dwellMs?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,7 +105,16 @@ function collectSegmentsRecursive(
     const methodName = expr.expression.name.text;
     const receiver = expr.expression.expression;
 
-    if (methodName === 'it') {
+    if (methodName === 'trace') {
+      collectSegmentsRecursive(receiver, sf, segments, ctx);
+      const dwellArg = expr.arguments[1];
+      const dwell = dwellArg !== undefined ? Number(dwellArg.getText(sf).replace(/[^0-9].*$/, '')) : NaN;
+      segments.push({
+        kind: 'trace',
+        gate: extractStringArg(expr, 0, sf) ?? '',
+        dwellMs: Number.isFinite(dwell) && dwell > 0 ? dwell : undefined,
+      });
+    } else if (methodName === 'it') {
       collectSegmentsRecursive(receiver, sf, segments, ctx);
       const name = extractStringArg(expr, 0, sf);
       segments.push({ kind: 'it', name: name ?? 'unnamed' });

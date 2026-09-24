@@ -21,6 +21,7 @@ export type ProtocolTag =
   | 'DESCRIBE'
   | 'IT'
   | 'EXPECT'
+  | 'TRACE'
   | 'SUITE_END';
 
 /**
@@ -53,7 +54,11 @@ export type MatcherName =
   | 'toBeFalsy'
   | 'toNotBe'
   | 'toContain'
-  | 'toHaveLength';
+  | 'toHaveLength'
+  /** Host-evaluated trace gate (in-DSL trace assertions): the device marks
+   *  the assertion point, the host evaluates the gate over the heartbeats
+   *  that closed inside the enclosing it() — `passed` is precomputed. */
+  | 'traceGate';
 
 /**
  * A single assertion result after host-side evaluation.

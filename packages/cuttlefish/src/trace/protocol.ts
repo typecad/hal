@@ -208,6 +208,14 @@ export class TraceLineParser {
     return this.samples.length;
   }
 
+  /** Heartbeat groups OPENED so far (closed + the in-flight one) — the
+   *  in-DSL trace-assertion window keys on openings: a sample belongs to a
+   *  test when its heartbeat arrived inside it, not when the next one
+   *  closed it. */
+  get openedCount(): number {
+    return this.samples.length + (this.current !== null ? 1 : 0);
+  }
+
   get lastThreadLineCount(): number {
     return this.currentThreadLines;
   }

@@ -476,6 +476,8 @@ typecad-hal create [project-name] [options]                # scaffold via the fu
 typecad-hal <input.ts> [options]
 typecad-hal build                                  # use entry from typecad-hal.config.ts
 typecad-hal test [files...] [options]              # hardware tests (flashes tests/ + reports over serial)
+                                                   # .trace(gate, dwellMs?) in a test asserts trace metrics (cpu-avg:main<=30,
+                                                   # frame-max<=20, stack-min:main>=256) over the heartbeats inside that it()
 typecad-hal preview [--config <path>] [--port <p>] # browser preview for a UI project
 typecad-hal gen-decls <file.cpp|--all <dir>>       # .d.ts stubs from C++ headers
 typecad-hal doctor                                 # check the active framework's environment

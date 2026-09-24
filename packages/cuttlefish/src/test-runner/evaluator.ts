@@ -69,6 +69,11 @@ export function evaluate(matcher: MatcherName, expected: string, actual: string)
     case 'toHaveLength':
       return actual.length === parseInt(expected, 10);
 
+    // Never reaches evaluate(): trace-gate verdicts are precomputed by the
+    // parser (the heartbeats are host-side state, not wire fields).
+    case 'traceGate':
+      return false;
+
     default: {
       const _exhaustive: never = matcher;
       return false;
@@ -100,6 +105,7 @@ export function describeExpected(matcher: MatcherName, expected: string): string
       const parts = expected.split(',');
       return `to be within ${parts[0]}–${parts[1]}`;
     }
+    case 'traceGate':         return `trace gate ${expected} to hold over the test's heartbeats`;
     case 'toBeTruthy':        return 'to be truthy (≠ 0)';
     case 'toBeFalsy':         return 'to be falsy (= 0)';
     case 'toContain':         return `to contain "${expected}"`;
