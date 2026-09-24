@@ -12,6 +12,7 @@ import {
   generateStarterTest,
   generateStarterSim,
   generateGitignore,
+  generateProjectAgentsMd,
   generateEditorconfig,
   generateVitestConfig,
   generateEslintConfig,
@@ -111,6 +112,9 @@ export function scaffoldProject(
   writeFile('.typecad-hal/eslint.config.mjs', generateEslintConfig(options));
   writeFile('.typecad-hal/eslint-transpiler-rules.mjs', generateEslintRules(options));
   writeFile('.gitignore', generateGitignore(options));
+  // The agent loop: every project carries its own tooling map so an AI agent
+  // (or a new teammate) knows the build/test/trace/gate commands unprompted.
+  writeFile('AGENTS.md', generateProjectAgentsMd(options));
   writeFile('.editorconfig', generateEditorconfig(options));
   // Project-local vitest config: `npm run simulate` must not inherit a parent
   // directory's include pattern (monorepo roots) and silently match nothing.

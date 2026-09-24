@@ -545,6 +545,10 @@ async function main(): Promise<void> {
           baudRate: options.baudRate ?? 115200,
           durationSeconds: options.durationSeconds,
           output: path.resolve(process.cwd(), options.output ?? "trace.json"),
+          quiet: options.quiet === true,
+          flash: options.flash === true,
+          gates: options.gates,
+          gatesFile: options.gatesFile,
         });
         process.exitCode = exitCode;
         return;
@@ -560,6 +564,8 @@ async function main(): Promise<void> {
         input: options.input ?? "trace.json",
         json: options.json === true,
         gates: options.gates,
+        gatesFile: options.gatesFile,
+        worst: options.worst,
       });
       return;
     }

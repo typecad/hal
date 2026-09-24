@@ -274,6 +274,14 @@ export interface TraceCommandOptions {
   durationSeconds?: number;
   /** capture: artifact path (default ./trace.json). */
   output?: string;
+  /** capture: progress to stderr; stdout is one JSON summary line. */
+  quiet?: boolean;
+  /** capture: run build --compile --upload before capturing. */
+  flash?: boolean;
+  /** capture/report: gates file ({ "gates": [...] } or bare array). */
+  gatesFile?: string;
+  /** report: show the top-N spike intervals. */
+  worst?: number;
   /** report: capture path (default ./trace.json). */
   input?: string;
   /** report: print the machine-readable report only. */

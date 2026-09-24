@@ -333,6 +333,78 @@ function fmtUs(us: number): string {
 
 const GATE_RE = /^(cpu-avg|cpu-max|frame-max|stack-min)(?::([A-Za-z0-9_.-]+))?(<=|>=)([0-9]+(?:\.[0-9]+)?)$/;
 
+/** One heartbeat interval, ranked for `trace report --worst` — the "which
+ *  interval spiked, and where" view over an existing capture. */
+export interface WorstInterval {
+  fromTMs: number;
+  toTMs: number;
+  /** Per-thread CPU % for this interval. */
+  cpu: Record<string, number>;
+  /** Present for UI programs. */
+  maxFrameMs?: number;
+  phasesUs?: number[];
+  /** The sort key actually used (worst frame ms, or the top thread CPU %). */
+  rankMs?: number;
+  rankCpuPct?: number;
+}
+
+/** Top-N intervals by worst UI frame (UI captures) or top thread CPU. */
+export function buildWorstIntervals(capture: TraceCapture, n: number): WorstInterval[] {
+  const rows: WorstInterval[] = [];
+  const samples = capture.samples;
+  const hasUi = samples.some((s) => s.ui !== undefined);
+  for (let i = 1; i < samples.length; i++) {
+    const prev = samples[i - 1];
+    const cur = samples[i];
+    const dSys = cur.sysExecCycles - prev.sysExecCycles;
+    const cpu: Record<string, number> = {};
+    if (dSys > 0) {
+      const prevThreads = new Map(prev.threads.map((t) => [t.name, t.execCycles]));
+      for (const t of cur.threads) {
+        const prevExec = prevThreads.get(t.name);
+        if (prevExec === undefined) continue;
+        const dExec = t.execCycles - prevExec;
+        if (dExec < 0) continue;
+        cpu[t.name] = round1((dExec / dSys) * 100);
+      }
+    }
+    const row: WorstInterval = { fromTMs: prev.tMs, toTMs: cur.tMs, cpu };
+    if (cur.ui !== undefined) {
+      row.maxFrameMs = cur.ui.maxFrameMs;
+      if (cur.ui.phasesUs !== undefined) row.phasesUs = [...cur.ui.phasesUs];
+    }
+    if (hasUi) {
+      row.rankMs = row.maxFrameMs ?? 0;
+    } else {
+      row.rankCpuPct = Math.max(0, ...Object.values(cpu).map((v) => (v === undefined ? 0 : v)));
+    }
+    rows.push(row);
+  }
+  rows.sort((a, b) => (b.rankMs ?? b.rankCpuPct ?? 0) - (a.rankMs ?? a.rankCpuPct ?? 0));
+  return rows.slice(0, Math.max(1, n));
+}
+
+/** Human table for the --worst section. */
+export function formatWorstIntervals(rows: WorstInterval[]): string {
+  const lines: string[] = [];
+  const PHASE_LABELS = ['bind', 'trans', 'draw', 'scroll', 'flush'];
+  lines.push('Worst intervals (by max frame):');
+  for (const r of rows) {
+    const span = `${(r.fromTMs / 1000).toFixed(1)}–${(r.toTMs / 1000).toFixed(1)}s`;
+    const cpu = Object.entries(r.cpu)
+      .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
+      .slice(0, 3)
+      .map(([name, v]) => `${name} ${v}%`)
+      .join(', ');
+    const frame = r.maxFrameMs !== undefined ? `frame max ${r.maxFrameMs} ms` : 'no UI data';
+    const phases = r.phasesUs !== undefined && r.phasesUs.some((v) => v > 0)
+      ? ` · phases ${r.phasesUs.map((v, i) => `${PHASE_LABELS[i]} ${fmtUs(v)}`).join(' ')}`
+      : '';
+    lines.push(`  ${span}  ${frame}  ${cpu}${phases}`);
+  }
+  return lines.join('\n');
+}
+
 /** Evaluate gates against a report. Throws on a malformed gate expression. */
 export function evaluateGates(report: TraceReport, gates: readonly string[]): { pass: boolean; violations: string[] } {
   const violations: string[] = [];

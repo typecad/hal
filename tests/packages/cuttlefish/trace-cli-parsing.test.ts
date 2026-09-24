@@ -58,6 +58,29 @@ describe('typecad-hal trace argument parsing', () => {
     expect(() => parse(['trace', 'report', '--port', 'COM10'])).toThrow(/Unknown trace report flag/);
   });
 
+  it('capture accepts --quiet/--flash bools and --gate/--gates-file (the one-command loop)', () => {
+    const opts = parse(['trace', 'capture', '--quiet', '--flash', '--gate', 'cpu-avg:main<=50', '--gates-file', 'trace-gates.json']);
+    expect(opts.quiet).toBe(true);
+    expect(opts.flash).toBe(true);
+    expect(opts.gates).toEqual(['cpu-avg:main<=50']);
+    expect(opts.gatesFile).toBe('trace-gates.json');
+    // Defaults unchanged.
+    const plain = parse(['trace', 'capture']);
+    expect(plain.quiet).toBeFalsy();
+    expect(plain.flash).toBeFalsy();
+    expect(plain.gates).toBeUndefined();
+  });
+
+  it('capture rejects unknown flags as before', () => {
+    expect(() => parse(['trace', 'capture', '--worst', '5'])).toThrow(/Unknown trace capture flag/);
+  });
+
+  it('report validates --worst as an integer 1-100', () => {
+    expect(parse(['trace', 'report', '--worst', '5']).worst).toBe(5);
+    expect(() => parse(['trace', 'report', '--worst', '0'])).toThrow(/--worst must be an integer 1-100/);
+    expect(() => parse(['trace', 'report', '--worst', 'many'])).toThrow(/--worst must be an integer 1-100/);
+  });
+
   it('view defaults to ./trace.json on HTTP port 5175', () => {
     const opts = parse(['trace', 'view']);
     expect(opts.subcommand).toBe('view');

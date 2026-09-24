@@ -688,6 +688,35 @@ describe("Button + LED (simulator)", () => {
 `;
 }
 
+/**
+ * AGENTS.md — the agent loop for a scaffolded project: the commands an AI
+ * agent (or a new teammate) needs to build, test, profile, and gate this
+ * project, stamped at create time so every project carries its own tooling
+ * map. Native projects get the same file minus the hardware-only lines.
+ */
+export function generateProjectAgentsMd(options: CreateProjectOptions): string {
+  const hw = options.isNative
+    ? ''
+    : `- \`npx typecad-hal test\` — flash tests/ + report over serial (the hardware suite).
+- Runtime profiling: set \`zephyr: { trace: { enabled: true, intervalMs: 1000 } }\` in typecad-hal.config.ts, then one command — \`npx typecad-hal trace capture --flash --duration 10\` (auto-uses the only attached port; exit 2 means the firmware is not traced — re-run with --flash) — and \`npx typecad-hal trace report --worst 5\` for CPU/stack/UI-frame/tick-phase stats. Commit trace-gates.json and \`trace capture --flash --gates-file trace-gates.json\` exits 1 on any violation.
+`;
+  return `# AGENTS.md — agent notes for this project
+
+TypeScript → C++ firmware via the typeCAD/hal toolchain (Zephyr). Config is
+typecad-hal.config.ts; pins and peripherals import from '@typecad/hal' (the
+generated .typecad-hal/board.ts behind the tsconfig mapping).
+
+The commands:
+
+- \`npx typecad-hal build --compile --upload --port <p>\` — transpile, west build, flash. \`TYPECAD_HAL_PORT\` in the env replaces --port.
+${hw}- \`npx typecad-hal sbom\` / \`npx typecad-hal audit\` — build records (CycloneDX SBOM; Kconfig security baseline).
+- \`vitest run sim/\` — host-side simulation, no hardware needed.
+
+Never edit generated output (src/out, .typecad-hal/) — change the TS source
+or the config and rebuild.
+`;
+}
+
 export function generateGitignore(_options: CreateProjectOptions): string {
   return `node_modules/
 out/

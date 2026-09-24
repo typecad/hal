@@ -571,18 +571,20 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
     // Per-subcommand flag sets: a capture-only flag on report (and vice
     // versa) is an unknown flag, not a silently-accepted value.
     const valueFlags = sub === "capture"
-      ? new Set(["--port", "--baud", "--duration", "--output"])
+      ? new Set(["--port", "--baud", "--duration", "--output", "--gate", "--gates-file"])
       : sub === "view"
         ? new Set(["--input", "--port"])
-        : new Set(["--input", "--gate"]);
-    const repeatableFlags = sub === "report" ? new Set(["--gate"]) : new Set<string>();
+        : new Set(["--input", "--gate", "--gates-file", "--worst"]);
+    const repeatableFlags = new Set(["--gate"]);
+    const boolFlags = new Set(sub === "capture" ? ["--quiet", "--flash"] : []);
     const validFlags = sub === "capture"
-      ? "--port <p>, --baud <rate>, --duration <seconds>, --output <path>"
+      ? "--port <p>, --baud <rate>, --duration <seconds>, --output <path>, --gate <expr> (repeatable), --gates-file <path>, --quiet, --flash"
       : sub === "view"
         ? "--input <path>, --port <http-port>"
-        : "--input <path>, --json, --gate <metric><=|>=><limit>";
+        : "--input <path>, --json, --gate <expr> (repeatable), --gates-file <path>, --worst <n>";
     const flagValues = new Map<string, string>();
     const gateList: string[] = [];
+    const bools = new Set<string>();
     for (let i = 4; i < argv.length; i++) {
       const tok = argv[i];
       if (tok.startsWith("--") && tok.includes("=")) {
@@ -635,6 +637,10 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
         baudRate: baud,
         durationSeconds,
         output: flagValues.get("--output") ?? "trace.json",
+        quiet: bools.has("--quiet"),
+        flash: bools.has("--flash"),
+        ...(gateList.length > 0 ? { gates: gateList } : {}),
+        gatesFile: flagValues.get("--gates-file"),
       };
     }
     if (sub === "view") {
@@ -649,13 +655,25 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
         httpPort,
       };
     }
-    return {
-      command: "trace",
-      subcommand: "report",
-      input: flagValues.get("--input") ?? "trace.json",
-      json: flagValues.has("--json"),
-      ...(gateList.length > 0 ? { gates: gateList } : {}),
-    };
+    if (sub === "report") {
+      const worstRaw = flagValues.get("--worst");
+      let worst: number | undefined;
+      if (worstRaw !== undefined) {
+        worst = Number(worstRaw);
+        if (!Number.isInteger(worst) || worst < 1 || worst > 100) {
+          throw new Error(`--worst must be an integer 1-100 (got: ${worstRaw}).`);
+        }
+      }
+      return {
+        command: "trace",
+        subcommand: "report",
+        input: flagValues.get("--input") ?? "trace.json",
+        json: flagValues.has("--json"),
+        worst,
+        ...(gateList.length > 0 ? { gates: gateList } : {}),
+        gatesFile: flagValues.get("--gates-file"),
+      };
+    }
   }
 
   // board subcommand — project-local board module management
