@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
 import path from 'node:path';
 import {
   readDiagnosticsReport, buildProblemItems, findDiagnosticsReport,
-  buildReportView, reportHtml,
+  buildReportView, reportHtml, renderMarkdown,
 } from '../../../packages/vscode-typecad-hal/src/diagnostics-core';
 
 const REPORT = JSON.stringify({
@@ -209,27 +209,70 @@ describe('buildReportView', () => {
   });
 });
 
+describe('renderMarkdown', () => {
+  it('renders the report subset: headings, tables, blockquotes, lists, hr', () => {
+    const html = renderMarkdown([
+      '# Build Diagnostics',
+      '',
+      '> **Source:** `app.ui` | **Target:** `generic`',
+      '>',
+      '> **Board:** esp32s3',
+      '',
+      '---',
+      '',
+      '## Project Summary',
+      '',
+      '| Metric | Status / Value |',
+      '| :--- | :--- |',
+      '| **Entry Points** | 1 |',
+      '| **Pin Usage** | 0 / 64 pins |',
+      '',
+      '- `main()`',
+      '- second item',
+    ].join('\n'));
+    expect(html).toContain('<h2>Build Diagnostics</h2>'); // demoted one level
+    expect(html).toContain('<blockquote><b>Source:</b> <code>app.ui</code>');
+    expect(html).toContain('<hr>');
+    expect(html).toContain('<table><tr><th>Metric</th><th>Status / Value</th></tr>');
+    expect(html).toContain('<tr><td><b>Entry Points</b></td><td>1</td></tr>');
+    expect(html).toContain('<ul><li><code>main()</code></li><li>second item</li></ul>');
+  });
+
+  it('renders mermaid fences as mermaid blocks with escaped source; plain fences as code', () => {
+    const html = renderMarkdown('```mermaid\nflowchart LR\n  a --> b\n```\n```cpp\nint x;\n```');
+    expect(html).toContain('<pre class="mermaid">flowchart LR\n  a --&gt; b</pre>');
+    expect(html).toContain('<pre><code>int x;</code></pre>');
+  });
+
+  it('escapes HTML in the source text', () => {
+    expect(renderMarkdown('text with <script>alert(1)</script> and & amp'))
+      .toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+  });
+});
+
 describe('reportHtml', () => {
-  it('bakes the initial payload in and listens for live postMessage updates', () => {
-    const view = buildReportView({ metadata: { sourceFile: 'main.ts' }, peripheralConflicts: [] });
-    const html = reportHtml(view);
+  it('bakes the rendered markdown in and listens for live postMessage updates', () => {
+    const html = reportHtml({ html: '<h2>Project Summary</h2><table></table>', meta: 'xiao_ble · entry main.ts', problemCount: 2 });
     expect(html).toContain('acquireVsCodeApi()');
     expect(html).toContain("addEventListener('message'");
-    expect(html).toContain('"sourceFile":"main.ts"');
+    expect(html).toContain('<h2>Project Summary</h2>'); // the markdown render is baked in
+    expect(html).toContain('"meta":"xiao_ble · entry main.ts"');
   });
 
   it('renders the error payload path for a missing report', () => {
     expect(reportHtml({ error: 'No diagnostics.json yet' })).toContain('No diagnostics.json yet');
   });
 
+  it('loads mermaid for the diagrams with a readable-source fallback when offline', () => {
+    const html = reportHtml({ html: '<pre class="mermaid">flowchart TD</pre>' });
+    expect(html).toContain('cdn.jsdelivr.net/npm/mermaid');
+    expect(html).toContain('pre.mermaid:not([data-processed])'); // offline fallback styling
+  });
+
   // The trace-core lesson: an unescaped character class in the page script
   // makes the whole panel a SyntaxError. Compile (never run) the script.
   it('the embedded script is syntactically valid JavaScript (compiles, never runs)', () => {
-    const view = buildReportView({
-      metadata: { sourceFile: 'main.ts' },
-      peripheralConflicts: [{ pinName: 'P<a4', peripheralName: 'S&PI', role: 'r', severity: 'error', message: '<m>', suggestion: '"s"' }],
-    });
-    const m = /<script>([\s\S]*?)<\/script>/.exec(reportHtml(view));
+    const m = /<script>\nconst vscode = acquireVsCodeApi[\s\S]*?<\/script>/.exec(reportHtml({ html: '<p>x</p>' }));
     expect(m).not.toBeNull();
     expect(() => new Function(m![1])).not.toThrow();
   });

@@ -328,124 +328,198 @@ export function findDiagnosticsReport(
   return newest;
 }
 
-// ── Report page (the webview HTML) ─────────────────────────────────────────
+// ── Markdown rendering (diagnostics.md → panel HTML) ───────────────────────
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/** The report webview: dependency-free HTML (no canvas — tables and bars),
- *  initial payload baked in, live updates via postMessage (the trace-panel
- *  contract; the extension's file watcher pushes fresh views). */
-export function reportHtml(initial: ReportView | { error: string }): string {
+/** Render the subset of Markdown the diagnostics report writer emits:
+ *  headings, tables, blockquotes, fenced code, lists, hr, and inline
+ *  code/bold/italic/links. Anything else passes through as a paragraph.
+ *  HTML-escaped throughout — the report embeds user paths and code names.
+ *  Mermaid fences become <pre class="mermaid"> blocks the page hands to
+ *  mermaid.js (falling back to the readable source when it cannot load). */
+export function renderMarkdown(md: string): string {
+  const inline = (src: string): string => {
+    let out = '';
+    for (const part of src.split(/(`[^`]+`)/g)) {
+      if (part.length > 2 && part.startsWith('`') && part.endsWith('`')) {
+        out += '<code>' + esc(part.slice(1, -1)) + '</code>';
+        continue;
+      }
+      let t = esc(part);
+      t = t.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+      t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>');
+      t = t.replace(/(^|[\s(])_([^_]+)_/g, '$1<i>$2</i>');
+      t = t.replace(/(^|[\s(*])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>');
+      out += t;
+    }
+    return out;
+  };
+  const lines = md.split(/\r?\n/);
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const fence = /^```(\w*)/.exec(line);
+    if (fence !== null) {
+      const buf: string[] = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i])) {
+        buf.push(lines[i]);
+        i++;
+      }
+      i++; // closing fence (or EOF)
+      const body = buf.join('\n');
+      out.push(fence[1] === 'mermaid'
+        ? '<pre class="mermaid">' + esc(body) + '</pre>'
+        : '<pre><code>' + esc(body) + '</code></pre>');
+      continue;
+    }
+    if (/^\|/.test(line) && i + 1 < lines.length && /^\|[\s:|-]+\|?$/.test(lines[i + 1])) {
+      const cells = (r: string): string[] => r.replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+      const header = cells(line);
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length && /^\|/.test(lines[i])) {
+        rows.push(cells(lines[i]));
+        i++;
+      }
+      out.push('<table><tr>' + header.map((h) => '<th>' + inline(h) + '</th>').join('') + '</tr>'
+        + rows.map((r) => '<tr>' + r.map((c) => '<td>' + inline(c) + '</td>').join('') + '</tr>').join('')
+        + '</table>');
+      continue;
+    }
+    if (/^> ?/.test(line)) {
+      const buf: string[] = [];
+      while (i < lines.length && /^> ?/.test(lines[i])) {
+        buf.push(lines[i].replace(/^> ?/, ''));
+        i++;
+      }
+      out.push('<blockquote>' + inline(buf.join(' ')) + '</blockquote>');
+      continue;
+    }
+    const heading = /^(#{1,6}) (.*)$/.exec(line);
+    if (heading !== null) {
+      const level = heading[1].length + 1; // demote one: # is the panel title
+      out.push('<h' + level + '>' + inline(heading[2]) + '</h' + level + '>');
+      i++;
+      continue;
+    }
+    if (/^ *([-*]|\d+\.) /.test(line)) {
+      const ordered = /^ *\d+\. /.test(line);
+      const itemRe = ordered ? /^ *\d+\. (.*)$/ : /^ *[-*] (.*)$/;
+      const items: string[] = [];
+      while (i < lines.length) {
+        const m = itemRe.exec(lines[i]);
+        if (m === null) break;
+        items.push(m[1]);
+        i++;
+      }
+      out.push('<' + (ordered ? 'ol' : 'ul') + '>'
+        + items.map((t) => '<li>' + inline(t) + '</li>').join('')
+        + '</' + (ordered ? 'ol' : 'ul') + '>');
+      continue;
+    }
+    if (/^ *---+ *$/.test(line)) {
+      out.push('<hr>');
+      i++;
+      continue;
+    }
+    if (line.trim() === '') {
+      i++;
+      continue;
+    }
+    const buf = [line];
+    i++;
+    while (i < lines.length && lines[i].trim() !== ''
+      && !/^(#{1,6} |```|\||> ?| *([-*]|\d+\.) | *---+ *$)/.test(lines[i])) {
+      buf.push(lines[i]);
+      i++;
+    }
+    out.push('<p>' + inline(buf.join(' ')) + '</p>');
+  }
+  return out.join('\n');
+}
+
+// ── Report page (the webview HTML) ─────────────────────────────────────────
+
+export interface ReportPayload {
+  /** renderMarkdown() output of diagnostics.md. */
+  html: string;
+  /** Quick-glance line above the report (board · framework · entry). */
+  meta?: string;
+  problemCount?: number;
+}
+
+/** The report webview over diagnostics.md itself: the markdown is rendered
+ *  host-side (renderMarkdown); the page injects it and hands the Mermaid
+ *  blocks to mermaid.js from a CDN — offline (or blocked), the diagram
+ *  source stays readable in place. Live updates via postMessage (the
+ *  trace-panel contract; the extension's file watcher pushes fresh views). */
+export function reportHtml(initial: ReportPayload | { error: string }): string {
   return `<!doctype html>
 <html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src data: https:;">
 <style>
-  body { font: 13px/1.45 var(--vscode-font-family, system-ui), sans-serif; margin: 12px;
+  body { font: 13px/1.5 var(--vscode-font-family, system-ui), sans-serif; margin: 12px 16px;
          background: var(--vscode-editor-background, #111); color: var(--vscode-editor-foreground, #ddd); }
-  h1 { font-size: 13px; margin: 0 0 8px; font-weight: 600; }
-  h2 { font-size: 12px; margin: 18px 0 6px; font-weight: 600;
-       color: var(--vscode-descriptionForeground, #888); text-transform: uppercase; letter-spacing: .04em; }
-  #meta { color: var(--vscode-descriptionForeground, #888); margin-bottom: 8px; }
-  table { border-collapse: collapse; width: 100%; margin-bottom: 4px; }
-  th, td { text-align: left; padding: 3px 10px 3px 0; vertical-align: top;
+  h1 { font-size: 14px; margin: 0 0 6px; font-weight: 600; }
+  h2 { font-size: 13px; margin: 20px 0 6px; font-weight: 600;
+       border-bottom: 1px solid var(--vscode-widget-border, #222); padding-bottom: 3px; }
+  h3, h4 { font-size: 12px; margin: 14px 0 4px; font-weight: 600; }
+  #meta { color: var(--vscode-descriptionForeground, #888); margin-bottom: 10px; }
+  #meta .problems { color: var(--vscode-editorWarning-foreground, #ca8); }
+  blockquote { margin: 4px 0 10px; padding: 2px 10px; border-left: 3px solid var(--vscode-widget-border, #333);
+               color: var(--vscode-descriptionForeground, #999); }
+  blockquote b, blockquote code { color: var(--vscode-editor-foreground, #ddd); }
+  table { border-collapse: collapse; margin: 6px 0 12px; max-width: 100%; }
+  th, td { text-align: left; padding: 3px 14px 3px 0; vertical-align: top; font-size: 12px;
            border-bottom: 1px solid var(--vscode-widget-border, #222); }
   th { color: var(--vscode-descriptionForeground, #888); font-weight: normal; }
-  tr.conflict-error td { color: var(--vscode-errorForeground, #f66); }
-  tr.conflict-warning td { color: var(--vscode-editorWarning-foreground, #ca8); }
-  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
-  .chip { border: 1px solid var(--vscode-widget-border, #333); border-radius: 3px;
-          padding: 1px 6px; font-size: 11px; }
-  .chip b { font-weight: 600; }
-  .bar { background: var(--vscode-button-background, #3a6ea5); height: 10px;
-         border-radius: 2px; min-width: 2px; }
-  .bar-cell { width: 45%; min-width: 120px; }
-  .mut { color: var(--vscode-descriptionForeground, #888); }
-  details summary { cursor: pointer; color: var(--vscode-descriptionForeground, #888); }
+  code { font-family: var(--vscode-editor-font-family, monospace); font-size: 11px;
+         background: var(--vscode-textCodeBlock-background, #1e1e1e); padding: 0 4px; border-radius: 3px; }
+  pre { overflow: auto; }
+  pre code { display: block; padding: 8px; }
+  pre.mermaid { text-align: center; background: var(--vscode-textCodeBlock-background, #1a1a1a);
+                border: 1px solid var(--vscode-widget-border, #222); border-radius: 4px; padding: 8px; }
+  pre.mermaid:not([data-processed]) { font-family: var(--vscode-editor-font-family, monospace);
+                font-size: 11px; white-space: pre; text-align: left; color: var(--vscode-descriptionForeground, #888); }
+  hr { border: 0; border-top: 1px solid var(--vscode-widget-border, #222); margin: 14px 0; }
+  ul, ol { margin: 4px 0 10px; padding-left: 22px; }
+  li { margin: 2px 0; }
 </style></head><body>
 <h1>typeCAD/hal diagnostics</h1>
 <div id="meta"></div>
 <div id="body"></div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 <script>
 const vscode = acquireVsCodeApi();
 let d = ${JSON.stringify(initial)};
-function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
-function render(d) {
+async function render(d) {
   const meta = document.getElementById('meta');
   const body = document.getElementById('body');
   if (d.error) { meta.textContent = ''; body.textContent = d.error; return; }
-  const m = d.metadata;
-  meta.textContent = [m.board, m.framework, m.target, m.timestamp, 'entry ' + m.sourceFile]
-    .filter(Boolean).join(' · ');
-  let h = '';
-  if (d.conflicts.length > 0) {
-    h += '<h2>Peripheral conflicts (' + d.conflicts.length + ')</h2><table>';
-    for (const c of d.conflicts) {
-      h += '<tr class="conflict-' + c.severity + '"><td>' + esc(c.pinName) + '</td><td>'
-        + esc(c.peripheralName) + ' (' + esc(c.role) + ')</td><td>' + esc(c.message)
-        + ' — ' + esc(c.suggestion) + '</td></tr>';
-    }
-    h += '</table>';
-  } else {
-    h += '<h2>Peripheral conflicts</h2><div class="mut">none</div>';
+  meta.innerHTML = '';
+  if (d.meta !== undefined && d.meta.length > 0) meta.append(d.meta + ' · ');
+  if (d.problemCount !== undefined) {
+    const s = document.createElement('span');
+    s.className = 'problems';
+    s.textContent = d.problemCount + ' problem' + (d.problemCount === 1 ? '' : 's') + ' (Problems panel)';
+    meta.append(s);
   }
-  if (d.peripherals.length > 0) {
-    h += '<h2>Peripheral allocation</h2><table><tr><th>instance</th><th>pins</th><th>devicetree</th></tr>';
-    for (const p of d.peripherals) {
-      h += '<tr><td>' + esc(p.displayName) + ' <span class="mut">' + esc(p.type) + ' ' + p.instance
-        + '</span></td><td>' + esc(p.pins.join(', ')) + '</td><td class="mut">' + esc(p.dtLabel ?? '') + '</td></tr>';
-    }
-    h += '</table>';
+  body.innerHTML = d.html;
+  if (window.mermaid !== undefined) {
+    try {
+      mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
+      await mermaid.run({ nodes: Array.from(document.querySelectorAll('pre.mermaid')) });
+    } catch (e) { /* a bad diagram stays as its readable source */ }
   }
-  if (d.gpio.length > 0) {
-    const s = d.pinSummary;
-    h += '<h2>GPIO pins' + (s.usedPins !== undefined ? ' — ' + s.usedPins + ' of ' + s.totalPins + ' used' : '') + '</h2><div class="chips">';
-    for (const g of d.gpio) {
-      h += '<span class="chip"><b>' + esc(g.pinName) + '</b> ' + esc(g.mode)
-        + (g.peripheralRole ? ' · ' + esc(g.peripheralRole) : '') + '</span>';
-    }
-    h += '</div>';
-  }
-  if (d.asyncTasks.length > 0) {
-    h += '<h2>Async tasks</h2><div class="chips">';
-    for (const t of d.asyncTasks) {
-      h += '<span class="chip"><b>' + esc(t.name) + '</b>' + (t.intervalMs !== undefined ? ' · every ' + t.intervalMs + ' ms' : '') + '</span>';
-    }
-    h += '</div>';
-  }
-  const heap = d.heap;
-  if (heap.totalStaticBytes !== undefined || heap.topGlobals.length > 0) {
-    h += '<h2>Static memory</h2><div class="mut">'
-      + (heap.totalStaticBytes !== undefined ? heap.totalStaticBytes.toLocaleString() + ' B static' : '')
-      + (heap.stringLiterals !== undefined ? ' · ' + heap.stringLiterals + ' string literals' : '')
-      + (heap.estimatedStackDepth !== undefined ? ' · est. stack depth ' + heap.estimatedStackDepth + ' frames' : '')
-      + '</div>';
-    if (heap.topGlobals.length > 0) {
-      const max = Math.max(...heap.topGlobals.map((g) => g.bytes), 1);
-      h += '<table><tr><th>global</th><th>type</th><th class="bar-cell"></th><th>bytes</th></tr>';
-      for (const g of heap.topGlobals) {
-        h += '<tr><td>' + esc(g.name) + '</td><td class="mut">' + esc(g.cppType)
-          + '</td><td class="bar-cell"><div class="bar" style="width:'
-          + Math.max(2, Math.round(g.bytes / max * 100)) + '%"></div></td><td>'
-          + g.bytes.toLocaleString() + '</td></tr>';
-      }
-      h += '</table>';
-    }
-  }
-  if (d.treeShaken.length > 0) {
-    h += '<h2>Tree-shaken (' + d.treeShaken.length + ' symbols removed)</h2><details><summary>show removed symbols</summary><div class="chips">';
-    for (const s of d.treeShaken.slice(0, 200)) {
-      h += '<span class="chip">' + esc(s) + '</span>';
-    }
-    h += '</div></details>';
-  }
-  if (d.buildMs !== undefined) {
-    h += '<div class="mut" style="margin-top:14px">build ' + d.buildMs + ' ms · ' + d.problemCount + ' problem' + (d.problemCount === 1 ? '' : 's') + '</div>';
-  }
-  body.innerHTML = h;
 }
-window.addEventListener('message', (e) => { d = e.data; render(d); });
-render(d);
+window.addEventListener('message', (e) => { d = e.data; void render(d); });
+void render(d);
 </script></body></html>
 `;
 }
