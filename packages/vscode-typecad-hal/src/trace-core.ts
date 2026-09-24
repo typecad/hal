@@ -128,21 +128,42 @@ export function viewerHtml(initial: TimelineData | { error: string }): string {
   #meta { color: var(--vscode-descriptionForeground, #888); margin-bottom: 10px; }
   canvas { width: 100%; height: auto; background: var(--vscode-editorWidget-background, #181818);
            border: 1px solid var(--vscode-widget-border, #333); }
+  #scrubrow { margin-top: 8px; }
+  #scrub { width: 100%; accent-color: var(--vscode-focusBorder, #3a6ea5); }
+  #scrublabel { color: var(--vscode-descriptionForeground, #888); font-size: 11px; margin-top: 2px; }
 </style></head><body>
 <h1>typecad-hal trace</h1>
 <div id="meta">waiting for data…</div>
 <canvas id="c" width="1200" height="560"></canvas>
+<div id="scrubrow" style="display:none;">
+  <input id="scrub" type="range" min="0" max="0" step="250" value="0">
+  <div id="scrublabel"></div>
+</div>
 <script>
 const vscode = acquireVsCodeApi();
 
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const meta = document.getElementById('meta');
+const scrubRow = document.getElementById('scrubrow');
+const scrub = document.getElementById('scrub');
+const scrubLabel = document.getElementById('scrublabel');
+// Rolling window: once the capture outgrows WINDOW_MS the chart shows a
+// fixed-width window — the column width settles instead of shrinking forever
+// as the capture grows — and the slider pans the window back through history.
+// At the slider's right end the view snaps back to live-following. The CLI
+// page (view.ts) defaults to the same 60s and also takes ?window=<seconds>.
+const WINDOW_MS = 60000;
+let follow = true;
+scrub.addEventListener('input', () => {
+  follow = Number(scrub.value) >= Number(scrub.max) - 250;
+  draw(d);
+});
 let d = ${JSON.stringify(initial)};
 function draw(d) {
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
-  if (d.error) { meta.textContent = d.error; return; }
+  if (d.error) { meta.textContent = d.error; scrubRow.style.display = 'none'; return; }
   const pts = d.points;
   meta.textContent = d.sampleCount + ' samples · port ' + d.port +
     (d.intervalMs ? ' · interval ' + d.intervalMs + ' ms' : '') +
@@ -150,6 +171,7 @@ function draw(d) {
   if (pts.length === 0) {
     ctx.fillStyle = '#666';
     ctx.fillText('waiting for ≥ 2 heartbeats… (CPU % needs a PAIR of samples to form a delta — the chart starts on the second heartbeat)', 20, 40);
+    scrubRow.style.display = 'none';
     return;
   }
   const names = [...new Set(pts.flatMap(p => Object.keys(p.cpu)))].sort();
@@ -157,13 +179,36 @@ function draw(d) {
   const lanes = names.filter(n => n !== idleName).concat(idleName ? [idleName] : []);
   const hasUi = pts.some(p => p.ui);
   const top = 40, laneH = Math.max(24, Math.min(64, Math.floor((H - top - 140) / lanes.length)));
-  const t0 = pts[0].tMs, t1 = Math.max(pts[pts.length - 1].tMs, t0 + 1);
+  // View window: the whole capture until it outgrows WINDOW_MS, then a fixed
+  // span — the column width settles instead of shrinking forever. The scrub
+  // slider pans the window; at its right end the view keeps following live.
+  const tMin = pts[0].tMs, tMax = Math.max(pts[pts.length - 1].tMs, tMin + 1);
+  const windowed = tMax - tMin > WINDOW_MS;
+  let t0, t1;
+  if (!windowed) {
+    follow = true;
+    scrubRow.style.display = 'none';
+    t0 = tMin; t1 = tMax;
+  } else {
+    scrubRow.style.display = '';
+    scrub.min = tMin; scrub.max = tMax - WINDOW_MS; scrub.step = 250;
+    if (follow) scrub.value = String(tMax - WINDOW_MS);
+    let v = Number(scrub.value);
+    if (!Number.isFinite(v)) v = tMax - WINDOW_MS;
+    t0 = Math.min(Math.max(v, tMin), tMax - WINDOW_MS);
+    t1 = t0 + WINDOW_MS;
+    const fmt = ms => { const s = Math.max(0, Math.round(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+    scrubLabel.textContent = (follow ? 'live — most recent ' + Math.round(WINDOW_MS / 1000) + 's'
+      : 'paused — ' + fmt(t0 - tMin) + ' to ' + fmt(t1 - tMin)) + ' of ' + fmt(tMax - tMin) + ' captured';
+  }
+  const inView = windowed ? pts.filter(p => p.tMs >= t0 && p.tMs <= t1) : pts;
   const x = t => 84 + (t - t0) / (t1 - t0) * (W - 120);
-  const step = Math.max(2, (W - 120) / pts.length * 0.8);
+  const step = Math.max(2, (W - 120) / (inView.length || 1) * 0.8);
   ctx.font = '12px system-ui';
   // Section header + how-to-read line.
   ctx.fillStyle = '#888'; ctx.textAlign = 'left';
-  ctx.fillText('CPU load — bar height = the thread share of wall time in that interval; lanes sum to ~100% (idle included) · one column = one interval', 84, 24);
+  ctx.fillText('CPU load — bar height = the thread share of wall time in that interval; lanes sum to ~100% (idle included) · one column = one interval'
+    + (windowed ? ' · drag the slider below to look back' : ''), 84, 24);
   // Per-lane averages (label suffix).
   const avg = {};
   lanes.forEach(n => { let s = 0, c = 0; pts.forEach(p => { if (p.cpu[n] !== undefined) { s += p.cpu[n]; c++; } }); avg[n] = c ? Math.round(s / c) : 0; });
@@ -185,7 +230,7 @@ function draw(d) {
     ctx.beginPath(); ctx.moveTo(84, yMid); ctx.lineTo(W - 30, yMid); ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = name === 'idle' ? '#4a5a4a' : '#3a6ea5';
-    pts.forEach(p => {
+    inView.forEach(p => {
       const v = p.cpu[name];
       if (v === undefined || v <= 0) return;
       const h = Math.min(laneH - 8, v / 100 * (laneH - 8));
@@ -210,14 +255,14 @@ function draw(d) {
     const yZero = yUi + 60;
     ctx.fillStyle = '#c9a227'; ctx.textAlign = 'left';
     ctx.fillText('UI frame time — line = WORST frame in the interval; stacked bars = where the tick time went', 84, yUi - 8);
-    let maxV = 0; pts.forEach(p => { if (p.ui) maxV = Math.max(maxV, p.ui.maxFrameMs); });
+    let maxV = 0; inView.forEach(p => { if (p.ui) maxV = Math.max(maxV, p.ui.maxFrameMs); });
     maxV = Math.max(maxV, 1);
     ctx.fillStyle = '#666'; ctx.textAlign = 'right'; ctx.font = '10px system-ui';
     ctx.fillText(maxV.toFixed(0) + ' ms', 78, yUi + 4);
     ctx.fillText('0', 78, yZero + 3);
     ctx.font = '12px system-ui';
     ctx.strokeStyle = '#c9a227'; ctx.beginPath(); let started = false;
-    pts.forEach(p => {
+    inView.forEach(p => {
       if (!p.ui) { started = false; return; }
       const y = yZero - (p.ui.maxFrameMs / maxV) * 56;
       if (!started) { ctx.moveTo(x(p.tMs), y); started = true; } else ctx.lineTo(x(p.tMs), y);
@@ -228,7 +273,7 @@ function draw(d) {
     const phaseTotals = [0, 0, 0, 0, 0]; let phaseSum = 0;
     pts.forEach(p => { if (p.ui && p.ui.phasesUs) p.ui.phasesUs.forEach((v, i) => { phaseTotals[i] += v; phaseSum += v; }); });
     const yPh = yUi + 68;
-    pts.forEach(p => {
+    inView.forEach(p => {
       if (!p.ui || !p.ui.phasesUs) return;
       const total = p.ui.phasesUs.reduce((a, b) => a + b, 0);
       if (total <= 0) return;
@@ -254,9 +299,10 @@ function draw(d) {
   }
   const yEv = H - 34;
   ctx.textAlign = 'left'; ctx.fillStyle = '#a55';
-  ctx.fillText('events (' + d.events.length + ') — one tick per Trace.mark / Trace.event call', 84, yEv + 10);
-  d.events.forEach(ev => {
-    if (ev.tMs < t0 || ev.tMs > t1) return;
+  const evShown = d.events.filter(ev => ev.tMs >= t0 && ev.tMs <= t1);
+  ctx.fillText('events (' + evShown.length + (evShown.length < d.events.length ? ' of ' + d.events.length : '')
+    + ') — one tick per Trace.mark / Trace.event call', 84, yEv + 10);
+  evShown.forEach(ev => {
     ctx.strokeStyle = '#a55';
     ctx.beginPath(); ctx.moveTo(x(ev.tMs), top); ctx.lineTo(x(ev.tMs), yEv); ctx.stroke();
   });

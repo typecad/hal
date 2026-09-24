@@ -260,6 +260,36 @@ export interface CleanCommandOptions {
   force?: boolean;
 }
 
+/** Parsed `typecad-hal sbom` options (generate by default; --check verifies
+ *  the build-stamped record, --diff compares two SBOM files). */
+export interface SbomCommandOptions {
+  command: "sbom";
+  /** Output format (default: cyclonedx). SPDX is generate-only. */
+  format: "cyclonedx" | "spdx";
+  /** Scope to every west manifest module (default: only linked modules). */
+  all: boolean;
+  /** Exit 1 on integrity warnings (floating revisions, missing SHAs). */
+  strict: boolean;
+  /** Verify the recorded CycloneDX SBOM against the current build. */
+  check: boolean;
+  /** Print JSON to stdout instead of writing a file. */
+  stdout: boolean;
+  /** Explicit output path (absolute). */
+  output?: string;
+  /** Two CycloneDX SBOM file paths to compare (--diff). */
+  diff?: [string, string];
+}
+
+/** Parsed `typecad-hal audit` options — evaluate the last build's merged
+ *  Kconfig against the security baseline (waived findings are deviations). */
+export interface AuditCommandOptions {
+  command: "audit";
+  /** Exit 1 on any unwaived high/medium finding. */
+  strict: boolean;
+  /** Print only the JSON report (clean CI pipe). */
+  json: boolean;
+}
+
 /** Parsed `typecad-hal trace` options — capture reads [TR: heartbeat lines
  *  from the board's serial port into a trace@1 artifact; report summarizes
  *  one (CPU load + stack high-water marks). */
@@ -272,6 +302,9 @@ export interface TraceCommandOptions {
   baudRate?: number;
   /** capture: stop after N seconds (default: until Ctrl+C). */
   durationSeconds?: number;
+  /** capture: run until Ctrl+C, keeping the live artifact fresh (continuous
+   *  monitoring; exclusive with --duration). */
+  forever?: boolean;
   /** capture: artifact path (default ./trace.json). */
   output?: string;
   /** capture: progress to stderr; stdout is one JSON summary line. */
@@ -288,7 +321,7 @@ export interface TraceCommandOptions {
   json?: boolean;
   /** report: CI gate expressions (repeatable), e.g. `cpu-avg:main<=50`,
    *  `frame-max<=20`, `stack-min:main>=256`. Exit 1 on any violation. */
-  gates?: string[];
+  gates?: string[];  // (repeatable flag)
   /** view: HTTP port for the timeline viewer (default 5175). */
   httpPort?: number;
 }

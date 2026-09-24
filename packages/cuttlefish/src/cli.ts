@@ -505,10 +505,10 @@ async function main(): Promise<void> {
       return;
     }
 
-    if (options.command === "doctor" || options.command === "licenses") {
+    if (options.command === "doctor" || options.command === "licenses" || options.command === "sbom" || options.command === "audit") {
       // These commands run standalone (often before a build), so the framework
       // isn't loaded yet. Load it from the config's framework field so the
-      // framework-supplied doctor/licenses handlers are available.
+      // framework-supplied doctor/licenses/sbom/audit handlers are available.
       if (!hasLoadedFramework()) {
         const config = loadTypecadConfig(process.cwd());
         if (config?.framework) {
@@ -529,6 +529,30 @@ async function main(): Promise<void> {
         fw.doctor();
         return;
       }
+      if (options.command === "sbom") {
+        if (!fw?.sbom) {
+          ui.printInfo("This framework provides no sbom support.");
+          return;
+        }
+        fw.sbom({
+          format: options.format,
+          all: options.all,
+          strict: options.strict,
+          check: options.check,
+          stdout: options.stdout,
+          output: options.output,
+          diff: options.diff,
+        });
+        return;
+      }
+      if (options.command === "audit") {
+        if (!fw?.audit) {
+          ui.printInfo("This framework provides no audit support.");
+          return;
+        }
+        fw.audit({ strict: options.strict, json: options.json });
+        return;
+      }
       if (!fw?.licenses) {
         ui.printInfo("This framework provides no licenses support.");
         return;
@@ -544,6 +568,7 @@ async function main(): Promise<void> {
           port: options.port,
           baudRate: options.baudRate ?? 115200,
           durationSeconds: options.durationSeconds,
+          forever: options.forever === true,
           output: path.resolve(process.cwd(), options.output ?? "trace.json"),
           quiet: options.quiet === true,
           flash: options.flash === true,

@@ -1,5 +1,5 @@
 ﻿import path from "node:path";
-import { CommandLineOptions, CreateCommandOptions, LibraryCommandOptions, BoardCommandOptions, CleanCommandOptions, DebugServerCommandOptions, TestCommandOptions, QueryCommandOptions, TraceCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
+import { CommandLineOptions, CreateCommandOptions, LibraryCommandOptions, BoardCommandOptions, CleanCommandOptions, DebugServerCommandOptions, TestCommandOptions, QueryCommandOptions, SbomCommandOptions, AuditCommandOptions, TraceCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
 
 import chalk from "chalk";
 
@@ -40,13 +40,33 @@ export function printHelp(): void {
   console.log(`  typecad-hal board regen                          Regenerate the project-local board module (.typecad-hal/board.ts + board.json)`);
   console.log(`  typecad-hal doctor                              Check the active framework's environment (e.g. toolchain + board core)`);
   console.log(`  typecad-hal licenses [--all] [--strict]          Scan this project's libraries for SPDX licenses (--all: every installed library)`);
-  console.log(`  typecad-hal trace capture [--port <p>] [--duration <s>] [--output <path>]`);
+  console.log(`  typecad-hal sbom [--format cyclonedx|spdx] [flags]`);
+  console.log(`                          Emit a build-true SBOM: linked west modules + kernel with commit`);
+  console.log(`                          SHAs + SPDX licenses, the hashed firmware artifact, the target`);
+  console.log(`                          board, and the toolchain (CycloneDX formulation). Default: CycloneDX`);
+  console.log(`                          1.6 JSON at <buildDir>/sbom.cdx.json.`);
+  console.log(`                          --all              every west manifest module (default: linked only)`);
+  console.log(`                          --strict           exit 1 on floating revisions / missing commit SHAs`);
+  console.log(`                          --output <path>    write to a specific path (--stdout prints instead)`);
+  console.log(`                          --check            verify the recorded SBOM still matches the build`);
+  console.log(`                          --diff <a> <b>     compare two SBOMs (what changed between releases)`);
+  console.log(`  typecad-hal audit [--strict] [--json]           Check the last build's merged Kconfig against the`);
+  console.log(`                          security baseline (shell/console exposure, entropy, watchdog, hard-coded`);
+  console.log(`                          credentials...). Waived findings live in .typecad-hal/audit-waivers.json;`);
+  console.log(`                          --strict fails on unwaived high/medium, --json prints the report only.`);
+  console.log(`  typecad-hal trace capture [--port <p>] [--duration <s>|--forever] [--output <path>]`);
   console.log(`                          Read runtime-stats heartbeats ([TR: lines) from the board's serial`);
-  console.log(`                          port into trace.json. Requires a build with zephyr.trace.enabled;`);
-  console.log(`                          --baud <rate> (default 115200), Ctrl+C stops early (partial capture kept).`);
-  console.log(`  typecad-hal trace report [--input <path>] [--json] [--gate <expr>...]`);
+  console.log(`                          port into trace.json. Preflight-fails (exit 2) if the last build`);
+  console.log(`                          has no trace sampler; --flash rebuilds+reflashes first; the lone`);
+  console.log(`                          attached port is auto-picked; --gate/--gates-file evaluate after`);
+  console.log(`                          the capture (exit 0/1 = the verdict); --quiet prints one JSON line;`);
+  console.log(`                          --forever captures until Ctrl+C (continuous monitoring — pair it`);
+  console.log(`                          with 'trace view' on the same file for a live window);`);
+  console.log(`                          --baud <rate> (default 115200); TYPECAD_HAL_PORT replaces --port.`);
+  console.log(`  typecad-hal trace report [--input <path>] [--json] [--gate <expr>...] [--worst <n>]`);
   console.log(`                          Summarize a capture: per-thread CPU load (avg/max), stack`);
-  console.log(`                          high-water marks, UI frame + tick-phase stats. --json prints`);
+  console.log(`                          high-water marks, UI frame + tick-phase stats; --worst <n> shows`);
+  console.log(`                          the top spike intervals with their phase breakdown. --json prints`);
   console.log(`                          the machine-readable report; repeatable --gate expressions`);
   console.log(`                          (cpu-avg:main<=50, cpu-max:idle>=95, frame-max<=20,`);
   console.log(`                          stack-min:main>=256) exit 1 on violation — the CI gate.`);
@@ -416,7 +436,7 @@ function parsePipelineCommand(
   };
 }
 
-export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | LibraryCommandOptions | BoardCommandOptions | CleanCommandOptions | DebugServerCommandOptions | TestCommandOptions | QueryCommandOptions | TraceCommandOptions | "help" {
+export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | LibraryCommandOptions | BoardCommandOptions | CleanCommandOptions | DebugServerCommandOptions | TestCommandOptions | QueryCommandOptions | SbomCommandOptions | AuditCommandOptions | TraceCommandOptions | "help" {
   const firstArg = argv[2];
 
   if (!firstArg || firstArg === "--help" || firstArg === "-h") {
@@ -556,6 +576,113 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
     };
   }
 
+  // sbom subcommand — emit/verify a software bill of materials. Flags accept
+  // both --flag value and --flag=value forms; unknown flags are errors, never
+  // silent drops (query-subcommand strictness). Positional paths are diff
+  // operands (--diff <a> <b>).
+  if (firstArg === "sbom") {
+    const valueFlags = new Set(["--format", "--output", "--out"]);
+    const boolFlags = new Set(["--all", "--strict", "--check", "--stdout", "--diff"]);
+    const validFlags = "--all, --strict, --check, --stdout, --diff <a> <b>, --format <cyclonedx|spdx>, --output <path>";
+    const flagValues = new Map<string, string>();
+    const positionals: string[] = [];
+    let all = false;
+    let strict = false;
+    let check = false;
+    let stdoutFlag = false;
+    let diffFlag = false;
+    for (let i = 3; i < argv.length; i++) {
+      const tok = argv[i];
+      if (tok.startsWith("--") && tok.includes("=")) {
+        const eq = tok.indexOf("=");
+        const flag = tok.slice(0, eq);
+        if (!valueFlags.has(flag)) {
+          throw new Error(`Unknown sbom flag: ${flag}. Valid flags: ${validFlags}.`);
+        }
+        flagValues.set(flag, tok.slice(eq + 1));
+        continue;
+      }
+      if (valueFlags.has(tok)) {
+        if (i + 1 >= argv.length || argv[i + 1].startsWith("-")) {
+          throw new Error(`sbom flag ${tok} requires a value. Valid flags: ${validFlags}.`);
+        }
+        flagValues.set(tok, argv[++i]);
+        continue;
+      }
+      if (boolFlags.has(tok)) {
+        if (tok === "--all") all = true;
+        else if (tok === "--strict") strict = true;
+        else if (tok === "--check") check = true;
+        else if (tok === "--stdout") stdoutFlag = true;
+        else diffFlag = true;
+        continue;
+      }
+      if (tok.startsWith("-")) {
+        throw new Error(`Unknown sbom flag: ${tok}. Valid flags: ${validFlags}.`);
+      }
+      positionals.push(tok);
+    }
+
+    const formatRaw = flagValues.get("--format") ?? "cyclonedx";
+    if (formatRaw !== "cyclonedx" && formatRaw !== "spdx") {
+      throw new Error(`--format must be cyclonedx or spdx (got: ${formatRaw}).`);
+    }
+
+    let diff: [string, string] | undefined;
+    if (diffFlag) {
+      if (positionals.length !== 2) {
+        throw new Error("Usage: typecad-hal sbom --diff <old-sbom.json> <new-sbom.json>");
+      }
+      if (check) {
+        throw new Error("--diff and --check cannot be used together.");
+      }
+      diff = [
+        path.resolve(process.cwd(), positionals[0]),
+        path.resolve(process.cwd(), positionals[1]),
+      ];
+    } else if (positionals.length > 0) {
+      throw new Error(
+        `Unexpected argument '${positionals[0]}' — positional paths are only used with --diff.`,
+      );
+    }
+
+    const outFlag = flagValues.get("--output") ?? flagValues.get("--out");
+    return {
+      command: "sbom",
+      format: formatRaw,
+      all,
+      strict,
+      check,
+      stdout: stdoutFlag,
+      output: outFlag ? path.resolve(process.cwd(), outFlag) : undefined,
+      diff,
+    };
+  }
+
+  // audit subcommand — evaluate the last build's merged Kconfig against the
+  // security baseline. Unknown flags are errors, never silent drops.
+  if (firstArg === "audit") {
+    const validFlags = "--strict, --json";
+    let strict = false;
+    let jsonFlag = false;
+    for (let i = 3; i < argv.length; i++) {
+      const tok = argv[i];
+      if (tok === "--strict") {
+        strict = true;
+        continue;
+      }
+      if (tok === "--json") {
+        jsonFlag = true;
+        continue;
+      }
+      if (tok.startsWith("-")) {
+        throw new Error(`Unknown audit flag: ${tok}. Valid flags: ${validFlags}.`);
+      }
+      throw new Error(`Unexpected argument '${tok}' — audit takes no positionals. Valid flags: ${validFlags}.`);
+    }
+    return { command: "audit", strict, json: jsonFlag };
+  }
+
   // trace subcommand — runtime trace capture/report over the device console.
   // Unknown flags are errors, never silent drops (audit-subcommand strictness).
   if (firstArg === "trace") {
@@ -576,9 +703,9 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
         ? new Set(["--input", "--port"])
         : new Set(["--input", "--gate", "--gates-file", "--worst"]);
     const repeatableFlags = new Set(["--gate"]);
-    const boolFlags = new Set(sub === "capture" ? ["--quiet", "--flash"] : []);
+    const boolFlags = new Set(sub === "capture" ? ["--quiet", "--flash", "--forever"] : []);
     const validFlags = sub === "capture"
-      ? "--port <p>, --baud <rate>, --duration <seconds>, --output <path>, --gate <expr> (repeatable), --gates-file <path>, --quiet, --flash"
+      ? "--port <p>, --baud <rate>, --duration <seconds>, --forever, --output <path>, --gate <expr> (repeatable), --gates-file <path>, --quiet, --flash"
       : sub === "view"
         ? "--input <path>, --port <http-port>"
         : "--input <path>, --json, --gate <expr> (repeatable), --gates-file <path>, --worst <n>";
@@ -604,11 +731,15 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
         }
         const val = argv[++i];
         if (repeatableFlags.has(tok)) {
-          // Repeatable value flags (report --gate) accumulate.
+          // Repeatable value flags (--gate on capture AND report) accumulate.
           gateList.push(val);
         } else {
           flagValues.set(tok, val);
         }
+        continue;
+      }
+      if (boolFlags.has(tok)) {
+        bools.add(tok);
         continue;
       }
       if (tok === "--json" && sub === "report") {
@@ -629,6 +760,9 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
         if (!Number.isFinite(durationSeconds) || durationSeconds < 0) {
           throw new Error(`--duration must be seconds >= 0 (got: ${duration}).`);
         }
+        if (bools.has("--forever")) {
+          throw new Error("--forever and --duration are mutually exclusive — capture either for N seconds or until Ctrl+C.");
+        }
       }
       return {
         command: "trace",
@@ -636,6 +770,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
         port: flagValues.get("--port"),
         baudRate: baud,
         durationSeconds,
+        forever: bools.has("--forever"),
         output: flagValues.get("--output") ?? "trace.json",
         quiet: bools.has("--quiet"),
         flash: bools.has("--flash"),

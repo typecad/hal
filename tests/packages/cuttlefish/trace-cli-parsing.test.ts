@@ -71,6 +71,20 @@ describe('typecad-hal trace argument parsing', () => {
     expect(plain.gates).toBeUndefined();
   });
 
+  it('capture --forever = continuous until Ctrl+C (continuous monitoring)', () => {
+    const opts = parse(['trace', 'capture', '--forever', '--port', 'COM10']);
+    expect(opts.forever).toBe(true);
+    expect(opts.durationSeconds).toBeUndefined();
+    // Off by default; not valid on report.
+    expect(parse(['trace', 'capture']).forever).toBeFalsy();
+    expect(() => parse(['trace', 'report', '--forever'])).toThrow(/Unknown trace report flag/);
+  });
+
+  it('capture --forever and --duration are mutually exclusive', () => {
+    expect(() => parse(['trace', 'capture', '--forever', '--duration', '10']))
+      .toThrow(/--forever and --duration are mutually exclusive/);
+  });
+
   it('capture rejects unknown flags as before', () => {
     expect(() => parse(['trace', 'capture', '--worst', '5'])).toThrow(/Unknown trace capture flag/);
   });

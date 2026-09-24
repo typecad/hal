@@ -81,6 +81,14 @@ describe('viewerHtml', () => {
     expect(html).toContain('<canvas');
   });
 
+  it('bakes the rolling-window scrubber in (continuous-capture support)', () => {
+    const html = viewerHtml(buildTimelineData(readCapture(CAPTURE_JSON)!));
+    expect(html).toContain('id="scrub"');
+    expect(html).toContain('WINDOW_MS');
+    // The slider drives redraws through the same draw() the canvas uses.
+    expect(html).toContain("scrub.addEventListener('input'");
+  });
+
   it('renders the error payload path for a missing capture', () => {
     const html = viewerHtml({ error: 'No capture at trace.json yet' });
     expect(html).toContain('No capture at trace.json yet');

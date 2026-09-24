@@ -29,7 +29,12 @@ import * as ui from '../utils/ui.js';
 export interface TraceCaptureArgs {
   port?: string;
   baudRate?: number;
+  /** Capture length in seconds; 0/undefined = until interrupted. */
   durationSeconds?: number;
+  /** Continuous monitoring: capture until Ctrl+C (exclusive with a duration).
+   *  The artifact is rewritten after every heartbeat, so a viewer pointed at
+   *  the same file shows a live rolling window. */
+  forever?: boolean;
   output: string;
   /** Progress to stderr only; stdout is a single JSON summary line. */
   quiet?: boolean;
@@ -108,14 +113,16 @@ export async function runTraceCapture(args: TraceCaptureArgs): Promise<number> {
   }
 
   console.error(`Capturing trace heartbeats from ${port} @ ${args.baudRate ?? 115200} baud —`
-    + (args.durationSeconds && args.durationSeconds > 0
-      ? ` ${args.durationSeconds}s (Ctrl+C to stop early).`
-      : ' Ctrl+C to stop.'));
+    + (args.forever === true
+      ? ' until Ctrl+C (continuous; trace.json is rewritten every heartbeat for live viewing).'
+      : args.durationSeconds && args.durationSeconds > 0
+        ? ` ${args.durationSeconds}s (Ctrl+C to stop early).`
+        : ' Ctrl+C to stop.'));
 
   const result = await captureTrace({
     port,
     baudRate: args.baudRate,
-    durationSeconds: args.durationSeconds,
+    durationSeconds: args.forever === true ? undefined : args.durationSeconds,
     // The output doubles as the live file for `trace view` (rewritten after
     // every closed heartbeat; the final write below is authoritative).
     liveWritePath: args.output,
