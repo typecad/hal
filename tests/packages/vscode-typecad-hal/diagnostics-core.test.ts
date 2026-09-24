@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import path from 'node:path';
 import {
   readDiagnosticsReport, buildProblemItems, findDiagnosticsReport,
+  buildReportView, reportHtml,
 } from '../../../packages/vscode-typecad-hal/src/diagnostics-core';
 
 const REPORT = JSON.stringify({
@@ -106,5 +107,80 @@ describe('findDiagnosticsReport', () => {
       readdir: () => [],
       mtimeMs: () => 0,
     })).toBeUndefined();
+  });
+});
+
+describe('buildReportView', () => {
+  it('maps the report shape-tolerantly (sorted top globals, rounded build ms, problem count)', () => {
+    const view = buildReportView({
+      metadata: {
+        sourceFile: 'main.ts', target: 'zephyr', board: 'blackpill', timestamp: '2026-09-23T00:00:00Z',
+        boardDetails: { flashKb: 512, sramKb: 128 },
+      },
+      peripheralConflicts: [{ pinName: 'PA4', peripheralName: 'SPI1', role: 'SCK', severity: 'error', message: 'm', suggestion: 's' }],
+      transpileDiagnostics: [{ severity: 'warning', message: 'w1' }],
+      pinUsage: {
+        gpio: [{ pinName: 'PA0', mode: 'ANALOG', peripheralRole: 'ADC1 in1' }],
+        peripherals: [{ type: 'adc', instance: 1, displayName: 'ADC1', pins: ['PA0'], dtLabel: 'adc1' }],
+        summary: { totalPins: 50, usedPins: 3, unusedPins: 47 },
+      },
+      asyncTasks: [{ name: 'sampler', intervalMs: 1000 }],
+      heapEstimate: {
+        globalVariables: [
+          { name: 'small', cppType: 'int32_t', estimatedBytes: 4 },
+          { name: 'big', cppType: 'uint8_t[512]', estimatedBytes: 512 },
+        ],
+        stringLiterals: [{ value: 'x', estimatedBytes: 2 }],
+        totalStaticBytes: 1024, estimatedStackDepth: 7,
+      },
+      treeShaking: { removedSymbols: ['a', 'b'] },
+      buildTiming: { phases: {}, totalMs: 4321.6 },
+    });
+    expect(view.metadata.board).toBe('blackpill');
+    expect(view.metadata.flashKb).toBe(512);
+    expect(view.conflicts).toHaveLength(1);
+    expect(view.gpio[0].peripheralRole).toBe('ADC1 in1');
+    expect(view.peripherals[0].dtLabel).toBe('adc1');
+    expect(view.pinSummary.usedPins).toBe(3);
+    expect(view.asyncTasks[0].intervalMs).toBe(1000);
+    expect(view.heap.topGlobals[0].name).toBe('big'); // sorted by bytes desc
+    expect(view.heap.stringLiterals).toBe(1);
+    expect(view.treeShaken).toEqual(['a', 'b']);
+    expect(view.buildMs).toBe(4322);
+    expect(view.problemCount).toBe(2); // 1 conflict + 1 transpile diagnostic
+  });
+
+  it('survives a minimal report (missing sections default to empty)', () => {
+    const view = buildReportView({ metadata: { sourceFile: 'main.ts' }, peripheralConflicts: [] });
+    expect(view.conflicts).toEqual([]);
+    expect(view.gpio).toEqual([]);
+    expect(view.heap.topGlobals).toEqual([]);
+    expect(view.problemCount).toBe(0);
+  });
+});
+
+describe('reportHtml', () => {
+  it('bakes the initial payload in and listens for live postMessage updates', () => {
+    const view = buildReportView({ metadata: { sourceFile: 'main.ts' }, peripheralConflicts: [] });
+    const html = reportHtml(view);
+    expect(html).toContain('acquireVsCodeApi()');
+    expect(html).toContain("addEventListener('message'");
+    expect(html).toContain('"sourceFile":"main.ts"');
+  });
+
+  it('renders the error payload path for a missing report', () => {
+    expect(reportHtml({ error: 'No diagnostics.json yet' })).toContain('No diagnostics.json yet');
+  });
+
+  // The trace-core lesson: an unescaped character class in the page script
+  // makes the whole panel a SyntaxError. Compile (never run) the script.
+  it('the embedded script is syntactically valid JavaScript (compiles, never runs)', () => {
+    const view = buildReportView({
+      metadata: { sourceFile: 'main.ts' },
+      peripheralConflicts: [{ pinName: 'P<a4', peripheralName: 'S&PI', role: 'r', severity: 'error', message: '<m>', suggestion: '"s"' }],
+    });
+    const m = /<script>([\s\S]*?)<\/script>/.exec(reportHtml(view));
+    expect(m).not.toBeNull();
+    expect(() => new Function(m![1])).not.toThrow();
   });
 });
