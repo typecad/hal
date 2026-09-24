@@ -62,7 +62,7 @@ export function runTraceViewServer(options: ViewOptions): void {
 
 export function viewerPage(): string {
   return `<!doctype html>
-<html><head><meta charset="utf-8"><title>typecad-hal trace</title>
+<html><head><meta charset="utf-8"><title>typeCAD/hal trace</title>
 <style>
   body { font: 13px/1.4 system-ui, sans-serif; margin: 16px; background: #111; color: #ddd; }
   h1 { font-size: 15px; margin: 0 0 8px; }
@@ -72,7 +72,7 @@ export function viewerPage(): string {
   #scrub { width: 100%; accent-color: #3a6ea5; }
   #scrublabel { color: #888; font-size: 11px; margin-top: 2px; }
 </style></head><body>
-<h1>typecad-hal trace viewer</h1>
+<h1>typeCAD/hal trace viewer</h1>
 <div id="meta">waiting for data…</div>
 <canvas id="c" width="1200" height="560"></canvas>
 <div id="scrubrow" style="display:none;">

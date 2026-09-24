@@ -132,7 +132,7 @@ export function viewerHtml(initial: TimelineData | { error: string }): string {
   #scrub { width: 100%; accent-color: var(--vscode-focusBorder, #3a6ea5); }
   #scrublabel { color: var(--vscode-descriptionForeground, #888); font-size: 11px; margin-top: 2px; }
 </style></head><body>
-<h1>typecad-hal trace</h1>
+<h1>typeCAD/hal trace</h1>
 <div id="meta">waiting for data…</div>
 <canvas id="c" width="1200" height="560"></canvas>
 <div id="scrubrow" style="display:none;">
