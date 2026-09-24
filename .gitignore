@@ -143,3 +143,10 @@ packages/hal/tests/network/ble-diag/src/boards/
 packages/hal/tests/network/ble-diag/src/src/
 packages/hal/tests/network/ble-diag/src/build/
 packages/hal/tests/network/certs/
+
+# mermaid bundle COPIES (3.5MB each) — the tracked source of record is
+# packages/vscode-typecad-hal/media/; staged + vendored copies refresh via
+# npm run sync:typecad-ui and are never committed
+packages/cuttlefish/assets/editor-extensions/typecad-hal/media/
+.vscode/extensions/typecad-hal/media/
+demos/*/.vscode/extensions/typecad-hal/media/

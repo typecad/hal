@@ -50,6 +50,14 @@ if (fs.existsSync(path.join(EXT_SRC, 'package.json'))) {
   // vendored copy must be runnable standalone.
   fs.cpSync(path.join(EXT_SRC, 'out'), path.join(EXT_DEST, 'out'), { recursive: true });
   fs.cpSync(path.join(EXT_SRC, 'ui-language'), path.join(EXT_DEST, 'ui-language'), { recursive: true });
+  // The bundled mermaid.js for the Diagnostics report panel (offline-first,
+  // pinned 11.17.2, ~3.5MB). Copied to the staged assets so vendored copies
+  // render diagrams with no network; the copies are gitignored (the tracked
+  // source in packages/vscode-typecad-hal/media is the record) and refresh
+  // via this sync.
+  if (fs.existsSync(path.join(EXT_SRC, 'media'))) {
+    fs.cpSync(path.join(EXT_SRC, 'media'), path.join(EXT_DEST, 'media'), { recursive: true });
+  }
   for (const file of ['package.json', 'README.md']) {
     fs.copyFileSync(path.join(EXT_SRC, file), path.join(EXT_DEST, file));
   }

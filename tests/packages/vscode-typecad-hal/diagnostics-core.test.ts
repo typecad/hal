@@ -265,8 +265,18 @@ describe('reportHtml', () => {
 
   it('loads mermaid for the diagrams with a readable-source fallback when offline', () => {
     const html = reportHtml({ html: '<pre class="mermaid">flowchart TD</pre>' });
-    expect(html).toContain('cdn.jsdelivr.net/npm/mermaid');
+    expect(html).toContain('src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"');
     expect(html).toContain('pre.mermaid:not([data-processed])'); // offline fallback styling
+  });
+
+  it('serves the bundled mermaid from the webview resource when provided', () => {
+    const html = reportHtml(
+      { html: '<pre class="mermaid">flowchart TD</pre>' },
+      { mermaidSrc: 'https://7l3q.webview/resources/media/mermaid.min.js', scriptSrc: 'https://7l3q.webview' },
+    );
+    expect(html).toContain('src="https://7l3q.webview/resources/media/mermaid.min.js"');
+    expect(html).toContain("script-src 'unsafe-inline' https://7l3q.webview;");
+    expect(html).not.toContain('cdn.jsdelivr.net/npm/mermaid'); // no CDN dependency when bundled
   });
 
   // The trace-core lesson: an unescaped character class in the page script

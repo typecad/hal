@@ -453,16 +453,29 @@ export interface ReportPayload {
   problemCount?: number;
 }
 
+export interface ReportHtmlOptions {
+  /** Script source for mermaid.js — the bundled webview resource URI when
+   *  available (offline-first; see diagnostics.ts), the jsDelivr CDN by
+   *  default. */
+  mermaidSrc?: string;
+  /** The CSP token allowing mermaidSrc's origin (the webview cspSource when
+   *  bundled). */
+  scriptSrc?: string;
+}
+
 /** The report webview over diagnostics.md itself: the markdown is rendered
  *  host-side (renderMarkdown); the page injects it and hands the Mermaid
- *  blocks to mermaid.js from a CDN — offline (or blocked), the diagram
- *  source stays readable in place. Live updates via postMessage (the
- *  trace-panel contract; the extension's file watcher pushes fresh views). */
-export function reportHtml(initial: ReportPayload | { error: string }): string {
+ *  blocks to mermaid.js — bundled locally when the caller passes its URI,
+ *  the CDN otherwise, and the readable diagram source when neither loads.
+ *  Live updates via postMessage (the trace-panel contract; the extension's
+ *  file watcher pushes fresh views). */
+export function reportHtml(initial: ReportPayload | { error: string }, options: ReportHtmlOptions = {}): string {
+  const mermaidSrc = options.mermaidSrc ?? 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+  const scriptSrc = options.scriptSrc ?? 'https://cdn.jsdelivr.net';
   return `<!doctype html>
 <html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src data: https:;">
+      content="default-src 'none'; script-src 'unsafe-inline' ${scriptSrc}; style-src 'unsafe-inline'; img-src data: https:;">
 <style>
   body { font: 13px/1.5 var(--vscode-font-family, system-ui), sans-serif; margin: 12px 16px;
          background: var(--vscode-editor-background, #111); color: var(--vscode-editor-foreground, #ddd); }
@@ -494,7 +507,7 @@ export function reportHtml(initial: ReportPayload | { error: string }): string {
 <h1>typeCAD/hal diagnostics</h1>
 <div id="meta"></div>
 <div id="body"></div>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script src="${mermaidSrc}"></script>
 <script>
 const vscode = acquireVsCodeApi();
 let d = ${JSON.stringify(initial)};
