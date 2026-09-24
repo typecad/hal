@@ -128,7 +128,12 @@ function draw(d) {
       const v = p.cpu[name];
       if (v === undefined || v <= 0) return;
       const h = Math.min(laneH - 8, v / 100 * (laneH - 8));
-      ctx.fillRect(x(p.tMs) - step / 2, yBase - h, step, h);
+      // Columns are centered on the sample tick, so the first/last would
+      // cross the plot borders (very visible when few samples make the
+      // columns wide) — clamp each rect to [84, W-30].
+      const bx = Math.max(84, x(p.tMs) - step / 2);
+      const bw = Math.min(step, W - 30 - bx);
+      if (bw > 0) ctx.fillRect(bx, yBase - h, bw, h);
     });
   });
   // Percent scale on the RIGHT margin (the plot ends at W-30; the strip
@@ -166,9 +171,10 @@ function draw(d) {
       if (!p.ui || !p.ui.phasesUs) return;
       const total = p.ui.phasesUs.reduce((a, b) => a + b, 0);
       if (total <= 0) return;
-      let fx = x(p.tMs) - step / 2;
+      let fx = Math.max(84, x(p.tMs) - step / 2);
+      const avail = Math.max(0, Math.min(step, W - 30 - fx));
       p.ui.phasesUs.forEach((v, i) => {
-        const w = (v / total) * step;
+        const w = (v / total) * avail;
         ctx.fillStyle = phaseColors[i] ?? '#888';
         ctx.fillRect(fx, yPh, w, 8);
         fx += w;
