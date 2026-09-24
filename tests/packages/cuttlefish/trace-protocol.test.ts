@@ -366,6 +366,56 @@ describe('evaluateGates (CI regression gates)', () => {
   });
 });
 
+describe('alarms + sessions (continual monitoring)', () => {
+  const HB1 = '[TR:HB:1:1000:1000000]';
+  const HB2 = '[TR:HB:2:2000:2000000]';
+
+  it('parses [TR:ALARM: lines grouped under their heartbeat, rejoining coloned detail', () => {
+    const p = new TraceLineParser();
+    p.feed(HB1);
+    p.feed('[TR:TH:1:main:100:900:4096]');
+    p.feed('[TR:ALARM:1:stack:main:100]');
+    p.feed(HB2);
+    p.feed('[TR:ALARM:2:frame:33]');
+    const alarms = p.alarmList;
+    expect(alarms).toHaveLength(2);
+    expect(alarms[0]).toEqual({ seq: 1, tMs: 1000, code: 'stack', detail: 'main:100' });
+    expect(alarms[1]).toEqual({ seq: 2, tMs: 2000, code: 'frame', detail: '33' });
+  });
+
+  it('an ALARM with no open heartbeat group is malformed, not a crash', () => {
+    const p = new TraceLineParser();
+    p.feed('[TR:ALARM:1:stack:main:100]');
+    expect(p.alarmList).toHaveLength(0);
+    expect(p.malformed).toBe(1);
+  });
+
+  it('a repeated CFG line marks a session break (device rebooted)', () => {
+    const p = new TraceLineParser();
+    p.feed('[TR:CFG:1:1000]');
+    p.feed(HB1);
+    p.feed(HB2);
+    p.feed('[TR:CFG:1:1000]'); // the sampler announcing itself again
+    p.feed('[TR:HB:1:500:3000000]'); // fresh uptime
+    p.finish();
+    const samples = p.snapshot();
+    expect(samples).toHaveLength(3);
+    expect(samples[0].session).toBeUndefined();
+    expect(samples[1].session).toBeUndefined(); // pre-reboot heartbeats stay session 0
+    expect(samples[2].session).toBe(1); // everything after the break
+  });
+
+  it('uptime going backwards marks a session break even without a CFG repeat', () => {
+    const p = new TraceLineParser();
+    p.feed(HB1);
+    p.feed(HB2);
+    p.feed('[TR:HB:1:100:3000000]'); // k_uptime reset — no CFG seen at all
+    p.finish();
+    const samples = p.snapshot();
+    expect(samples[samples.length - 1].session).toBe(1);
+  });
+});
+
 describe('readTraceCapture', () => {
   it('rejects a non-trace@1 file with context', async () => {
     const { writeFileSync, mkdtempSync, rmSync } = await import('node:fs');

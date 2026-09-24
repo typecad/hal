@@ -597,12 +597,21 @@ export function parseConfigFile(configPath: string): ResolvedTypecadConfig | und
   const zephyrCustomBoard = flat.get("zephyr.customBoard");
   const zephyrTraceEnabled = flat.get("zephyr.trace.enabled");
   const zephyrTraceInterval = flat.get("zephyr.trace.intervalMs");
+  const zephyrTraceAlarmStack = flat.get("zephyr.trace.alarms.stackMinBytes");
+  const zephyrTraceAlarmFrame = flat.get("zephyr.trace.alarms.frameMaxMs");
   // Raw values pass through typed or not — the Zod schema is the authority
   // (a typo like enabled: 'yes' must FAIL validation, not silently vanish).
-  const zephyrTrace = (zephyrTraceEnabled !== undefined || zephyrTraceInterval !== undefined)
+  const zephyrTraceAlarms = (zephyrTraceAlarmStack !== undefined || zephyrTraceAlarmFrame !== undefined)
+    ? {
+        ...(zephyrTraceAlarmStack !== undefined ? { stackMinBytes: zephyrTraceAlarmStack } : {}),
+        ...(zephyrTraceAlarmFrame !== undefined ? { frameMaxMs: zephyrTraceAlarmFrame } : {}),
+      }
+    : undefined;
+  const zephyrTrace = (zephyrTraceEnabled !== undefined || zephyrTraceInterval !== undefined || zephyrTraceAlarms !== undefined)
     ? {
         ...(zephyrTraceEnabled !== undefined ? { enabled: zephyrTraceEnabled } : {}),
         ...(zephyrTraceInterval !== undefined ? { intervalMs: zephyrTraceInterval } : {}),
+        ...(zephyrTraceAlarms !== undefined ? { alarms: zephyrTraceAlarms } : {}),
       }
     : undefined;
   if (zephyrKconfig || zephyrCmakeArgs || zephyrRunnerArgs || typeof zephyrRunner === "string" || typeof zephyrProbe === "string" || typeof zephyrCustomBoard === "boolean" || zephyrTrace) {

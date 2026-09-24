@@ -123,3 +123,42 @@ describe('trace UI frame-stats block', () => {
     expect(without).not.toContain('__tc_trace_ui_report');
   });
 });
+
+// On-device threshold alarms (zephyr.trace.alarms): the sampler prints
+// [TR:ALARM: lines the moment a floor/ceiling is breached — continual
+// monitoring without a host attached.
+describe('trace alarm thresholds', () => {
+  it('no alarms configured → no alarm code anywhere', () => {
+    const hb = traceHeartbeatLines(1000, true).join('\n');
+    expect(hb).not.toContain('TR:ALARM');
+    expect(uiFrameTraceLines().join('\n')).not.toContain('TR:ALARM');
+  });
+
+  it('stackMinBytes emits the stack alarm beside the thread line', () => {
+    const hb = traceHeartbeatLines(1000, false, { stackMinBytes: 256 }).join('\n');
+    expect(hb).toContain('#define __TC_TRACE_ALARM_STACK 256U');
+    expect(hb).toContain('if (stack_ok && unused < __TC_TRACE_ALARM_STACK)');
+    expect(hb).toContain('[TR:ALARM:%u:stack:%s:%u');
+  });
+
+  it('frameMaxMs emits the frame alarm inside the UI report (after the stats print)', () => {
+    const ui = uiFrameTraceLines(20).join('\n');
+    expect(ui).toContain('#define __TC_TRACE_ALARM_FRAME 20U');
+    expect(ui).toContain('if (__tc_trace_ui_max_ms > __TC_TRACE_ALARM_FRAME)');
+    expect(ui).toContain('[TR:ALARM:%u:frame:%u');
+    // The alarm rides the traced branch of __tc_trace_ui_report: after the
+    // stats print, before the #else stub's (void)seq.
+    const up = ui.indexOf('[TR:UP');
+    const alarm = ui.indexOf('[TR:ALARM:%u:frame:%u');
+    const stub = ui.indexOf('(void)seq;');
+    expect(up).toBeGreaterThan(-1);
+    expect(alarm).toBeGreaterThan(up);
+    expect(stub).toBeGreaterThan(alarm);
+  });
+
+  it('one threshold without the other emits only its half', () => {
+    const hb = traceHeartbeatLines(1000, true, { frameMaxMs: 30 }).join('\n');
+    expect(hb).not.toContain('__TC_TRACE_ALARM_STACK');
+    expect(hb).not.toContain('[TR:ALARM:%u:stack');
+  });
+});

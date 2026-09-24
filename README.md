@@ -487,6 +487,7 @@ typecad-hal trace capture [--flash] [--gates-file <f>] [--port <p>] [--duration 
                                                    # evaluate gates — exit 0/1 is the verdict (exit 2 = firmware not traced);
                                                    # --forever = continuous until Ctrl+C (trace.json stays live for `trace view`)
 typecad-hal trace report [--input <path>] [--json] [--gate <expr>...] [--worst <n>] # CPU load, stack high-water, UI frame/phase stats, spike intervals; --gate = CI gate (exit 1)
+                                                   # --baseline [path] = drift vs the report stamped beside the last build (exit 1 beyond --drift <pct>, default 10)
 typecad-hal trace view [--input <path>] [--port <p>] # canvas timeline viewer (CPU lanes, UI frames, Trace.event markers)
 typecad-hal board sync [zephyr-base]               # rebuild the board catalog from your Zephyr tree (after west update)
 typecad-hal board regen                            # regenerate .typecad-hal/board.ts (also runs automatically on build)

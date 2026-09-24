@@ -33,14 +33,23 @@ export interface TraceEvent {
   tMs: number;
   name: string;
   value?: number;
+  /** On-device threshold alarm (zephyr.trace.alarms) riding the events axis. */
+  alarm?: boolean;
+}
+export interface TraceAlarm {
+  seq: number;
+  tMs: number;
+  code: string;
+  detail: string;
 }
 export interface TraceCapture {
   schema: string;
   capturedAt: string;
   port: string;
   intervalMs: number | null;
-  samples: TraceSample[];
+  samples: Array<TraceSample & { session?: number }>;
   events?: TraceEvent[];
+  alarms?: TraceAlarm[];
 }
 
 export interface TimelinePoint {
@@ -50,11 +59,24 @@ export interface TimelinePoint {
   ui?: { avgFrameMs: number; maxFrameMs: number; phasesUs?: number[] };
 }
 
+/** Whole-capture aggregates (mirrors cuttlefish's TimelineSummary): the
+ *  labels, scrub bounds, and counts stay capture-wide even though the page
+ *  only draws the visible window. */
+export interface TimelineSummary {
+  tMin: number;
+  tMax: number;
+  sampleCount: number;
+  avgCpu: Record<string, number>;
+  eventCount: number;
+  alarmCount: number;
+  sessions: number;
+}
+
 export interface TimelineData {
   capturedAt: string;
   port: string;
   intervalMs: number | null;
-  sampleCount: number;
+  summary: TimelineSummary;
   points: TimelinePoint[];
   events: TraceEvent[];
 }
@@ -106,13 +128,36 @@ export function buildTimelineData(capture: TraceCapture): TimelineData {
         : {}),
     });
   }
+  const avgAcc = new Map<string, { sum: number; n: number }>();
+  const avgCpu: Record<string, number> = {};
+  for (const p of points) {
+    for (const [name, v] of Object.entries(p.cpu)) {
+      const a = avgAcc.get(name) ?? { sum: 0, n: 0 };
+      a.sum += v;
+      a.n += 1;
+      avgAcc.set(name, a);
+    }
+  }
+  for (const [name, a] of avgAcc) avgCpu[name] = a.n > 0 ? Math.round(a.sum / a.n) : 0;
   return {
     capturedAt: capture.capturedAt,
     port: capture.port,
     intervalMs: capture.intervalMs,
-    sampleCount: samples.length,
+    summary: {
+      tMin: samples.length > 0 ? samples[0].tMs : 0,
+      tMax: samples.length > 0 ? samples[samples.length - 1].tMs : 0,
+      sampleCount: samples.length,
+      avgCpu,
+      eventCount: capture.events?.length ?? 0,
+      alarmCount: capture.alarms?.length ?? 0,
+      sessions: samples.reduce((m, s) => Math.max(m, s.session ?? 0), 0) + (samples.length > 0 ? 1 : 0),
+    },
     points,
-    events: capture.events ?? [],
+    // Alarms ride the events axis — same timeline, louder (red) tick.
+    events: [
+      ...(capture.events ?? []),
+      ...(capture.alarms ?? []).map((a) => ({ tMs: a.tMs, name: `${a.code}:${a.detail}`, alarm: true })),
+    ],
   };
 }
 
@@ -165,9 +210,13 @@ function draw(d) {
   ctx.clearRect(0, 0, W, H);
   if (d.error) { meta.textContent = d.error; scrubRow.style.display = 'none'; return; }
   const pts = d.points;
-  meta.textContent = d.sampleCount + ' samples · port ' + d.port +
+  const sum = d.summary;
+  const totalEvents = sum ? sum.eventCount + sum.alarmCount : d.events.length;
+  meta.textContent = (sum ? sum.sampleCount : pts.length + 1) + ' samples · port ' + d.port +
     (d.intervalMs ? ' · interval ' + d.intervalMs + ' ms' : '') +
-    ' · ' + d.events.length + ' events';
+    ' · ' + totalEvents + ' events' +
+    (sum && sum.alarmCount > 0 ? ' · ' + sum.alarmCount + ' ALARMS' : '') +
+    (sum && sum.sessions > 1 ? ' · ' + sum.sessions + ' sessions (device rebooted)' : '');
   if (pts.length === 0) {
     ctx.fillStyle = '#666';
     ctx.fillText('waiting for ≥ 2 heartbeats… (CPU % needs a PAIR of samples to form a delta — the chart starts on the second heartbeat)', 20, 40);
@@ -184,7 +233,10 @@ function draw(d) {
   // View window: the whole capture until it outgrows WINDOW_MS, then a fixed
   // span — the column width settles instead of shrinking forever. The scrub
   // slider pans the window; at its right end the view keeps following live.
-  const tMin = pts[0].tMs, tMax = Math.max(pts[pts.length - 1].tMs, tMin + 1);
+  // Bounds prefer the whole-capture summary (points arrive whole here, but
+  // the summary is the contract shared with the CLI page).
+  const tMin = sum ? sum.tMin : pts[0].tMs;
+  const tMax = sum ? Math.max(sum.tMax, tMin + 1) : Math.max(pts[pts.length - 1].tMs, tMin + 1);
   const windowed = tMax - tMin > WINDOW_MS;
   let t0, t1;
   if (!windowed) {
@@ -211,9 +263,14 @@ function draw(d) {
   ctx.fillStyle = '#888'; ctx.textAlign = 'left';
   ctx.fillText('CPU load — bar height = the thread share of wall time in that interval; lanes sum to ~100% (idle included) · one column = one interval'
     + (windowed ? ' · drag the slider below to look back' : ''), 84, 24);
-  // Per-lane averages (label suffix).
+  // Per-lane averages (label suffix) — the whole-capture numbers from the
+  // summary when present, computed from the points otherwise.
   const avg = {};
-  lanes.forEach(n => { let s = 0, c = 0; pts.forEach(p => { if (p.cpu[n] !== undefined) { s += p.cpu[n]; c++; } }); avg[n] = c ? Math.round(s / c) : 0; });
+  lanes.forEach(n => {
+    if (sum && sum.avgCpu && sum.avgCpu[n] !== undefined) { avg[n] = sum.avgCpu[n]; return; }
+    let s = 0, c = 0; pts.forEach(p => { if (p.cpu[n] !== undefined) { s += p.cpu[n]; c++; } });
+    avg[n] = c ? Math.round(s / c) : 0;
+  });
   // Time gridlines (behind everything).
   for (let k = 0; k <= 4; k++) {
     const tx = x(t0 + (t1 - t0) * k / 4);
@@ -302,10 +359,10 @@ function draw(d) {
   const yEv = H - 34;
   ctx.textAlign = 'left'; ctx.fillStyle = '#a55';
   const evShown = d.events.filter(ev => ev.tMs >= t0 && ev.tMs <= t1);
-  ctx.fillText('events (' + evShown.length + (evShown.length < d.events.length ? ' of ' + d.events.length : '')
-    + ') — one tick per Trace.mark / Trace.event call', 84, yEv + 10);
+  ctx.fillText('events (' + evShown.length + (evShown.length < totalEvents ? ' of ' + totalEvents : '')
+    + ') — one tick per Trace.mark / Trace.event call · on-device ALARMS tick red', 84, yEv + 10);
   evShown.forEach(ev => {
-    ctx.strokeStyle = '#a55';
+    ctx.strokeStyle = ev.alarm ? '#f66' : '#a55';
     ctx.beginPath(); ctx.moveTo(x(ev.tMs), top); ctx.lineTo(x(ev.tMs), yEv); ctx.stroke();
   });
   ctx.fillStyle = '#888';

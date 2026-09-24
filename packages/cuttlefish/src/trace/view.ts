@@ -27,7 +27,7 @@ export function runTraceViewServer(options: ViewOptions): void {
       res.end(viewerPage());
       return;
     }
-    if (url === '/trace/data') {
+    if (url === '/trace/data' || url.startsWith('/trace/data?')) {
       if (!existsSync(input)) {
         res.writeHead(503, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: `no capture at ${path.basename(input)} yet` }));
@@ -35,15 +35,24 @@ export function runTraceViewServer(options: ViewOptions): void {
       }
       try {
         const capture = readTraceCapture(input);
-        const { points, events } = buildTimeline(capture);
+        const { points, events, summary } = buildTimeline(capture);
+        // Hour-scale support: ?from=<ms>&to=<ms> returns only the visible
+        // slice — the full-capture summary travels with every response so
+        // the page's labels, scrub bounds, and counts stay whole-capture.
+        const q = new URL(url, 'http://local').searchParams;
+        const from = Number(q.get('from'));
+        const to = Number(q.get('to'));
+        const windowed = q.has('from') && q.has('to') && Number.isFinite(from) && Number.isFinite(to);
+        const winPoints = windowed ? points.filter((p) => p.tMs >= from && p.tMs <= to) : points;
+        const winEvents = windowed ? events.filter((e) => e.tMs >= from && e.tMs <= to) : events;
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({
           capturedAt: capture.capturedAt,
           port: capture.port,
           intervalMs: capture.intervalMs,
-          sampleCount: capture.samples.length,
-          points,
-          events,
+          summary,
+          points: winPoints,
+          events: winEvents,
         }));
       } catch (err) {
         res.writeHead(500, { 'content-type': 'application/json' });
@@ -95,9 +104,18 @@ const scrubLabel = document.getElementById('scrublabel');
 // ?window=<seconds>.
 const WINDOW_MS = Math.max(5000, Math.round(Number(new URLSearchParams(location.search).get('window') ?? '60') * 1000)) || 60000;
 let follow = true;
+let fetchTimer = null;
 scrub.addEventListener('input', () => {
   follow = Number(scrub.value) >= Number(scrub.max) - 250;
   if (d !== null) draw(d);
+  // Panning refetches its slice from the server (hour-scale captures never
+  // travel whole) — debounced so a drag is one fetch, not one per pixel.
+  if (fetchTimer !== null) clearTimeout(fetchTimer);
+  fetchTimer = setTimeout(() => {
+    fetchTimer = null;
+    const v = Number(scrub.value);
+    if (Number.isFinite(v)) void fetchData(v, v + WINDOW_MS);
+  }, 250);
 });
 let d = null;
 function draw(d) {
@@ -105,9 +123,13 @@ function draw(d) {
   ctx.clearRect(0, 0, W, H);
   if (d.error) { meta.textContent = d.error; scrubRow.style.display = 'none'; return; }
   const pts = d.points;
-  meta.textContent = d.sampleCount + ' samples · port ' + d.port +
+  const sum = d.summary;
+  const totalEvents = sum ? sum.eventCount + sum.alarmCount : d.events.length;
+  meta.textContent = (sum ? sum.sampleCount : pts.length + 1) + ' samples · port ' + d.port +
     (d.intervalMs ? ' · interval ' + d.intervalMs + ' ms' : '') +
-    ' · ' + d.events.length + ' events';
+    ' · ' + totalEvents + ' events' +
+    (sum && sum.alarmCount > 0 ? ' · ' + sum.alarmCount + ' ALARMS' : '') +
+    (sum && sum.sessions > 1 ? ' · ' + sum.sessions + ' sessions (device rebooted)' : '');
   if (pts.length === 0) {
     ctx.fillStyle = '#666';
     ctx.fillText('waiting for ≥ 2 heartbeats… (CPU % needs a PAIR of samples to form a delta — the chart starts on the second heartbeat)', 20, 40);
@@ -124,7 +146,10 @@ function draw(d) {
   // View window: the whole capture until it outgrows WINDOW_MS, then a fixed
   // span — the column width settles instead of shrinking forever. The scrub
   // slider pans the window; at its right end the view keeps following live.
-  const tMin = pts[0].tMs, tMax = Math.max(pts[pts.length - 1].tMs, tMin + 1);
+  // Bounds come from the server's whole-capture summary — the points may be
+  // just the fetched slice.
+  const tMin = sum ? sum.tMin : pts[0].tMs;
+  const tMax = sum ? Math.max(sum.tMax, tMin + 1) : Math.max(pts[pts.length - 1].tMs, tMin + 1);
   const windowed = tMax - tMin > WINDOW_MS;
   let t0, t1;
   if (!windowed) {
@@ -151,9 +176,15 @@ function draw(d) {
   ctx.fillStyle = '#888'; ctx.textAlign = 'left';
   ctx.fillText('CPU load — bar height = the thread share of wall time in that interval; lanes sum to ~100% (idle included) · one column = one interval'
     + (windowed ? ' · drag the slider below to look back' : ''), 84, 24);
-  // Per-lane averages (label suffix).
+  // Per-lane averages (label suffix) — the whole-capture numbers from the
+  // server summary when present (the points may be a slice), computed from
+  // the points otherwise.
   const avg = {};
-  lanes.forEach(n => { let s = 0, c = 0; pts.forEach(p => { if (p.cpu[n] !== undefined) { s += p.cpu[n]; c++; } }); avg[n] = c ? Math.round(s / c) : 0; });
+  lanes.forEach(n => {
+    if (sum && sum.avgCpu && sum.avgCpu[n] !== undefined) { avg[n] = sum.avgCpu[n]; return; }
+    let s = 0, c = 0; pts.forEach(p => { if (p.cpu[n] !== undefined) { s += p.cpu[n]; c++; } });
+    avg[n] = c ? Math.round(s / c) : 0;
+  });
   // Time gridlines (behind everything).
   for (let k = 0; k <= 4; k++) {
     const tx = x(t0 + (t1 - t0) * k / 4);
@@ -242,10 +273,10 @@ function draw(d) {
   const yEv = H - 34;
   ctx.textAlign = 'left'; ctx.fillStyle = '#a55';
   const evShown = d.events.filter(ev => ev.tMs >= t0 && ev.tMs <= t1);
-  ctx.fillText('events (' + evShown.length + (evShown.length < d.events.length ? ' of ' + d.events.length : '')
-    + ') — one tick per Trace.mark / Trace.event call', 84, yEv + 10);
+  ctx.fillText('events (' + evShown.length + (evShown.length < totalEvents ? ' of ' + totalEvents : '')
+    + ') — one tick per Trace.mark / Trace.event call · on-device ALARMS tick red', 84, yEv + 10);
   evShown.forEach(ev => {
-    ctx.strokeStyle = '#a55';
+    ctx.strokeStyle = ev.alarm ? '#f66' : '#a55';
     ctx.beginPath(); ctx.moveTo(x(ev.tMs), top); ctx.lineTo(x(ev.tMs), yEv); ctx.stroke();
   });
   ctx.fillStyle = '#888';
@@ -255,12 +286,20 @@ function draw(d) {
     ctx.fillText((t / 1000).toFixed(0) + ' s', x(t), H - 8);
   }
 }
-async function refresh() {
+async function fetchData(from, to) {
   try {
-    const r = await fetch('/trace/data');
+    const qs = from !== undefined ? '?from=' + from + '&to=' + to : '';
+    const r = await fetch('/trace/data' + qs);
     d = r.ok ? await r.json() : { error: (await r.json()).error };
   } catch (e) { return; }
   draw(d);
+}
+async function refresh() {
+  // Live tail: once history outgrows the window, poll asks only for the
+  // visible slice — an hour-scale capture costs the same as a minute.
+  const s = d !== null && d.summary !== undefined ? d.summary : null;
+  if (s !== null && s.tMax - s.tMin > WINDOW_MS) await fetchData(s.tMax - WINDOW_MS, s.tMax + 1);
+  else await fetchData();
 }
 refresh();
 setInterval(refresh, 1500);

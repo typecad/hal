@@ -62,6 +62,9 @@ export function printHelp(): void {
   console.log(`                          the capture (exit 0/1 = the verdict); --quiet prints one JSON line;`);
   console.log(`                          --forever captures until Ctrl+C (continuous monitoring — pair it`);
   console.log(`                          with 'trace view' on the same file for a live window);`);
+  console.log(`                          --baseline [path] compares against the report stamped beside the`);
+  console.log(`                          last build (or an explicit one) — exit 1 on drift beyond --drift <pct>`);
+  console.log(`                          (default 10% of baseline; CPU floors at 3pp). Green runs restamp.`);
   console.log(`                          --baud <rate> (default 115200); TYPECAD_HAL_PORT replaces --port.`);
   console.log(`  typecad-hal trace report [--input <path>] [--json] [--gate <expr>...] [--worst <n>]`);
   console.log(`                          Summarize a capture: per-thread CPU load (avg/max), stack`);
@@ -698,17 +701,17 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
     // Per-subcommand flag sets: a capture-only flag on report (and vice
     // versa) is an unknown flag, not a silently-accepted value.
     const valueFlags = sub === "capture"
-      ? new Set(["--port", "--baud", "--duration", "--output", "--gate", "--gates-file"])
+      ? new Set(["--port", "--baud", "--duration", "--output", "--gate", "--gates-file", "--drift"])
       : sub === "view"
         ? new Set(["--input", "--port"])
-        : new Set(["--input", "--gate", "--gates-file", "--worst"]);
+        : new Set(["--input", "--gate", "--gates-file", "--worst", "--drift"]);
     const repeatableFlags = new Set(["--gate"]);
     const boolFlags = new Set(sub === "capture" ? ["--quiet", "--flash", "--forever"] : []);
     const validFlags = sub === "capture"
-      ? "--port <p>, --baud <rate>, --duration <seconds>, --forever, --output <path>, --gate <expr> (repeatable), --gates-file <path>, --quiet, --flash"
+      ? "--port <p>, --baud <rate>, --duration <seconds>, --forever, --output <path>, --gate <expr> (repeatable), --gates-file <path>, --baseline [path], --drift <pct>, --quiet, --flash"
       : sub === "view"
         ? "--input <path>, --port <http-port>"
-        : "--input <path>, --json, --gate <expr> (repeatable), --gates-file <path>, --worst <n>";
+        : "--input <path>, --json, --gate <expr> (repeatable), --gates-file <path>, --worst <n>, --baseline [path], --drift <pct>";
     const flagValues = new Map<string, string>();
     const gateList: string[] = [];
     const bools = new Set<string>();
@@ -720,6 +723,17 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
           throw new Error(`Unknown trace ${sub} flag: ${tok.slice(0, eq)}. Valid flags: ${validFlags}.`);
         }
         flagValues.set(tok.slice(0, eq), tok.slice(eq + 1));
+        continue;
+      }
+      if (tok === "--baseline" && (sub === "capture" || sub === "report")) {
+        // Value-optional: a following non-flag token is an explicit baseline
+        // path; a bare flag means "the report stamped beside the last build".
+        const next = argv[i + 1];
+        if (next !== undefined && !next.startsWith("--")) {
+          flagValues.set("--baseline", argv[++i]);
+        } else {
+          bools.add("--baseline");
+        }
         continue;
       }
       if (valueFlags.has(tok)) {
@@ -764,6 +778,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
           throw new Error("--forever and --duration are mutually exclusive — capture either for N seconds or until Ctrl+C.");
         }
       }
+      const drift = parseDrift(flagValues.get("--drift"));
       return {
         command: "trace",
         subcommand: "capture",
@@ -774,6 +789,8 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
         output: flagValues.get("--output") ?? "trace.json",
         quiet: bools.has("--quiet"),
         flash: bools.has("--flash"),
+        ...(flagValues.has("--baseline") ? { baseline: flagValues.get("--baseline") } : bools.has("--baseline") ? { baseline: true } : {}),
+        driftPct: drift,
         ...(gateList.length > 0 ? { gates: gateList } : {}),
         gatesFile: flagValues.get("--gates-file"),
       };
@@ -805,10 +822,21 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
         input: flagValues.get("--input") ?? "trace.json",
         json: flagValues.has("--json"),
         worst,
+        ...(flagValues.has("--baseline") ? { baseline: flagValues.get("--baseline") } : bools.has("--baseline") ? { baseline: true } : {}),
+        driftPct: parseDrift(flagValues.get("--drift")),
         ...(gateList.length > 0 ? { gates: gateList } : {}),
         gatesFile: flagValues.get("--gates-file"),
       };
     }
+  }
+
+  function parseDrift(raw: string | undefined): number | undefined {
+    if (raw === undefined) return undefined;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0 || n > 100) {
+      throw new Error(`--drift must be a percent 0-100 (got: ${raw}).`);
+    }
+    return n;
   }
 
   // board subcommand — project-local board module management

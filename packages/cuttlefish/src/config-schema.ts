@@ -44,6 +44,15 @@ const ZephyrTraceConfig = z.object({
   enabled: z.boolean().optional(),
   /** Sampling interval in milliseconds (default 1000, clamped 50–60000). */
   intervalMs: z.number().int().positive().optional(),
+  /** On-device threshold alarms (continual monitoring): the sampler prints
+   *  [TR:ALARM: lines the moment a threshold is breached — no host attached
+   *  needed for the DETECTION, only for the reading. */
+  alarms: z.object({
+    /** Alarm when any thread's unused stack falls below this many bytes. */
+    stackMinBytes: z.number().int().positive().optional(),
+    /** Alarm when an interval's worst UI frame exceeds this many ms. */
+    frameMaxMs: z.number().int().positive().optional(),
+  }).strict().optional(),
 }).strict();
 
 /** Schema for the `zephyr` section. */

@@ -20,10 +20,11 @@ import path from 'node:path';
 import { captureTrace, writeTraceCapture } from './capture.js';
 import {
   buildTraceReport, formatTraceReport, readTraceCapture, evaluateGates,
-  buildWorstIntervals, formatWorstIntervals,
+  buildWorstIntervals, formatWorstIntervals, evaluateBaseline, formatBaseline,
+  readTraceReportText, writeTraceReport,
 } from './report.js';
 import { listUsbSerialPorts, formatPortTable } from '../test-runner/port-discovery.js';
-import { preflightTracedBuild, parseGatesFile, pickAutoPort } from './preflight.js';
+import { preflightTracedBuild, parseGatesFile, pickAutoPort, findBuildConfig } from './preflight.js';
 import * as ui from '../utils/ui.js';
 
 export interface TraceCaptureArgs {
@@ -44,6 +45,13 @@ export interface TraceCaptureArgs {
   gates?: string[];
   /** Gates file ({ "gates": [...] } or a bare array), merged with --gate. */
   gatesFile?: string;
+  /** Regression monitoring: compare against a baseline report — an explicit
+   *  path, or (bare flag) the stamped <buildDir>/trace-report.json from the
+   *  previous run. Exit 1 on drift beyond --drift. */
+  baseline?: boolean | string;
+  /** Allowed regression as % of the baseline value (default 10; CPU metrics
+   *  additionally floor at 3 percentage points so idle noise cannot fail). */
+  driftPct?: number;
   /** Working directory for build preflight + relative paths. */
   cwd?: string;
 }
@@ -70,6 +78,48 @@ async function resolvePort(explicit?: string): Promise<string | undefined> {
     + (ports.length > 0 ? `\nAttached serial ports:\n${formatPortTable(await listUsbSerialPorts())}` : ''),
   );
   return undefined;
+}
+
+/** The build-adjacent report stamp path (<buildDir>/trace-report.json — the
+ *  sbom/audit sidecar pattern; findBuildConfig yields <buildDir>/zephyr/.config). */
+export function stampPathFor(cwd: string): string | undefined {
+  const cfg = findBuildConfig(cwd);
+  if (cfg === undefined) return undefined;
+  return path.join(path.dirname(path.dirname(cfg)), 'trace-report.json');
+}
+
+/** Resolve + evaluate the baseline request against a fresh report. Returns
+ *  the result and an exit contribution (1 = regression or unusable baseline). */
+function baselineCheck(
+  report: ReturnType<typeof buildTraceReport>,
+  args: { baseline?: boolean | string; driftPct?: number },
+  cwd: string,
+  quiet: boolean,
+): { exit: number; baseline?: ReturnType<typeof evaluateBaseline>; path?: string } {
+  if (args.baseline === undefined || args.baseline === false) return { exit: 0 };
+  const driftPct = args.driftPct ?? 10;
+  const p = typeof args.baseline === 'string' ? path.resolve(cwd, args.baseline) : stampPathFor(cwd);
+  if (p === undefined || !existsSync(p)) {
+    console.error(`! No baseline report yet (${typeof args.baseline === 'string' ? args.baseline : 'nothing stamped beside the build'}) — this run becomes the baseline.`);
+    return { exit: 0, path: p };
+  }
+  const baseline = readTraceReportText(readFileSync(p, 'utf8'));
+  if (baseline === undefined) {
+    console.error(`✗ Baseline at ${p} is not a trace-report@1.`);
+    return { exit: 1, path: p };
+  }
+  const result = evaluateBaseline(report, baseline, driftPct);
+  if (!quiet) console.log(formatBaseline(result));
+  if (!result.pass) {
+    for (const r of result.rows) {
+      if (r.verdict === 'regression') {
+        console.error(`✗ baseline regression: ${r.metric}${r.thread !== null ? ':' + r.thread : ''} ${r.baseline} → ${r.current}`);
+      }
+    }
+    return { exit: 1, baseline: result, path: p };
+  }
+  if (!quiet) console.error(`✓ baseline drift within ${driftPct}%`);
+  return { exit: 0, baseline: result, path: p };
 }
 
 export async function runTraceCapture(args: TraceCaptureArgs): Promise<number> {
@@ -134,14 +184,14 @@ export async function runTraceCapture(args: TraceCaptureArgs): Promise<number> {
   writeTraceCapture(args.output, result.capture);
   const samples = result.capture.samples.length;
   const gates = gatesFor(args);
+  const report = samples > 0 ? buildTraceReport(result.capture) : undefined;
   if (args.quiet === true) {
     const summary: Record<string, unknown> = {
       file: args.output, samples, port,
       otherLines: result.otherLineCount, malformed: result.malformedLines,
       stoppedBy: result.stoppedBy,
     };
-    if (samples > 0) {
-      const report = buildTraceReport(result.capture);
+    if (report !== undefined) {
       const gateResult = gates.length > 0 ? evaluateGates(report, gates) : undefined;
       summary.gates = gates;
       summary.gatesPassed = gateResult?.pass;
@@ -164,16 +214,44 @@ export async function runTraceCapture(args: TraceCaptureArgs): Promise<number> {
   }
 
   // One-command verdict: gates evaluated over the fresh capture.
+  let exit = 0;
   if (gates.length > 0) {
-    const report = buildTraceReport(result.capture);
-    const gateResult = evaluateGates(report, gates);
+    const gateResult = evaluateGates(report!, gates);
     if (!gateResult.pass) {
       for (const v of gateResult.violations) console.error(`✗ gate failed: ${v}`);
-      return 1;
+      exit = 1;
+    } else {
+      console.error(`✓ ${gates.length} trace gate${gates.length === 1 ? '' : 's'} passed`);
     }
-    console.error(`✓ ${gates.length} trace gate${gates.length === 1 ? '' : 's'} passed`);
   }
-  return 0;
+
+  // Regression monitoring: compare against the previous run's stamped report
+  // (or an explicit --baseline) — evaluated BEFORE this run could stamp it.
+  const baseline = baselineCheck(report!, args, cwd, args.quiet === true);
+  if (args.quiet === true && baseline.baseline !== undefined) {
+    console.error(JSON.stringify({
+      baseline: baseline.path,
+      baselinePassed: baseline.baseline.pass,
+      baselineRegressions: baseline.baseline.rows
+        .filter((r) => r.verdict === 'regression')
+        .map((r) => `${r.metric}${r.thread !== null ? ':' + r.thread : ''} ${r.baseline} -> ${r.current}`),
+    }));
+  }
+  exit = exit !== 0 ? exit : baseline.exit;
+
+  // The ratchet: stamp this run beside the build as the NEXT run's baseline —
+  // but only on a green run, so a regressed capture never moves the goalposts.
+  if (exit === 0) {
+    const stamp = stampPathFor(cwd);
+    if (stamp !== undefined) {
+      try {
+        writeTraceReport(stamp, report!);
+      } catch {
+        // best-effort — a stamp failure must never fail the capture
+      }
+    }
+  }
+  return exit;
 }
 
 /** Merge --gate expressions with a --gates-file (file load errors throw). */
@@ -194,6 +272,10 @@ export interface TraceReportArgs {
   gatesFile?: string;
   /** Show the top-N spike intervals (by worst frame / top thread CPU). */
   worst?: number;
+  /** Baseline drift check (explicit path, or the stamped sidecar). */
+  baseline?: boolean | string;
+  /** Allowed regression as % of baseline (default 10). */
+  driftPct?: number;
 }
 
 export function runTraceReport(args: TraceReportArgs): number {
@@ -211,8 +293,17 @@ export function runTraceReport(args: TraceReportArgs): number {
   const worst = args.worst !== undefined && args.worst > 0
     ? buildWorstIntervals(capture, args.worst)
     : undefined;
+  const baseline = args.baseline !== undefined && args.baseline !== false
+    ? baselineCheck(report, args, process.cwd(), args.json)
+    : { exit: 0 } as { exit: number; baseline?: ReturnType<typeof evaluateBaseline>; path?: string };
   if (args.json) {
-    console.log(JSON.stringify({ ...report, ...(worst !== undefined ? { worst } : {}) }, null, 2));
+    console.log(JSON.stringify({
+      ...report,
+      ...(worst !== undefined ? { worst } : {}),
+      ...(baseline.baseline !== undefined
+        ? { baseline: { path: baseline.path, pass: baseline.baseline.pass, rows: baseline.baseline.rows } }
+        : {}),
+    }, null, 2));
   } else {
     console.log(formatTraceReport(report));
     if (worst !== undefined && worst.length > 0) {
@@ -228,5 +319,5 @@ export function runTraceReport(args: TraceReportArgs): number {
     }
     if (!args.json) console.log(`✓ ${gates.length} trace gate${gates.length === 1 ? '' : 's'} passed`);
   }
-  return 0;
+  return baseline.exit;
 }

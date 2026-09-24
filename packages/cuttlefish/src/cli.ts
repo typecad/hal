@@ -574,6 +574,8 @@ async function main(): Promise<void> {
           flash: options.flash === true,
           gates: options.gates,
           gatesFile: options.gatesFile,
+          baseline: options.baseline,
+          driftPct: options.driftPct,
         });
         process.exitCode = exitCode;
         return;
@@ -591,6 +593,8 @@ async function main(): Promise<void> {
         gates: options.gates,
         gatesFile: options.gatesFile,
         worst: options.worst,
+        baseline: options.baseline,
+        driftPct: options.driftPct,
       });
       return;
     }

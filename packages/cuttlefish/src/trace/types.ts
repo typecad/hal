@@ -32,6 +32,10 @@ export interface TraceSample {
   threads: TraceThreadSample[];
   /** UI frame stats for the interval (UI-mounted programs only). */
   ui?: TraceUiStats;
+  /** Session index (0-based) when the capture saw the device reboot (a
+   *  repeated CFG line or uptime going backwards); absent in single-session
+   *  captures. */
+  session?: number;
 }
 
 /** Per-heartbeat UI frame timing (device reports 0.1 ms fixed-point avg). */
@@ -52,6 +56,18 @@ export interface TraceEvent {
   value?: number;
 }
 
+/** An on-device threshold breach printed by the sampler
+ *  ([TR:ALARM:<seq>:<code>:<detail>]) — stack headroom under the configured
+ *  floor or a UI frame over the configured ceiling. */
+export interface TraceAlarm {
+  seq: number;
+  tMs: number;
+  /** 'stack' | 'frame' (the sampler's vocabulary). */
+  code: string;
+  /** Human detail, e.g. "main:123" (stack bytes remaining). */
+  detail: string;
+}
+
 /** The capture artifact (schema `typecad-hal/trace@1`). */
 export interface TraceCapture {
   schema: 'typecad-hal/trace@1';
@@ -67,4 +83,6 @@ export interface TraceCapture {
   /** Trace.mark / Trace.event timeline events (may be absent in captures
    *  from before events existed — the schema stays @1 with this optional). */
   events?: TraceEvent[];
+  /** On-device threshold alarms (zephyr.trace.alarms) in arrival order. */
+  alarms?: TraceAlarm[];
 }

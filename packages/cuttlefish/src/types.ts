@@ -313,6 +313,11 @@ export interface TraceCommandOptions {
   flash?: boolean;
   /** capture/report: gates file ({ "gates": [...] } or bare array). */
   gatesFile?: string;
+  /** capture/report: baseline drift check — an explicit report path, or true
+   *  for the report stamped beside the last build (<buildDir>/trace-report.json). */
+  baseline?: boolean | string;
+  /** capture/report: allowed regression as % of baseline (default 10). */
+  driftPct?: number;
   /** report: show the top-N spike intervals. */
   worst?: number;
   /** report: capture path (default ./trace.json). */

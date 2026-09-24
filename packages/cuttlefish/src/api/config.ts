@@ -78,6 +78,13 @@ export interface CuttlefishZephyrConfig {
     enabled?: boolean;
     /** Sampling interval in ms (default 1000, clamped 50-60000). */
     intervalMs?: number;
+    /** On-device threshold alarms: [TR:ALARM: lines the moment a thread's
+     *  unused stack drops below stackMinBytes or an interval's worst frame
+     *  exceeds frameMaxMs — continual monitoring without a host attached. */
+    alarms?: {
+      stackMinBytes?: number;
+      frameMaxMs?: number;
+    };
   };
 }
 

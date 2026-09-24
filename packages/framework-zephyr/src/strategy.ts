@@ -1085,7 +1085,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     // defined, active only under CUTTLEFISH_TRACE_UI) so the ui_tick call
     // site's instrumentation never depends on the trace config.
     {
-      const traceCfg = (ctx as { zephyr?: { trace?: { enabled?: boolean; intervalMs?: number } } } | undefined)
+      const traceCfg = (ctx as { zephyr?: { trace?: { enabled?: boolean; intervalMs?: number; alarms?: { stackMinBytes?: number; frameMaxMs?: number } } } } | undefined)
         ?.zephyr?.trace;
       const traceEnabled = traceCfg?.enabled === true;
       if (traceEnabled && entryHasUI()) {
@@ -1096,10 +1096,10 @@ export class ZephyrStrategy implements PlatformStrategy {
         );
       }
       if (entryHasUI()) {
-        guardBody.push(...uiFrameTraceLines());
+        guardBody.push(...uiFrameTraceLines(traceCfg?.alarms?.frameMaxMs));
       }
       if (traceEnabled) {
-        guardBody.push(...traceHeartbeatLines(clampTraceIntervalMs(traceCfg?.intervalMs), entryHasUI()));
+        guardBody.push(...traceHeartbeatLines(clampTraceIntervalMs(traceCfg?.intervalMs), entryHasUI(), traceCfg?.alarms));
       }
     }
     // The usbd context is shared by CDC and HID; the CDC per-instance

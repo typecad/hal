@@ -51,11 +51,35 @@ describe('readCapture', () => {
 describe('buildTimelineData', () => {
   it('computes per-interval CPU against the sys counter; idle is its own lane', () => {
     const d = buildTimelineData(readCapture(CAPTURE_JSON)!);
-    expect(d.sampleCount).toBe(2);
+    expect(d.summary.sampleCount).toBe(2);
     expect(d.points).toHaveLength(1);
     expect(d.points[0].cpu.main).toBe(20);
     expect(d.points[0].cpu.idle).toBe(80);
     expect(d.events).toHaveLength(2);
+  });
+
+  it('carries the whole-capture summary (averages, counts) and alarms as events', () => {
+    const withAlarm = {
+      ...JSON.parse(CAPTURE_JSON),
+      alarms: [{ seq: 2, tMs: 2000, code: 'stack', detail: 'main:123' }],
+    };
+    const d = buildTimelineData(readCapture(JSON.stringify(withAlarm))!);
+    expect(d.summary.sampleCount).toBe(2);
+    expect(d.summary.eventCount).toBe(2);
+    expect(d.summary.alarmCount).toBe(1);
+    expect(d.summary.sessions).toBe(1);
+    expect(d.summary.avgCpu.main).toBe(20);
+    // The alarm rides the events axis with the red-tick flag.
+    const alarm = d.events.find((e) => e.alarm === true);
+    expect(alarm).toBeDefined();
+    expect(alarm!.name).toBe('stack:main:123');
+  });
+
+  it('counts sessions from reboot-marked samples', () => {
+    const two = { ...JSON.parse(CAPTURE_JSON) };
+    two.samples[1].session = 1;
+    const d = buildTimelineData(readCapture(JSON.stringify(two))!);
+    expect(d.summary.sessions).toBe(2);
   });
 
   it('carries UI frame stats + the five phase spans', () => {
@@ -67,7 +91,7 @@ describe('buildTimelineData', () => {
     const one = { ...JSON.parse(CAPTURE_JSON), samples: [JSON.parse(CAPTURE_JSON).samples[0]] };
     const d = buildTimelineData(one);
     expect(d.points).toHaveLength(0);
-    expect(d.sampleCount).toBe(1);
+    expect(d.summary.sampleCount).toBe(1);
   });
 });
 

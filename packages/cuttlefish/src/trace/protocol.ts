@@ -2,10 +2,11 @@
 // Trace wire protocol — [TR: line parsing
 //
 // The device heartbeat prints, per interval:
-//   [TR:CFG:<version>:<intervalMs>]        once at boot (optional, may repeat)
+//   [TR:CFG:<version>:<intervalMs>]        once at boot (a REPEAT = reboot)
 //   [TR:HB:<seq>:<tMs>:<sysExecCycles>]    heartbeat header
 //   [TR:UI:<seq>:<frames>:<avgMsX10>:<maxMs>]  UI frame stats (UI programs)
 //   [TR:TH:<seq>:<name>:<execCycles>:<stackUnused|-1>:<stackSize>]  x threads
+//   [TR:ALARM:<seq>:<code>:<detail>]       threshold breach (zephyr.trace.alarms)
 //
 // User code (Trace.mark / Trace.event) prints, at call time:
 //   [TR:EV:<tMs>:<name>[:<value>]]         timeline marker / value sample
@@ -15,9 +16,15 @@
 // line whose heartbeat was never seen (capture attached mid-interval) is
 // dropped, and a heartbeat is only closed by the NEXT heartbeat — the parser
 // stays tolerant of partial trailing groups at capture start/stop.
+//
+// Sessions: the device clock resets on reboot, so a capture that spans a
+// power cycle would silently chain two timelines. Two independent signals
+// mark the break — a repeated CFG line (the sampler announces itself again
+// at boot) and uptime going backwards — and samples after a break carry an
+// incremented `session` index.
 // ---------------------------------------------------------------------------
 
-import type { TraceEvent, TraceSample, TraceThreadSample } from './types.js';
+import type { TraceAlarm, TraceEvent, TraceSample, TraceThreadSample } from './types.js';
 
 export const TRACE_PREFIX = '[TR:';
 
@@ -27,6 +34,12 @@ export class TraceLineParser {
   private currentThreadLines = 0;
   private readonly samples: TraceSample[] = [];
   private readonly events: TraceEvent[] = [];
+  private readonly alarms: TraceAlarm[] = [];
+  /** Session index (0-based) — incremented on a repeated CFG or on uptime
+   *  going backwards (device rebooted mid-capture). */
+  private session = 0;
+  private lastTMs: number | null = null;
+  private sawCfg = false;
   /** Last [TR:CFG:<version>:<intervalMs>] seen (null until one arrives). */
   meta: { version: number; intervalMs: number } | null = null;
   /** Lines that started with [TR: but did not parse — a firmware/parse
@@ -47,10 +60,34 @@ export class TraceLineParser {
       const version = Number(fields[1]);
       const intervalMs = Number(fields[2]);
       if (Number.isFinite(version) && Number.isFinite(intervalMs)) {
+        // A second CFG mid-capture is the sampler announcing itself again —
+        // the device rebooted. (The very first one just starts the capture.)
+        // The uptime anchor drops too: the clock restarted with the boot, and
+        // the next heartbeat's backwards uptime must not count the SAME break
+        // twice.
+        if (this.sawCfg) {
+          this.session++;
+          this.lastTMs = null;
+        }
+        this.sawCfg = true;
         this.meta = { version, intervalMs };
         return;
       }
       this.malformed++;
+      return;
+    }
+
+    if (kind === 'ALARM') {
+      // [TR:ALARM:<seq>:<code>:<detail...>] — grouped under its heartbeat
+      // like TH/UI lines; detail may itself contain colons (rejoined).
+      const seq = Number(fields[1]);
+      const code = fields[2] ?? '';
+      const detail = fields.slice(3).join(':');
+      if (this.current === null || seq !== this.current.seq || code.length === 0) {
+        this.malformed++;
+        return;
+      }
+      this.alarms.push({ seq, tMs: this.current.tMs, code, detail });
       return;
     }
 
@@ -117,7 +154,14 @@ export class TraceLineParser {
         this.malformed++;
         return;
       }
-      this.current = { seq, tMs, sysExecCycles: sysExec, threads: [] };
+      // Uptime running backwards = device rebooted (k_uptime resets) —
+      // everything after belongs to a new session.
+      if (this.lastTMs !== null && tMs < this.lastTMs) this.session++;
+      this.lastTMs = tMs;
+      this.current = {
+        seq, tMs, sysExecCycles: sysExec, threads: [],
+        ...(this.session > 0 ? { session: this.session } : {}),
+      };
       this.currentThreadLines = 0;
       return;
     }
@@ -192,5 +236,10 @@ export class TraceLineParser {
   /** Trace.mark / Trace.event timeline events parsed so far. */
   get eventList(): readonly TraceEvent[] {
     return this.events;
+  }
+
+  /** On-device threshold alarms parsed so far (arrival order). */
+  get alarmList(): readonly TraceAlarm[] {
+    return this.alarms;
   }
 }

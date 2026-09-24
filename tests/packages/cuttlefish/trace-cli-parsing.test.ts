@@ -117,6 +117,33 @@ describe('typecad-hal trace argument parsing', () => {
     expect(parse(['trace', 'report']).gates).toBeUndefined();
   });
 
+  it('parses --baseline as value-optional and --drift on capture AND report', () => {
+    const bare = parse(['trace', 'capture', '--baseline']);
+    expect(bare.baseline).toBe(true);
+    const withPath = parse(['trace', 'capture', '--baseline', 'runs/night-report.json', '--drift', '15']);
+    expect(withPath.baseline).toBe('runs/night-report.json');
+    expect(withPath.driftPct).toBe(15);
+    const report = parse(['trace', 'report', '--baseline', 'old.json', '--drift', '5']);
+    expect(report.baseline).toBe('old.json');
+    expect(report.driftPct).toBe(5);
+    // A following flag means the bare form (the sidecar), not a swallowed flag.
+    const beforeFlag = parse(['trace', 'capture', '--baseline', '--quiet']);
+    expect(beforeFlag.baseline).toBe(true);
+    expect(beforeFlag.quiet).toBe(true);
+    // Defaults carry neither.
+    expect(parse(['trace', 'capture']).baseline).toBeUndefined();
+    expect(parse(['trace', 'report']).driftPct).toBeUndefined();
+  });
+
+  it('validates --drift as a percent 0-100', () => {
+    expect(() => parse(['trace', 'capture', '--drift', '-5'])).toThrow(/--drift must be a percent 0-100/);
+    expect(() => parse(['trace', 'report', '--drift', 'many'])).toThrow(/--drift must be a percent 0-100/);
+  });
+
+  it('view still rejects the monitoring flags (capture/report only)', () => {
+    expect(() => parse(['trace', 'view', '--baseline'])).toThrow(/Unknown trace view flag/);
+  });
+
   it('view rejects unknown flags and bad ports', () => {
     expect(() => parse(['trace', 'view', '--baud', '115200'])).toThrow(/Unknown trace view flag/);
     expect(() => parse(['trace', 'view', '--port', 'nope'])).toThrow(/--port must be an HTTP port/);

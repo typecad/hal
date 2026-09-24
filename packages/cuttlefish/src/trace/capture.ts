@@ -96,6 +96,8 @@ export async function captureTrace(options: CaptureOptions): Promise<CaptureResu
       if (parser.meta !== null) capture.intervalMs = parser.meta.intervalMs;
       const events = parser.eventList;
       if (events.length > 0) capture.events = [...events];
+      const alarms = parser.alarmList;
+      if (alarms.length > 0) capture.alarms = [...alarms];
       resolve({
         capture,
         otherLineCount: otherLines,
@@ -125,6 +127,8 @@ export async function captureTrace(options: CaptureOptions): Promise<CaptureResu
           capture.samples = parser.snapshot();
           const events = parser.eventList;
           if (events.length > 0) capture.events = [...events];
+          const alarms = parser.alarmList;
+          if (alarms.length > 0) capture.alarms = [...alarms];
           try {
             writeTraceCapture(options.liveWritePath, capture);
           } catch {

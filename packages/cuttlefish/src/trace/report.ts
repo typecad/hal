@@ -9,7 +9,7 @@
 // stack estimate should be checked against.
 // ---------------------------------------------------------------------------
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import type { TraceCapture, TraceSample } from './types.js';
 
 export interface ThreadReport {
@@ -35,6 +35,9 @@ export interface TraceReport {
     intervalMs: number | null;
     capturedAt: string;
     port: string;
+    /** Sessions in the capture (>1 = the device rebooted mid-capture; the
+     *  parser splits them on a repeated CFG or uptime going backwards). */
+    sessionCount: number;
   };
   threads: ThreadReport[];
   /** UI frame stats (UI-mounted programs only; absent when no [TR:UI lines). */
@@ -50,6 +53,9 @@ export interface TraceReport {
   };
   /** Trace.mark / Trace.event summary — count + last value per name. */
   events?: EventReport[];
+  /** On-device threshold alarms (zephyr.trace.alarms), deduplicated by
+   *  code+detail with first/last seen. */
+  alarms?: AlarmReport[];
 }
 
 /** One ui_tick phase's share of tick time across the capture. */
@@ -67,6 +73,14 @@ export interface EventReport {
   count: number;
   /** Last value seen (Trace.event only). */
   lastValue?: number;
+  lastTMs: number;
+}
+
+export interface AlarmReport {
+  code: string;
+  detail: string;
+  count: number;
+  firstTMs: number;
   lastTMs: number;
 }
 
@@ -158,11 +172,28 @@ export function buildTraceReport(capture: TraceCapture): TraceReport {
       intervalMs: capture.intervalMs,
       capturedAt: capture.capturedAt,
       port: capture.port,
+      sessionCount: samples.reduce((m, s) => Math.max(m, s.session ?? 0), 0) + 1,
     },
     threads,
     ...buildUiSummary(samples),
     ...(capture.events && capture.events.length > 0 ? { events: buildEventSummary(capture.events) } : {}),
+    ...(capture.alarms && capture.alarms.length > 0 ? { alarms: buildAlarmSummary(capture.alarms) } : {}),
   };
+}
+
+function buildAlarmSummary(alarms: NonNullable<TraceCapture['alarms']>): AlarmReport[] {
+  const byKey = new Map<string, AlarmReport>();
+  for (const a of alarms) {
+    const key = `${a.code}:${a.detail}`;
+    let row = byKey.get(key);
+    if (row === undefined) {
+      row = { code: a.code, detail: a.detail, count: 0, firstTMs: a.tMs, lastTMs: a.tMs };
+      byKey.set(key, row);
+    }
+    row.count++;
+    row.lastTMs = a.tMs;
+  }
+  return [...byKey.values()].sort((a, b) => a.firstTMs - b.firstTMs);
 }
 
 function buildUiSummary(samples: TraceSample[]): { ui: NonNullable<TraceReport['ui']> } | Record<string, never> {
@@ -220,8 +251,24 @@ function buildEventSummary(events: NonNullable<TraceCapture['events']>): EventRe
   return [...byName.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
+/** Full-capture aggregates the viewer needs even when only a window of
+ *  points travels the wire (the hour-scale path: the page fetches a slice,
+ *  the summary keeps the whole-capture context honest). */
+export interface TimelineSummary {
+  tMin: number;
+  tMax: number;
+  sampleCount: number;
+  /** Whole-capture CPU average per thread (the lane label number). */
+  avgCpu: Record<string, number>;
+  eventCount: number;
+  alarmCount: number;
+  sessions: number;
+}
+
 /** Per-sample timeline series for the viewer: CPU% per thread per interval
- *  (delta-based, same math as buildTraceReport) + UI frame times + events. */
+ *  (delta-based, same math as buildTraceReport) + UI frame times + events.
+ *  On-device alarms ride the events axis with alarm:true — same timeline,
+ *  louder tick. */
 export interface TimelinePoint {
   tMs: number;
   /** CPU % keyed by thread name for this interval. */
@@ -229,7 +276,11 @@ export interface TimelinePoint {
   ui?: { avgFrameMs: number; maxFrameMs: number; phasesUs?: number[] };
 }
 
-export function buildTimeline(capture: TraceCapture): { points: TimelinePoint[]; events: NonNullable<TraceCapture['events']> } {
+export function buildTimeline(capture: TraceCapture): {
+  points: TimelinePoint[];
+  events: Array<NonNullable<TraceCapture['events']>[number] & { alarm?: true }>;
+  summary: TimelineSummary;
+} {
   const points: TimelinePoint[] = [];
   const samples = capture.samples;
   for (let i = 1; i < samples.length; i++) {
@@ -261,7 +312,31 @@ export function buildTimeline(capture: TraceCapture): { points: TimelinePoint[];
         : {}),
     });
   }
-  return { points, events: capture.events ?? [] };
+  const events: Array<NonNullable<TraceCapture['events']>[number] & { alarm?: true }> = [
+    ...(capture.events ?? []).map((e) => ({ ...e })),
+    ...(capture.alarms ?? []).map((a) => ({ tMs: a.tMs, name: `${a.code}:${a.detail}`, alarm: true as const })),
+  ];
+  const avgCpu: Record<string, number> = {};
+  const acc = new Map<string, { sum: number; n: number }>();
+  for (const p of points) {
+    for (const [name, v] of Object.entries(p.cpu)) {
+      const a = acc.get(name) ?? { sum: 0, n: 0 };
+      a.sum += v;
+      a.n += 1;
+      acc.set(name, a);
+    }
+  }
+  for (const [name, a] of acc) avgCpu[name] = a.n > 0 ? Math.round(a.sum / a.n) : 0;
+  const summary: TimelineSummary = {
+    tMin: samples.length > 0 ? samples[0].tMs : 0,
+    tMax: samples.length > 0 ? samples[samples.length - 1].tMs : 0,
+    sampleCount: samples.length,
+    avgCpu,
+    eventCount: capture.events?.length ?? 0,
+    alarmCount: capture.alarms?.length ?? 0,
+    sessions: samples.reduce((m, s) => Math.max(m, s.session ?? 0), 0) + (samples.length > 0 ? 1 : 0),
+  };
+  return { points, events, summary };
 }
 
 /** Read + shape-check a capture artifact file. Throws with context on a
@@ -284,7 +359,8 @@ export function readTraceCapture(filePath: string): TraceCapture {
 export function formatTraceReport(report: TraceReport): string {
   const c = report.capture;
   const lines: string[] = [];
-  lines.push(`Trace report — ${c.sampleCount} samples over ${(c.durationMs / 1000).toFixed(1)}s (port ${c.port})`);
+  lines.push(`Trace report — ${c.sampleCount} samples over ${(c.durationMs / 1000).toFixed(1)}s (port ${c.port})`
+    + (c.sessionCount > 1 ? ` — ${c.sessionCount} sessions (the device rebooted mid-capture)` : ''));
   if (c.sampleCount < 2) {
     lines.push('Not enough samples for CPU percentages (need ≥ 2 heartbeats).');
   }
@@ -296,6 +372,9 @@ export function formatTraceReport(report: TraceReport): string {
   }
   if (report.events !== undefined && report.events.length > 0) {
     lines.push(`Events: ${report.events.map((e) => `${e.name}×${e.count}${e.lastValue !== undefined ? ` (last ${e.lastValue})` : ''}`).join(', ')}`);
+  }
+  if (report.alarms !== undefined && report.alarms.length > 0) {
+    lines.push(`Alarms (on-device thresholds): ${report.alarms.map((a) => `${a.code}[${a.detail}]×${a.count}`).join(', ')}`);
   }
   const nameW = Math.max(8, ...report.threads.map((t) => t.name.length + 2));
   const fmt = (v: number | null, suffix = ''): string => (v === null ? '  —  ' : v.toFixed(1) + suffix);
@@ -446,4 +525,120 @@ export function evaluateGates(report: TraceReport, gates: readonly string[]): { 
     }
   }
   return { pass: violations.length === 0, violations };
+}
+
+// ── Baseline drift (regression monitoring across runs) ─────────────────────
+//
+// Every capture stamps its report beside the build (trace-report.json, the
+// sbom/audit sidecar pattern). The next run compares against that stamp:
+// a metric "regresses" when it moved against you by more than the drift
+// tolerance — CPU metrics additionally never regress below a 3-percentage-
+// point floor, so idle noise on a quiet thread cannot fail a run.
+
+export interface BaselineRow {
+  metric: string;
+  thread: string | null;
+  baseline: number | null;
+  current: number | null;
+  verdict: 'ok' | 'regression' | 'new' | 'gone' | 'no-data';
+}
+
+export interface BaselineResult {
+  pass: boolean;
+  rows: BaselineRow[];
+}
+
+/** Load + shape-check a baseline report (the stamped sidecar or a report
+ *  --json dump). Undefined on anything that is not a trace-report@1. */
+export function readTraceReportText(text: string): TraceReport | undefined {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  const r = raw as Partial<TraceReport>;
+  if (r.schema !== 'typecad-hal/trace-report@1' || !Array.isArray(r.threads)) return undefined;
+  return r as TraceReport;
+}
+
+/** Write a report sidecar (the build-adjacent stamp `trace capture` keeps
+ *  beside the build — the next run's baseline). */
+export function writeTraceReport(filePath: string, report: TraceReport): void {
+  writeFileSync(filePath, JSON.stringify(report, null, 2) + '\n');
+}
+
+/** Compare current vs baseline at `driftPct` tolerance (allowed regression as
+ *  a percent of the baseline value; CPU metrics also floor at 3pp absolute). */
+export function evaluateBaseline(
+  current: TraceReport,
+  baseline: TraceReport,
+  driftPct: number,
+): BaselineResult {
+  const rows: BaselineRow[] = [];
+  const byName = new Map(baseline.threads.map((t) => [t.name, t]));
+  const seen = new Set<string>();
+  const cpuRegression = (label: string, thread: string, base: number | null, cur: number | null): void => {
+    if (base === null || cur === null) {
+      rows.push({ metric: label, thread, baseline: base, current: cur, verdict: 'no-data' });
+      return;
+    }
+    const allowed = Math.max(base * driftPct / 100, 3);
+    rows.push({
+      metric: label, thread, baseline: base, current: cur,
+      verdict: cur - base > allowed ? 'regression' : 'ok',
+    });
+  };
+  for (const t of current.threads) {
+    seen.add(t.name);
+    const b = byName.get(t.name);
+    if (b === undefined) {
+      rows.push({ metric: 'cpu-avg', thread: t.name, baseline: null, current: t.cpuAvgPct, verdict: 'new' });
+      continue;
+    }
+    cpuRegression('cpu-avg', t.name, b.cpuAvgPct, t.cpuAvgPct);
+    cpuRegression('cpu-max', t.name, b.cpuMaxPct, t.cpuMaxPct);
+    // Stack headroom REGRESSES when it SHRINKS beyond tolerance.
+    if (b.stackMinUnusedBytes === null || t.stackMinUnusedBytes === null) {
+      rows.push({ metric: 'stack-min', thread: t.name, baseline: b.stackMinUnusedBytes, current: t.stackMinUnusedBytes, verdict: 'no-data' });
+    } else {
+      const allowed = Math.max(b.stackMinUnusedBytes * driftPct / 100, 32);
+      rows.push({
+        metric: 'stack-min', thread: t.name, baseline: b.stackMinUnusedBytes, current: t.stackMinUnusedBytes,
+        verdict: b.stackMinUnusedBytes - t.stackMinUnusedBytes > allowed ? 'regression' : 'ok',
+      });
+    }
+  }
+  for (const b of baseline.threads) {
+    if (!seen.has(b.name)) {
+      rows.push({ metric: 'cpu-avg', thread: b.name, baseline: b.cpuAvgPct, current: null, verdict: 'gone' });
+    }
+  }
+  // Frame time — capture-wide, only when both sides have UI data.
+  if (baseline.ui !== undefined && current.ui !== undefined) {
+    const base = baseline.ui.maxFrameMs;
+    const cur = current.ui.maxFrameMs;
+    const allowed = Math.max(base * driftPct / 100, 2);
+    rows.push({
+      metric: 'frame-max', thread: null, baseline: base, current: cur,
+      verdict: cur - base > allowed ? 'regression' : 'ok',
+    });
+  }
+  return { pass: !rows.some((r) => r.verdict === 'regression'), rows };
+}
+
+/** The drift table for terminal output (regressions last, so they end the
+ *  run's story). */
+export function formatBaseline(result: BaselineResult): string {
+  const rank = (v: BaselineRow['verdict']): number =>
+    v === 'regression' ? 0 : v === 'no-data' ? 1 : v === 'gone' ? 2 : v === 'new' ? 3 : 4;
+  const lines = ['Baseline drift (regressions first):', '  metric            thread          baseline   current   verdict'];
+  for (const r of [...result.rows].sort((a, b) => rank(a.verdict) - rank(b.verdict))) {
+    const metric = r.metric.padEnd(18);
+    const thread = (r.thread ?? '').padEnd(16);
+    const base = r.baseline === null ? '—' : String(r.baseline);
+    const cur = r.current === null ? '—' : String(r.current);
+    lines.push(`  ${metric}${thread}${base.padEnd(10)} ${cur.padEnd(9)} ${r.verdict}`);
+  }
+  return lines.join('\n');
 }

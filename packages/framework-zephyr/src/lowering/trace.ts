@@ -78,10 +78,35 @@ export function clampTraceIntervalMs(intervalMs: number | undefined): number {
  * count / total / max ms per heartbeat interval — the per-phase breakdown
  * inside ui_tick stays a ui-engine change for a later stage.
  */
-export function uiFrameTraceLines(): string[] {
+/**
+ * On-device alarm thresholds (zephyr.trace.alarms) — the sampler prints
+ * [TR:ALARM:<seq>:<code>:<detail>] the moment one is breached, so an
+ * untethered device still DETECTS the degradation; reading it only needs a
+ * capture (or a serial console) after the fact.
+ */
+export interface TraceAlarmThresholds {
+  /** Alarm when a thread's unused stack falls below this (bytes). */
+  stackMinBytes?: number;
+  /** Alarm when an interval's worst UI frame exceeds this (ms). */
+  frameMaxMs?: number;
+}
+
+export function uiFrameTraceLines(frameAlarmMs?: number): string[] {
+  const alarmDefine = frameAlarmMs !== undefined ? [`#define __TC_TRACE_ALARM_FRAME ${frameAlarmMs}U`] : [];
+  const frameAlarm = frameAlarmMs !== undefined
+    ? [
+      '        // Continual monitoring: the worst frame breaching the ceiling is an',
+      '        // alarm, not a statistic — printed the moment it happens.',
+      '        if (__tc_trace_ui_max_ms > __TC_TRACE_ALARM_FRAME) {',
+      '            printf("[TR:ALARM:%u:frame:%u\\n", static_cast<unsigned int>(seq),',
+      '                   static_cast<unsigned int>(__tc_trace_ui_max_ms));',
+      '        }',
+    ]
+    : [];
   return [
     '// CUTTLEFISH_TRACE_UI_BEGIN',
     '#if defined(CUTTLEFISH_TRACE_UI)',
+    ...alarmDefine,
     'static uint32_t __tc_trace_ui_frames = 0U;',
     'static uint32_t __tc_trace_ui_total_ms = 0U;',
     'static uint32_t __tc_trace_ui_max_ms = 0U;',
@@ -121,6 +146,7 @@ export function uiFrameTraceLines(): string[] {
     '               static_cast<unsigned long long>((__tc_trace_ui_phase[2] * 1000000ULL) / sys_clock_hw_cycles_per_sec()),',
     '               static_cast<unsigned long long>((__tc_trace_ui_phase[3] * 1000000ULL) / sys_clock_hw_cycles_per_sec()),',
     '               static_cast<unsigned long long>((__tc_trace_ui_phase[4] * 1000000ULL) / sys_clock_hw_cycles_per_sec()));',
+    ...frameAlarm,
     '    }',
     '#else',
     '    (void)seq;',
@@ -143,12 +169,28 @@ export function uiFrameTraceLines(): string[] {
  * shimLines when the platform context carries zephyr.trace.enabled.
  * `withUi` adds the [TR:UI: frame-stats line (UI-mounted programs).
  */
-export function traceHeartbeatLines(intervalMs: number, withUi: boolean): string[] {
+export function traceHeartbeatLines(intervalMs: number, withUi: boolean, alarms?: TraceAlarmThresholds): string[] {
   const ms = clampTraceIntervalMs(intervalMs);
+  const stackAlarmDefine = alarms?.stackMinBytes !== undefined
+    ? [`#define __TC_TRACE_ALARM_STACK ${alarms.stackMinBytes}U`]
+    : [];
+  const stackAlarm = alarms?.stackMinBytes !== undefined
+    ? [
+      '    // Continual monitoring: headroom under the floor is an alarm, printed',
+      '    // the moment the sampler sees it (once per interval while held).',
+      '#ifdef __TC_TRACE_ALARM_STACK',
+      '    if (stack_ok && unused < __TC_TRACE_ALARM_STACK) {',
+      '        printf("[TR:ALARM:%u:stack:%s:%u\\n", static_cast<unsigned int>(seq), name,',
+      '               static_cast<unsigned int>(unused));',
+      '    }',
+      '#endif',
+    ]
+    : [];
   return [
     '// CUTTLEFISH_TRACE_BEGIN',
     '#if defined(CUTTLEFISH_ENTRY_TU) && defined(CONFIG_THREAD_MONITOR) && defined(CONFIG_THREAD_RUNTIME_STATS)',
     `#define __TC_TRACE_HB_MS ${ms}U`,
+    ...stackAlarmDefine,
     'static uint32_t __tc_trace_seq = 0U;',
     // One [TR:TH:<seq>:<name>:<exec>:<unused>:<size>] line per live thread.
     // Stack fields print -1 when the platform cannot inspect that thread
@@ -191,6 +233,7 @@ export function traceHeartbeatLines(intervalMs: number, withUi: boolean): string
     '           static_cast<unsigned long long>(exec),',
     '           stack_ok ? static_cast<long long>(unused) : -1LL,',
     '           static_cast<unsigned int>(size));',
+    ...stackAlarm,
     '}',
     'static void __tc_trace_hb_work(struct k_work* work);',
     'static K_WORK_DELAYABLE_DEFINE(__tc_trace_hb_dwork, __tc_trace_hb_work);',
