@@ -60,7 +60,7 @@ export function runTraceViewServer(options: ViewOptions): void {
   });
 }
 
-function viewerPage(): string {
+export function viewerPage(): string {
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>typecad-hal trace</title>
 <style>
@@ -102,7 +102,7 @@ function draw(d) {
   ctx.font = '12px system-ui';
   // Section header + how-to-read line.
   ctx.fillStyle = '#888'; ctx.textAlign = 'left';
-  ctx.fillText('CPU load — bar height = thread\'s % of wall time in that interval; lanes sum to ~100% (idle included) · one column = one interval', 84, 24);
+  ctx.fillText('CPU load — bar height = the thread share of wall time in that interval; lanes sum to ~100% (idle included) · one column = one interval', 84, 24);
   // Per-lane averages (label suffix).
   const avg = {};
   lanes.forEach(n => { let s = 0, c = 0; pts.forEach(p => { if (p.cpu[n] !== undefined) { s += p.cpu[n]; c++; } }); avg[n] = c ? Math.round(s / c) : 0; });

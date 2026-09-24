@@ -85,4 +85,18 @@ describe('viewerHtml', () => {
     const html = viewerHtml({ error: 'No capture at trace.json yet' });
     expect(html).toContain('No capture at trace.json yet');
   });
+
+  // Regression: an unescaped apostrophe in a canvas label once made the
+  // whole script a SyntaxError — the page rendered nothing while heartbeats
+  // counted in the console. Compiling the script body (without running it)
+  // catches that class forever, for BOTH viewers (the CLI page shares the
+  // same drawing code).
+  it('the embedded script is syntactically valid JavaScript (compiles, never runs)', async () => {
+    const { viewerPage } = await import('../../../packages/cuttlefish/dist/trace/view.js');
+    for (const html of [viewerHtml({ error: 'x' }), viewerPage()]) {
+      const m = /<script>([\s\S]*?)<\/script>/.exec(html);
+      expect(m).not.toBeNull();
+      expect(() => new Function(m![1])).not.toThrow();
+    }
+  });
 });

@@ -138,7 +138,6 @@ const vscode = acquireVsCodeApi();
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const meta = document.getElementById('meta');
-const vscode = acquireVsCodeApi();
 let d = ${JSON.stringify(initial)};
 function draw(d) {
   const W = canvas.width, H = canvas.height;
@@ -164,7 +163,7 @@ function draw(d) {
   ctx.font = '12px system-ui';
   // Section header + how-to-read line.
   ctx.fillStyle = '#888'; ctx.textAlign = 'left';
-  ctx.fillText('CPU load — bar height = thread\'s % of wall time in that interval; lanes sum to ~100% (idle included) · one column = one interval', 84, 24);
+  ctx.fillText('CPU load — bar height = the thread share of wall time in that interval; lanes sum to ~100% (idle included) · one column = one interval', 84, 24);
   // Per-lane averages (label suffix).
   const avg = {};
   lanes.forEach(n => { let s = 0, c = 0; pts.forEach(p => { if (p.cpu[n] !== undefined) { s += p.cpu[n]; c++; } }); avg[n] = c ? Math.round(s / c) : 0; });
