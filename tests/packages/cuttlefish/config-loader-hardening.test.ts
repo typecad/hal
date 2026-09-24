@@ -198,4 +198,40 @@ describe("parseConfigFile hardening", () => {
     expect(resolved!.frameworkConfig!.libraries).toEqual(["curl"]);
     expect(warnSpy).not.toHaveBeenCalled();
   });
+
+  it("extracts zephyr.trace (enabled + intervalMs) into zephyrConfig", () => {
+    const file = writeConfig(`
+      const config = {
+        entry: './src/main.ts',
+        zephyr: { trace: { enabled: true, intervalMs: 250 } },
+      };
+      export default config;
+    `);
+    const resolved = parseConfigFile(file);
+    expect(resolved?.zephyrConfig?.trace).toEqual({ enabled: true, intervalMs: 250 });
+  });
+
+  it("keeps zephyr.trace absent when the section is absent", () => {
+    const file = writeConfig(`
+      const config = {
+        entry: './src/main.ts',
+        zephyr: { kconfig: { CONFIG_FOO: 'y' } },
+      };
+      export default config;
+    `);
+    const resolved = parseConfigFile(file);
+    expect(resolved?.zephyrConfig?.kconfig).toEqual({ CONFIG_FOO: "y" });
+    expect(resolved?.zephyrConfig?.trace).toBeUndefined();
+  });
+
+  it("rejects a non-boolean zephyr.trace.enabled via schema validation", () => {
+    const file = writeConfig(`
+      const config = {
+        entry: './src/main.ts',
+        zephyr: { trace: { enabled: 'yes' } },
+      };
+      export default config;
+    `);
+    expect(() => parseConfigFile(file)).toThrow(/zephyr\.trace\.enabled/);
+  });
 });

@@ -539,6 +539,13 @@ export function buildEmitterContext(
     if (isEntryFile && entryHasUI() && shimLines.length > 0) {
       shimLines.unshift("#define CUTTLEFISH_ENTRY_UI_TU 1");
     }
+    // Entry-TU marker (UI-independent): framework shims that must exist ONCE
+    // per program (Zephyr's SYS_INIT-registered trace heartbeat — a second
+    // copy in a split-file TU would register the sampler twice) compile only
+    // under this define. Precedes the shim lines it guards.
+    if (isEntryFile && shimLines.length > 0) {
+      shimLines.unshift("#define CUTTLEFISH_ENTRY_TU 1");
+    }
     profileDiagnostics = [...strategy.profileDiagnostics(program, options.platformContext)];
   }
 

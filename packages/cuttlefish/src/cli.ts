@@ -25,6 +25,8 @@ import { getLoadedFramework, hasLoadedFramework } from "./framework-registry.js"
 import { loadTypecadConfig, generateVirtualTypeDeclaration, regenBoardModule, ensureLintBoilerplate } from "./config-loader.js";
 import { generateContractBoard } from "./contract/index.js";
 import { requireUIHook, hasUIHook } from "./ui-hook.js";
+import { runTraceCapture, runTraceReport } from "./trace/cli.js";
+import { runTraceViewServer } from "./trace/view.js";
 import { loadUIEngine } from "./ui/ui-bridge.js";
 import { loadSafetyEngine } from "./safety/safety-bridge.js";
 import { runWatch, discoverWatchDirs } from "./watch.js";
@@ -344,9 +346,12 @@ async function handleDebugServer(options: DebugServerCommandOptions): Promise<vo
   // (A dependsOn task chain + isBackground never releases the debug session —
   // VS Code awaits the whole dependency group, and the server never exits.)
   if (options.action === "start" && options.flash) {
-    const platformContext: import("./api/shared/index.js").PlatformContext = config.buildTarget
-      ? { frameworkData: { buildTarget: config.buildTarget } }
-      : {};
+    const platformContext: import("./api/shared/index.js").PlatformContext = {
+      ...(config.buildTarget ? { frameworkData: { buildTarget: config.buildTarget } } : {}),
+      // The trace heartbeat shim gates on zephyr.trace at transpile time —
+      // keep the debug-server build consistent with a normal CLI build.
+      ...(config.zephyrConfig ? { zephyr: config.zephyrConfig } : {}),
+    };
     ui.printTranspiling();
     ui.printDebugStrategy(config.framework ?? "zephyr");
     const result = await transpileFile({
@@ -529,6 +534,33 @@ async function main(): Promise<void> {
         return;
       }
       fw.licenses(options.strict ?? false, options.all ?? false);
+      return;
+    }
+
+    // ── Handle runtime trace capture / report / view ───────────────────────
+    if (options.command === "trace") {
+      if (options.subcommand === "capture") {
+        const exitCode = await runTraceCapture({
+          port: options.port,
+          baudRate: options.baudRate ?? 115200,
+          durationSeconds: options.durationSeconds,
+          output: path.resolve(process.cwd(), options.output ?? "trace.json"),
+        });
+        process.exitCode = exitCode;
+        return;
+      }
+      if (options.subcommand === "view") {
+        runTraceViewServer({
+          input: options.input ?? "trace.json",
+          httpPort: options.httpPort ?? 5175,
+        });
+        return;
+      }
+      process.exitCode = runTraceReport({
+        input: options.input ?? "trace.json",
+        json: options.json === true,
+        gates: options.gates,
+      });
       return;
     }
 
@@ -765,6 +797,16 @@ async function main(): Promise<void> {
             // PSRAM-enabling Kconfig + BOARD_HAS_PSRAM compile definition.
             ...(config.psram ? { psram: config.psram } : {}),
           },
+        };
+      }
+      // Thread the zephyr record through to the framework strategy at TRANSPILE
+      // time — the trace heartbeat shim gates on zephyr.trace there, while the
+      // toolchain's compile step reads the same record for prj.conf. Overlay
+      // (not replace) so a --flash CLI-built context survives.
+      if (config.zephyrConfig) {
+        effectivePlatformContext = {
+          ...(effectivePlatformContext ?? {}),
+          zephyr: config.zephyrConfig,
         };
       }
       if (config.outputOutDir && !options.outDir) {

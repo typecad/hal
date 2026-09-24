@@ -40,12 +40,13 @@ import { lowerFs } from './fs.js';
 import { lowerSensor } from './sensor.js';
 import { lowerHwtimer, lowerCounter } from './hwtimer.js';
 import { lowerThread } from './thread.js';
+import { lowerTrace } from './trace.js';
 
 export {
   lowerGpio, lowerTiming, lowerAdc, lowerPwm, lowerI2c, lowerSpi, lowerUart,
   lowerUsb, lowerInterrupt, lowerWdt, lowerBle,
   lowerWifi, lowerHttp, lowerMqtt, lowerPreferences, lowerBoard, lowerRandom,
-  lowerDac, lowerFs, lowerHwtimer, lowerCounter, lowerSensor, lowerThread,
+  lowerDac, lowerFs, lowerHwtimer, lowerCounter, lowerSensor, lowerThread, lowerTrace,
 };
 
 /**
@@ -83,6 +84,7 @@ export function lowerHalOp(
   if (op.operation.startsWith('random.')) return lowerRandom(op);
   if (op.operation.startsWith('sensor.')) return lowerSensor(op);
   if (op.operation.startsWith('thread.'))   return lowerThread(op);
+  if (op.operation.startsWith('trace.'))    return lowerTrace(op);
 
   // raw / snprintf.emit / display.* / ... — not lowered by this
   // framework. Return undefined so the transpiler falls back and the manifest

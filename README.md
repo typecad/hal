@@ -479,6 +479,12 @@ typecad-hal preview [--config <path>] [--port <p>] # browser preview for a UI pr
 typecad-hal gen-decls <file.cpp|--all <dir>>       # .d.ts stubs from C++ headers
 typecad-hal doctor                                 # check the active framework's environment
 typecad-hal licenses [--all] [--strict]            # scan project libraries for SPDX licenses
+typecad-hal sbom [--format cyclonedx|spdx] [flags] # build-true SBOM (CycloneDX 1.6 default; also stamped on every build)
+typecad-hal audit [--strict] [--json]            # security baseline over the merged build config (waivers: .typecad-hal/audit-waivers.json)
+typecad-hal trace capture [--port <p>] [--duration <s>] [--output <path>]
+                                                   # record runtime-stats heartbeats from the board (needs zephyr.trace.enabled in the config)
+typecad-hal trace report [--input <path>] [--json] [--gate <expr>...] # CPU load, stack high-water, UI frame/phase stats; --gate = CI regression gate (exit 1)
+typecad-hal trace view [--input <path>] [--port <p>] # canvas timeline viewer (CPU lanes, UI frames, Trace.event markers)
 typecad-hal board sync [zephyr-base]               # rebuild the board catalog from your Zephyr tree (after west update)
 typecad-hal board regen                            # regenerate .typecad-hal/board.ts (also runs automatically on build)
 typecad-hal library <search|install|init|validate> # library package manager

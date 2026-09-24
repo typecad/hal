@@ -35,6 +35,17 @@ const ToolchainConfig = z.object({
   frameworkOptions: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 
+/** Schema for the `zephyr.trace` section (runtime tracing/profiling). */
+const ZephyrTraceConfig = z.object({
+  /** Emit the trace heartbeat sampler into the firmware: a k_work_delayable
+   *  on the system work queue that samples per-thread runtime stats and
+   *  stack usage every intervalMs and prints `[TR:` lines on the console.
+   *  Captured host-side by `typecad-hal trace capture`. */
+  enabled: z.boolean().optional(),
+  /** Sampling interval in milliseconds (default 1000, clamped 50–60000). */
+  intervalMs: z.number().int().positive().optional(),
+}).strict();
+
 /** Schema for the `zephyr` section. */
 const ZephyrConfig = z.object({
   kconfig: z.record(z.string(), z.string()).optional(),
@@ -47,6 +58,8 @@ const ZephyrConfig = z.object({
    *  MCU package's silicon data (SoC, console, clock plan). The board is
    *  named after `frameworkData.buildTarget`. */
   customBoard: z.boolean().optional(),
+  /** Runtime tracing (heartbeat sampler + [TR: console stream). */
+  trace: ZephyrTraceConfig.optional(),
 }).strict();
 
 /**

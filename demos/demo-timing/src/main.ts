@@ -13,7 +13,7 @@
 // (K_FOREVER — the threads run forever, keeping the firmware alive).
 // ---------------------------------------------------------------------------
 
-import { LED, USB0, GPIO, Time, Thread } from '@typecad/hal';
+import { LED, USB0, GPIO, Time, Thread, Trace } from '@typecad/hal';
 
 const led = new GPIO(LED, GPIO.OUTPUT);
 
@@ -24,6 +24,7 @@ USB0.open();
 
 // ── 1. Clocks ─────────────────────────────────────────────────────────────
 const boot: number = Time.now();
+Trace.mark('boot');
 if (USB0.linked()) {
   USB0.writeLine(`boot at ${boot} ms, us clock reads ${Time.nowUs()}`);
 }
@@ -44,6 +45,7 @@ logger.start((): void => {
   const started: number = Time.now();
   while (true) {
     beats = beats + 1;
+    Trace.event('beat', beats);
     if (USB0.linked()) {
       USB0.writeLine(`beat ${beats} @ ${Time.now() - started} ms since start`);
     }

@@ -19,6 +19,14 @@ const config: TypecadConfig = {
   board: 'esp32s3_devkitc/esp32s3/procpu',
 
   framework: '@typecad/framework-zephyr',
+
+  // Runtime tracing: the heartbeat reports CPU/stack per thread AND UI
+  // frame stats (count/avg/max per interval) — `typecad-hal trace capture`
+  // + `trace report`/`trace view` on the device's USB serial port.
+  zephyr: {
+    trace: { enabled: true, intervalMs: 1000 },
+  },
+
   output: {
     outDir: './out',
   },

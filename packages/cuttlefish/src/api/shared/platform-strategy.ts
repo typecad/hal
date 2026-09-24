@@ -481,6 +481,13 @@ export interface PlatformAsyncStrategy {
     preIteration: string;
     postIteration: string;
   } | null;
+
+  /** Optional per-frame instrumentation emitted right after the ui_tick call
+   *  in the driver function (UI-mounted programs only). Receives the C++
+   *  expression for the frame's wall-time delta in ms; returns statements
+   *  (or null/[] for none). Zephyr uses this to feed the zephyr.trace
+   *  heartbeat's frame count / avg / max stats. */
+  uiFrameTimingLines?(deltaMsExpr: string): string[] | null;
 }
 
 // ---------------------------------------------------------------------------

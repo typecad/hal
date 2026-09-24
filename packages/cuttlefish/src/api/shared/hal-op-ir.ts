@@ -385,6 +385,20 @@ export interface ThreadJoinOp {
   instance: number;
 }
 
+export interface TraceMarkOp {
+  operation: "trace.mark";
+  /** Marker name (C string literal text — must not contain colons). */
+  name: string;
+}
+
+export interface TraceEventOp {
+  operation: "trace.event";
+  /** Event name (C string literal text — must not contain colons). */
+  name: string;
+  /** Numeric literal or C++ expression text (interpolated via static_cast). */
+  value: string | number;
+}
+
 // ---------------------------------------------------------------------------
 // I2C — inter-integrated circuit bus
 // ---------------------------------------------------------------------------
@@ -1191,6 +1205,8 @@ export type HALOpIR =
   | UartRxReadOp
   | ThreadStartOp
   | ThreadJoinOp
+  | TraceMarkOp
+  | TraceEventOp
   // I2C
   | I2cReadOp
   | I2cRecoverOp

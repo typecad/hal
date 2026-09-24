@@ -47,6 +47,17 @@ export const RULES: readonly RuleEntry[] = [
         kind: "polyfill",
       },
       {
+        // UI runtime header canvas blits: Adafruit_GFX's drawRGBBitmap takes
+        // const uint16_t*, while the mono canvas stores packed 1bpp rows and
+        // getBuffer() hands the packed bytes back as the color type the
+        // caller's draw target expects. Both sites reinterpret one firmly
+        // POD buffer type as another — no object lifetime or aliasing
+        // hazard — and no Adafruit API exists that copies without the cast.
+        detect: /reinterpret_cast<UI_COLOR_T\*>\(c->getBuffer\(\)\)|reinterpret_cast<const uint16_t\*>\(bitmap\)/,
+        justification: "The UI runtime's canvas blit path bridges Adafruit_GFX's fixed uint16_t bitmap API and the runtime's packed canvas buffers; the buffers are raw POD arrays and the cast is the only bridge the upstream API offers.",
+        kind: "other",
+      },
+      {
         // framework-zephyr BLE lowering: characteristic read handlers are TS
         // functions with heterogeneous inferred return types (const char*,
         // double), but the GATT attribute table registers one C callback for

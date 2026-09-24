@@ -19,9 +19,9 @@ describe('thread state block', () => {
 });
 
 describe('thread lowering', () => {
-  it('start stores the entry then k_thread_create(K_NO_WAIT) at the construction priority', () => {
+  it('start stores the entry, creates + schedules, and names the thread (trace labels)', () => {
     const out = lowerThread({ operation: 'thread.start', instance: 0, stackBytes: 2048, priority: 5, handler: 'workerLoop' } as any);
-    expect(out.code).toBe('__tc_thrd0_fn = (workerLoop); (void)k_thread_create(&__tc_thrd0_thread, __tc_thrd0_stack, K_THREAD_STACK_SIZEOF(__tc_thrd0_stack), __tc_thrd0_tramp, NULL, NULL, NULL, 5, 0, K_NO_WAIT);');
+    expect(out.code).toBe('__tc_thrd0_fn = (workerLoop); (void)k_thread_create(&__tc_thrd0_thread, __tc_thrd0_stack, K_THREAD_STACK_SIZEOF(__tc_thrd0_stack), __tc_thrd0_tramp, NULL, NULL, NULL, 5, 0, K_NO_WAIT); (void)k_thread_name_set(&__tc_thrd0_thread, "tc_thread_0");');
   });
 
   it('join blocks with K_FOREVER', () => {

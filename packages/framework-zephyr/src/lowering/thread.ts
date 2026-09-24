@@ -48,8 +48,12 @@ export function lowerThread(op: HALOpIR): { code?: string; expression?: string }
     case 'thread.start': {
       // Store the entry, create + schedule immediately. The stack size comes
       // from the state block (the construction fact), via K_THREAD_STACK_SIZEOF.
+      // The thread gets a name so trace heartbeats report it as something
+      // other than "unnamed" — k_thread_name_set returns -ENOSYS without
+      // CONFIG_THREAD_NAME (which the scaffold turns on for traced builds),
+      // so the call is emitted unconditionally.
       return {
-        code: `${p}_fn = (${o.handler}); (void)k_thread_create(&${p}_thread, ${p}_stack, K_THREAD_STACK_SIZEOF(${p}_stack), ${p}_tramp, NULL, NULL, NULL, ${o.priority ?? 5}, 0, K_NO_WAIT);`,
+        code: `${p}_fn = (${o.handler}); (void)k_thread_create(&${p}_thread, ${p}_stack, K_THREAD_STACK_SIZEOF(${p}_stack), ${p}_tramp, NULL, NULL, NULL, ${o.priority ?? 5}, 0, K_NO_WAIT); (void)k_thread_name_set(&${p}_thread, "tc_thread_${instance}");`,
       };
     }
     case 'thread.join':

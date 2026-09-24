@@ -93,6 +93,15 @@ export function timeNowUs(): number { return 0; }
 export function timeBusyWaitUs(us: number): void {}
 
 // ---------------------------------------------------------------------------
+// Trace — user event markers for `typecad-hal trace capture`
+// ---------------------------------------------------------------------------
+
+/** Trace.mark — a named point-in-time marker on the trace timeline (no value). */
+export function traceMark(name: string): void {}
+/** Trace.event — a named timestamped value sample on the trace timeline. */
+export function traceEvent(name: string, value: number): void {}
+
+// ---------------------------------------------------------------------------
 // I2C — inter-integrated circuit bus
 // ---------------------------------------------------------------------------
 

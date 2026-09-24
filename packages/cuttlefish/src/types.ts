@@ -260,6 +260,31 @@ export interface CleanCommandOptions {
   force?: boolean;
 }
 
+/** Parsed `typecad-hal trace` options — capture reads [TR: heartbeat lines
+ *  from the board's serial port into a trace@1 artifact; report summarizes
+ *  one (CPU load + stack high-water marks). */
+export interface TraceCommandOptions {
+  command: "trace";
+  subcommand: "capture" | "report" | "view";
+  /** capture: serial port (default TYPECAD_HAL_PORT). */
+  port?: string;
+  /** capture: baud rate (default 115200). */
+  baudRate?: number;
+  /** capture: stop after N seconds (default: until Ctrl+C). */
+  durationSeconds?: number;
+  /** capture: artifact path (default ./trace.json). */
+  output?: string;
+  /** report: capture path (default ./trace.json). */
+  input?: string;
+  /** report: print the machine-readable report only. */
+  json?: boolean;
+  /** report: CI gate expressions (repeatable), e.g. `cpu-avg:main<=50`,
+   *  `frame-max<=20`, `stack-min:main>=256`. Exit 1 on any violation. */
+  gates?: string[];
+  /** view: HTTP port for the timeline viewer (default 5175). */
+  httpPort?: number;
+}
+
 /** Parsed `typecad-hal debug-server <start|stop>` options. */
 export interface DebugServerCommandOptions {
   command: "debug-server";

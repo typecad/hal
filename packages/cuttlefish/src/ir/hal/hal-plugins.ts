@@ -998,6 +998,21 @@ export function tryResolveSemanticCall(
     case "timeNowUs":
       return { operation: "timing.now_us" };
 
+    case "traceMark": {
+      const name = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (name === null) return null;
+      return { operation: "trace.mark", name };
+    }
+
+    case "traceEvent": {
+      const name = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      // Like i2c reg/value: the value may be a runtime expression — the
+      // Zephyr lowering interpolates it inside static_cast<double>(...).
+      const value = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (name === null || value === null) return null;
+      return { operation: "trace.event", name, value };
+    }
+
     case "timeBusyWaitUs": {
       const us = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (us === null) return null;

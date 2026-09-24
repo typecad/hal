@@ -15,6 +15,14 @@ const config: TypecadConfig = {
 
   board: 'xiao_ble/nrf52840',
 
+  // Runtime tracing: emits the heartbeat sampler ([TR: lines) so
+  // `typecad-hal trace capture --port <p> --duration 10` can record this
+  // demo's two threads + idle CPU load and stack high-water marks, then
+  // `typecad-hal trace report` summarizes the capture.
+  zephyr: {
+    trace: { enabled: true, intervalMs: 1000 },
+  },
+
   output: {
     outDir: './out',
   },

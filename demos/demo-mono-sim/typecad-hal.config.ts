@@ -16,6 +16,15 @@ const config: TypecadConfig = {
   board: 'native_sim/native/64',
 
   framework: '@typecad/framework-zephyr',
+
+  // Runtime tracing: gives the Linux CI compile gate a traced UI build —
+  // the heartbeat sampler + [TR:UI frame stats + [TR:UP tick-phase spans
+  // all compile and link on every run (the POSIX arch does not build on
+  // Windows, so this is verified by CI, not locally).
+  zephyr: {
+    trace: { enabled: true, intervalMs: 1000 },
+  },
+
   output: {
     outDir: './out',
   },

@@ -388,6 +388,11 @@ export function emitFunctions(ctx: EmitterContext): void {
       appendSourceLine(ctx, "  __tc_ui_last_tick = __tc_ui_now;");
       appendSourceLine(ctx, "  if (__tc_ui_delta > 250) __tc_ui_delta = 250;");
       appendSourceLine(ctx, "  ui_tick(static_cast<uint16_t>(__tc_ui_delta));");
+      // Optional framework seam: per-frame wall-time stats for the runtime
+      // trace heartbeat (Zephyr's zephyr.trace sampler reports frame count /
+      // avg / max per heartbeat interval). Null/empty = no instrumentation.
+      const uiFrameLines = strategy.uiFrameTimingLines?.("__tc_ui_delta") ?? [];
+      for (const line of uiFrameLines) appendSourceLine(ctx, `  ${line}`);
     }
 
     if (isLoopDriver && (hasPromiseRuntime || asyncTaskClasses.length > 0 || usesTimers)) {

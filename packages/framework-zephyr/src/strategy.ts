@@ -463,6 +463,7 @@ import { i2sInitLines } from './lowering/i2s.js';
 import { sensorStateLines } from './lowering/sensor.js';
 import { spiTargetStateLines } from './lowering/spi.js';
 import { threadStateLines } from './lowering/thread.js';
+import { traceHeartbeatLines, uiFrameTraceLines, clampTraceIntervalMs } from './lowering/trace.js';
 import { uartRingStateLines } from './lowering/uart.js';
 import { spiInitLines } from './lowering/spi.js';
 import { uartInitLines } from './lowering/uart.js';
@@ -917,16 +918,16 @@ export class ZephyrStrategy implements PlatformStrategy {
           'static inline char* __tc_fmt_num_buf(double v, char* out, size_t cap) {',
           '    if (v != v) { snprintf(out, cap, "nan"); return out; }',
           '    double a = v < 0 ? -v : v;',
-          '    long long ip = (long long)a;',
-          '    long long fr = (long long)((a - (double)ip) * 1000000.0 + 0.5);',
+          '    long long ip = static_cast<long long>(a);',
+          '    long long fr = static_cast<long long>((a - static_cast<double>(ip)) * 1000000.0 + 0.5);',
           '    if (fr >= 1000000LL) { ip += 1LL; fr = 0LL; }',
           '    int used = 0;',
           '    if (v < 0 && (ip != 0LL || fr != 0LL)) { out[used++] = \'-\'; out[used] = \'\\0\'; }',
-          '    if (fr == 0LL) { snprintf(out + used, cap - (size_t)used, "%lld", ip); return out; }',
+          '    if (fr == 0LL) { snprintf(out + used, cap - static_cast<size_t>(used), "%lld", ip); return out; }',
           '    char fbuf[8];',
           '    int len = snprintf(fbuf, sizeof(fbuf), "%06lld", fr);',
           '    while (len > 0 && fbuf[len - 1] == \'0\') { fbuf[--len] = \'\\0\'; }',
-          '    snprintf(out + used, cap - (size_t)used, "%lld.%s", ip, fbuf);',
+          '    snprintf(out + used, cap - static_cast<size_t>(used), "%lld.%s", ip, fbuf);',
           '    return out;',
           '}',
           'static void __tc_fmt_num(double v) { char __b[32]; printf("%s", __tc_fmt_num_buf(v, __b, sizeof(__b))); }',
@@ -936,6 +937,22 @@ export class ZephyrStrategy implements PlatformStrategy {
         'inline void __tc_println(double v) { __tc_fmt_num(v); printf("\\n"); }',
       );
     }
+    // Trace user-event helpers (Trace.mark / Trace.event → trace.mark /
+    // trace.event ops): one [TR:EV:<uptime_ms>:<name>[:<value>] console line
+    // per call, captured host-side as timeline events. Emitted
+    // UNCONDITIONALLY like __tc_print — a Trace.mark() call site must never
+    // fail to link because zephyr.trace was disabled; with no capture
+    // listening the lines are ordinary console output. Value formatting
+    // reuses __tc_fmt_num_buf (integer-only, the picolibc %g trap).
+    guardBody.push(
+      'inline void __tc_trace_mark(const char* name) {',
+      '    printf("[TR:EV:%u:%s\\n", static_cast<unsigned int>(k_uptime_get_32()), name);',
+      '}',
+      'inline void __tc_trace_event(const char* name, double v) {',
+      '    char __b[32];',
+      '    printf("[TR:EV:%u:%s:%s\\n", static_cast<unsigned int>(k_uptime_get_32()), name, __tc_fmt_num_buf(v, __b, sizeof(__b)));',
+      '}',
+    );
     // Serial-port write helper: writes a scalar to a UART/CDC device a byte at
     // a time. Overloaded on const char* (strings, snprintf buffers) and double
     // (numbers/booleans) so a single __tc_dev_put(dev, value) call site formats
@@ -1057,6 +1074,32 @@ export class ZephyrStrategy implements PlatformStrategy {
         for (const t of threads.values()) {
           guardBody.push(...threadStateLines(t.instance, t.stackBytes));
         }
+      }
+    }
+    // Trace heartbeat — the runtime-stats sampler behind `typecad-hal trace
+    // capture`. Opt-in via zephyr.trace.enabled in typecad-hal.config.ts (the
+    // config loader threads the zephyr record through platformContext). The
+    // block compiles under CUTTLEFISH_ENTRY_TU, so split-file TUs carry no
+    // second copy (a duplicate SYS_INIT would double every heartbeat).
+    // UI-mounted programs additionally get the frame-stats block (always
+    // defined, active only under CUTTLEFISH_TRACE_UI) so the ui_tick call
+    // site's instrumentation never depends on the trace config.
+    {
+      const traceCfg = (ctx as { zephyr?: { trace?: { enabled?: boolean; intervalMs?: number } } } | undefined)
+        ?.zephyr?.trace;
+      const traceEnabled = traceCfg?.enabled === true;
+      if (traceEnabled && entryHasUI()) {
+        guardBody.push(
+          '#if defined(CUTTLEFISH_ENTRY_TU)',
+          '#define CUTTLEFISH_TRACE_UI 1',
+          '#endif',
+        );
+      }
+      if (entryHasUI()) {
+        guardBody.push(...uiFrameTraceLines());
+      }
+      if (traceEnabled) {
+        guardBody.push(...traceHeartbeatLines(clampTraceIntervalMs(traceCfg?.intervalMs), entryHasUI()));
       }
     }
     // The usbd context is shared by CDC and HID; the CDC per-instance
@@ -2053,6 +2096,17 @@ export class ZephyrStrategy implements PlatformStrategy {
       preIteration: '',
       postIteration: 'k_msleep(1);',
     };
+  }
+
+  /**
+   * Per-frame wall-time feed for the trace heartbeat's UI stats. The helper
+   * is emitted unconditionally for UI programs (compiles to a no-op unless
+   * zephyr.trace defined CUTTLEFISH_TRACE_UI), so this call is safe with
+   * tracing on or off.
+   */
+  uiFrameTimingLines(deltaMsExpr: string): string[] | null {
+    if (!entryHasUI()) return null;
+    return [`__tc_trace_ui_frame(static_cast<uint32_t>(${deltaMsExpr}));`];
   }
 
   // ── Type aliases ────────────────────────────────────────────────────────

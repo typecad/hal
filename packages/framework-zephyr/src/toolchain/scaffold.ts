@@ -98,7 +98,7 @@ export function appendLibraryOverlayFragments(overlay: string, projectRoot: stri
  *
  * Idempotent. Mirrors scaffoldEspIdfProject's writeIfChanged discipline.
  */
-export function scaffoldZephyrProject(projectRoot: string, debug = false, userKconfig?: Record<string, string>, psram?: 'opi' | 'quad'): boolean {
+export function scaffoldZephyrProject(projectRoot: string, debug = false, userKconfig?: Record<string, string>, psram?: 'opi' | 'quad', trace?: { enabled?: boolean; intervalMs?: number }): boolean {
   const srcDir = join(projectRoot, 'src');
   if (!existsSync(srcDir)) mkdirSync(srcDir, { recursive: true });
 
@@ -299,6 +299,28 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
         if (userKconfig && sym !== undefined && userKconfig.hasOwnProperty(sym)) continue;
         prjConf.push(line);
       }
+    }
+  }
+  // ── Trace heartbeat Kconfig ────────────────────────────────────────────────
+  // zephyr.trace.enabled in typecad-hal.config.ts turns on the [TR: sampler
+  // (emitted by the strategy at transpile time from the same config record).
+  // The symbol set is exactly what the sampler calls: runtime stats
+  // (k_thread_runtime_stats_*), the monitor list (k_thread_foreach —
+  // kernel/thread_monitor.c only links under THREAD_MONITOR), thread names
+  // (k_thread_name_get/set), and stack inspection (0xAA fill +
+  // stack_info.size). User zephyr.kconfig overrides still win.
+  if (trace?.enabled === true) {
+    const traceSymbols: Array<[string, string]> = [
+      ['CONFIG_THREAD_RUNTIME_STATS', 'y'],
+      ['CONFIG_THREAD_MONITOR', 'y'],
+      ['CONFIG_THREAD_NAME', 'y'],
+      ['CONFIG_INIT_STACKS', 'y'],
+      ['CONFIG_THREAD_STACK_INFO', 'y'],
+    ];
+    prjConf.push('', '# Trace heartbeat (typecad-hal.config.ts → zephyr.trace).');
+    for (const [sym, val] of traceSymbols) {
+      if (userKconfig && userKconfig.hasOwnProperty(sym)) continue;
+      prjConf.push(`${sym}=${val}`);
     }
   }
   // Per-part Kconfig exceptions: catalog parts whose driver is NOT default-y

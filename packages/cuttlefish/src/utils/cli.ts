@@ -1,5 +1,5 @@
 ﻿import path from "node:path";
-import { CommandLineOptions, CreateCommandOptions, LibraryCommandOptions, BoardCommandOptions, CleanCommandOptions, DebugServerCommandOptions, TestCommandOptions, QueryCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
+import { CommandLineOptions, CreateCommandOptions, LibraryCommandOptions, BoardCommandOptions, CleanCommandOptions, DebugServerCommandOptions, TestCommandOptions, QueryCommandOptions, TraceCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
 
 import chalk from "chalk";
 
@@ -40,6 +40,20 @@ export function printHelp(): void {
   console.log(`  typecad-hal board regen                          Regenerate the project-local board module (.typecad-hal/board.ts + board.json)`);
   console.log(`  typecad-hal doctor                              Check the active framework's environment (e.g. toolchain + board core)`);
   console.log(`  typecad-hal licenses [--all] [--strict]          Scan this project's libraries for SPDX licenses (--all: every installed library)`);
+  console.log(`  typecad-hal trace capture [--port <p>] [--duration <s>] [--output <path>]`);
+  console.log(`                          Read runtime-stats heartbeats ([TR: lines) from the board's serial`);
+  console.log(`                          port into trace.json. Requires a build with zephyr.trace.enabled;`);
+  console.log(`                          --baud <rate> (default 115200), Ctrl+C stops early (partial capture kept).`);
+  console.log(`  typecad-hal trace report [--input <path>] [--json] [--gate <expr>...]`);
+  console.log(`                          Summarize a capture: per-thread CPU load (avg/max), stack`);
+  console.log(`                          high-water marks, UI frame + tick-phase stats. --json prints`);
+  console.log(`                          the machine-readable report; repeatable --gate expressions`);
+  console.log(`                          (cpu-avg:main<=50, cpu-max:idle>=95, frame-max<=20,`);
+  console.log(`                          stack-min:main>=256) exit 1 on violation — the CI gate.`);
+  console.log(`  typecad-hal trace view [--input <path>] [--port <http-port>]`);
+  console.log(`                          Serve the timeline viewer (CPU lanes, UI frame line,`);
+  console.log(`                          Trace.mark/event markers) over a capture file. Live when`);
+  console.log(`                          capture --output writes the same file (default port 5175).`);
   console.log();
   console.log(chalk.cyan(`LIBRARY PACKAGES`) + chalk.gray(` (npm keywords are the catalog)`));
   console.log();
@@ -402,7 +416,7 @@ function parsePipelineCommand(
   };
 }
 
-export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | LibraryCommandOptions | BoardCommandOptions | CleanCommandOptions | DebugServerCommandOptions | TestCommandOptions | QueryCommandOptions | "help" {
+export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | LibraryCommandOptions | BoardCommandOptions | CleanCommandOptions | DebugServerCommandOptions | TestCommandOptions | QueryCommandOptions | TraceCommandOptions | "help" {
   const firstArg = argv[2];
 
   if (!firstArg || firstArg === "--help" || firstArg === "-h") {
@@ -539,6 +553,108 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
       watch: false,
       baud: 9600,
       platformContext: {},
+    };
+  }
+
+  // trace subcommand — runtime trace capture/report over the device console.
+  // Unknown flags are errors, never silent drops (audit-subcommand strictness).
+  if (firstArg === "trace") {
+    const sub = argv[3];
+    if (sub !== "capture" && sub !== "report" && sub !== "view") {
+      throw new Error(
+        "Usage: typecad-hal trace <capture|report|view> — 'capture' reads [TR: heartbeat lines " +
+          "from the board's serial port into trace.json (firmware must be built with " +
+          "zephyr.trace: { enabled: true }), 'report' summarizes a capture, 'view' serves " +
+          "the timeline viewer over a capture file.",
+      );
+    }
+    // Per-subcommand flag sets: a capture-only flag on report (and vice
+    // versa) is an unknown flag, not a silently-accepted value.
+    const valueFlags = sub === "capture"
+      ? new Set(["--port", "--baud", "--duration", "--output"])
+      : sub === "view"
+        ? new Set(["--input", "--port"])
+        : new Set(["--input", "--gate"]);
+    const repeatableFlags = sub === "report" ? new Set(["--gate"]) : new Set<string>();
+    const validFlags = sub === "capture"
+      ? "--port <p>, --baud <rate>, --duration <seconds>, --output <path>"
+      : sub === "view"
+        ? "--input <path>, --port <http-port>"
+        : "--input <path>, --json, --gate <metric><=|>=><limit>";
+    const flagValues = new Map<string, string>();
+    const gateList: string[] = [];
+    for (let i = 4; i < argv.length; i++) {
+      const tok = argv[i];
+      if (tok.startsWith("--") && tok.includes("=")) {
+        const eq = tok.indexOf("=");
+        if (!valueFlags.has(tok.slice(0, eq))) {
+          throw new Error(`Unknown trace ${sub} flag: ${tok.slice(0, eq)}. Valid flags: ${validFlags}.`);
+        }
+        flagValues.set(tok.slice(0, eq), tok.slice(eq + 1));
+        continue;
+      }
+      if (valueFlags.has(tok)) {
+        // Only a missing token is a "requires a value" error — a negative
+        // number (--duration -1) must reach the value validation below so
+        // the user sees which flag and what range, not a generic parse error.
+        if (i + 1 >= argv.length) {
+          throw new Error(`trace ${sub} flag ${tok} requires a value. Valid flags: ${validFlags}.`);
+        }
+        const val = argv[++i];
+        if (repeatableFlags.has(tok)) {
+          // Repeatable value flags (report --gate) accumulate.
+          gateList.push(val);
+        } else {
+          flagValues.set(tok, val);
+        }
+        continue;
+      }
+      if (tok === "--json" && sub === "report") {
+        flagValues.set("--json", "1");
+        continue;
+      }
+      throw new Error(`Unknown trace ${sub} flag: ${tok}. Valid flags: ${validFlags}.`);
+    }
+    if (sub === "capture") {
+      const baud = Number(flagValues.get("--baud") ?? 115200);
+      if (!Number.isInteger(baud) || baud <= 0) {
+        throw new Error(`--baud must be a positive integer (got: ${flagValues.get("--baud")}).`);
+      }
+      const duration = flagValues.get("--duration");
+      let durationSeconds: number | undefined;
+      if (duration !== undefined) {
+        durationSeconds = Number(duration);
+        if (!Number.isFinite(durationSeconds) || durationSeconds < 0) {
+          throw new Error(`--duration must be seconds >= 0 (got: ${duration}).`);
+        }
+      }
+      return {
+        command: "trace",
+        subcommand: "capture",
+        port: flagValues.get("--port"),
+        baudRate: baud,
+        durationSeconds,
+        output: flagValues.get("--output") ?? "trace.json",
+      };
+    }
+    if (sub === "view") {
+      const httpPort = Number(flagValues.get("--port") ?? 5175);
+      if (!Number.isInteger(httpPort) || httpPort <= 0 || httpPort > 65535) {
+        throw new Error(`--port must be an HTTP port 1-65535 (got: ${flagValues.get("--port")}).`);
+      }
+      return {
+        command: "trace",
+        subcommand: "view",
+        input: flagValues.get("--input") ?? "trace.json",
+        httpPort,
+      };
+    }
+    return {
+      command: "trace",
+      subcommand: "report",
+      input: flagValues.get("--input") ?? "trace.json",
+      json: flagValues.has("--json"),
+      ...(gateList.length > 0 ? { gates: gateList } : {}),
     };
   }
 

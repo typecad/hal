@@ -17,6 +17,7 @@ export { board } from './board.js';
 export { callback } from './callback.js';
 export { rawCpp, rawCppExpr, boardResolve } from './emit.js';
 export { Time } from './time.js';
+export { Trace } from './trace.js';
 export { abs, min, max, Num } from './math.js';
 
 export { Random } from './random.js';
