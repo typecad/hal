@@ -66,6 +66,19 @@ export interface CuttlefishZephyrConfig {
    *   runnerArgs: ['--cmd-pre-init=reset_config none']
    */
   runnerArgs?: string[];
+  /**
+   * Runtime tracing (opt-in). `enabled: true` emits the heartbeat sampler
+   * into the firmware — a k_work_delayable that samples per-thread
+   * execution cycles + stack usage every `intervalMs` and prints `[TR:`
+   * lines on the console — plus UI frame/tick-phase stats for UI programs.
+   * Captured host-side by `typecad-hal trace capture` and the Trace panel
+   * commands; the scaffold turns on exactly the Kconfig it needs.
+   */
+  trace?: {
+    enabled?: boolean;
+    /** Sampling interval in ms (default 1000, clamped 50-60000). */
+    intervalMs?: number;
+  };
 }
 
 /**

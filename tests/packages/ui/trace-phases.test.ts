@@ -33,9 +33,9 @@ describe('emitTick trace phase injection', () => {
   it('injects the phase accumulator calls at all five phase boundaries', () => {
     const out = emitTick();
     // Prologue timestamp + seams for phases 0..3 + the epilogue for phase 4.
-    expect(out).toContain('uint64_t __tc_trace_ui_pt = k_cycle_get_64();');
+    expect(out).toContain('uint32_t __tc_trace_ui_pt = k_cycle_get_32();');
     for (let i = 0; i < 5; i++) {
-      expect(out).toContain(`__tc_trace_ui_phase_add(${i}, k_cycle_get_64() - __tc_trace_ui_pt);`);
+      expect(out).toContain(`__tc_trace_ui_phase_add(${i}, k_cycle_get_32() - __tc_trace_ui_pt);`);
     }
     // Order: seam 0 before seam 1 before ... before epilogue (4).
     const pos = [0, 1, 2, 3, 4].map((i) => out.indexOf(`__tc_trace_ui_phase_add(${i},`));

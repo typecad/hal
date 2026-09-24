@@ -109,6 +109,29 @@ describe('TraceLineParser', () => {
     expect(stray.malformed).toBe(1);
   });
 
+  it('snapshot() is read-only: a mid-capture live write must not close the in-flight group', () => {
+    // Regression: the capture live-write path used finish(), which closed
+    // the just-opened heartbeat — every following UI/UP/TH line then landed
+    // with no open group and counted as malformed (30 malformed lines on the
+    // first real hardware capture).
+    const p = new TraceLineParser();
+    p.feed('[TR:HB:1:1000:1000]');
+    p.feed('[TR:TH:1:main:100:8:128]');
+    // Mid-capture live write — repeated, as the viewer path does per beat.
+    // The in-flight group is excluded (complete heartbeats only)…
+    expect(p.snapshot()).toEqual([]);
+    p.feed('[TR:HB:2:2000:2000]');
+    // …and once heartbeat 2 opens, heartbeat 1 is closed and visible —
+    // without the snapshot having disturbed the parser state.
+    expect(p.snapshot()).toEqual([{ seq: 1, tMs: 1000, sysExecCycles: 1000,
+      threads: [{ name: 'main', execCycles: 100, stackUnusedBytes: 8, stackSizeBytes: 128 }] }]);
+    p.feed('[TR:TH:2:main:250:8:128]');
+    const samples = p.finish();
+    expect(samples).toHaveLength(2);
+    expect(samples[1].threads).toHaveLength(1); // not lost to a premature close
+    expect(p.malformed).toBe(0);
+  });
+
   it('merges [TR:UP tick-phase microseconds into the heartbeat ui stats', () => {
     const p = new TraceLineParser();
     p.feed('[TR:HB:3:3000:300000]');

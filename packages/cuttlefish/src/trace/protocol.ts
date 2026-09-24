@@ -179,6 +179,16 @@ export class TraceLineParser {
     return this.samples;
   }
 
+  /** Non-destructive view of the CLOSED samples so far. The live-write path
+   *  uses this — calling finish() mid-capture would close the in-flight
+   *  heartbeat group, and its UI/UP/TH lines would then arrive with no open
+   *  group (every line after the first heartbeat went malformed that way).
+   *  The in-flight group is excluded: the live artifact only ever contains
+   *  complete heartbeats. */
+  snapshot(): TraceSample[] {
+    return [...this.samples];
+  }
+
   /** Trace.mark / Trace.event timeline events parsed so far. */
   get eventList(): readonly TraceEvent[] {
     return this.events;

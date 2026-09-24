@@ -28,8 +28,14 @@ function phaseSeam(idx: number): string {
   return [
     '',
     '#if defined(CUTTLEFISH_TRACE_UI)',
-    `  __tc_trace_ui_phase_add(${idx}, k_cycle_get_64() - __tc_trace_ui_pt);`,
-    '  __tc_trace_ui_pt = k_cycle_get_64();',
+    // 32-bit cycle deltas, not the 64-bit API: that one silently returns
+    // 0 on SoCs without CONFIG_TIMER_HAS_64BIT_CYCLE_COUNTER (esp32s3,
+    // nRF... — the __ASSERT compiles out in release), which zeroed every
+    // phase span on real hardware. The 32-bit counter works on every Zephyr
+    // board and unsigned subtraction is wrap-safe; a phase delta (< 1 s of
+    // cycles) always fits in 2^32.
+    `  __tc_trace_ui_phase_add(${idx}, k_cycle_get_32() - __tc_trace_ui_pt);`,
+    '  __tc_trace_ui_pt = k_cycle_get_32();',
     '#endif',
     '',
   ].join('\n');
@@ -50,7 +56,7 @@ export function emitTick(): string {
     // fails loudly so this never ships silently.
     return plain;
   }
-  const prologue = `${TICK_SIGNATURE}\n#if defined(CUTTLEFISH_TRACE_UI)\n  uint64_t __tc_trace_ui_pt = k_cycle_get_64();\n#endif\n`;
+  const prologue = `${TICK_SIGNATURE}\n#if defined(CUTTLEFISH_TRACE_UI)\n  uint32_t __tc_trace_ui_pt = k_cycle_get_32();\n#endif\n`;
   const epilogue = phaseSeam(4);
   return [
     slices[0], phaseSeam(0),

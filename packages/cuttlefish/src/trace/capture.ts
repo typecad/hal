@@ -119,9 +119,10 @@ export async function captureTrace(options: CaptureOptions): Promise<CaptureResu
         }
         // Live rewrite for the viewer: the file always holds a complete,
         // valid artifact (the in-flight sample group is excluded until
-        // closed, so a concurrent reader never sees a partial heartbeat).
+        // closed, so a concurrent reader never sees a partial heartbeat —
+        // and the parser state is NOT disturbed; snapshot() is read-only).
         if (options.liveWritePath !== undefined) {
-          capture.samples = parser.finish();
+          capture.samples = parser.snapshot();
           const events = parser.eventList;
           if (events.length > 0) capture.events = [...events];
           try {
