@@ -118,7 +118,9 @@ function draw(d) {
   const idleName = names.find(n => n === 'idle') ?? null;
   const lanes = names.filter(n => n !== idleName).concat(idleName ? [idleName] : []);
   const hasUi = pts.some(p => p.ui);
-  const top = 40, laneH = Math.max(24, Math.min(64, Math.floor((H - top - 140) / lanes.length)));
+  // No UI chart → the lanes take the vertical space it would have occupied
+  // (taller bars) instead of leaving a blank band above the events row.
+  const top = 40, laneH = Math.max(24, Math.min(hasUi ? 64 : 120, Math.floor((H - top - (hasUi ? 140 : 70)) / lanes.length)));
   // View window: the whole capture until it outgrows WINDOW_MS, then a fixed
   // span — the column width settles instead of shrinking forever. The scrub
   // slider pans the window; at its right end the view keeps following live.
