@@ -192,11 +192,13 @@ function draw(d) {
       ctx.fillRect(x(p.tMs) - step / 2, yBase - h, step, h);
     });
   });
-  // Percent scale, aligned to the first lane (all lanes share the same 0–100% scale).
+  // Percent scale on the RIGHT margin (the plot ends at W-30; the strip
+  // lives in the empty 30px beyond it), aligned to the first lane — the
+  // left column belongs to the lane name labels and must not collide.
   ctx.fillStyle = '#666'; ctx.textAlign = 'right'; ctx.font = '10px system-ui';
-  ctx.fillText('100%', 78, top + 2 + 3);
-  ctx.fillText('50%', 78, top + 2 + (laneH - 8) / 2 + 3);
-  ctx.fillText('0%', 78, top + laneH - 4 + 3);
+  ctx.fillText('100%', W - 6, top + 5);
+  ctx.fillText('50%', W - 6, top + 2 + (laneH - 8) / 2 + 3);
+  ctx.fillText('0%', W - 6, top + laneH - 1);
   ctx.font = '12px system-ui';
   if (hasUi) {
     const yUi = top + lanes.length * laneH + 26;
