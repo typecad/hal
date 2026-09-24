@@ -35,6 +35,11 @@ export interface TranspileDiagnosticItem {
   severity: string;
   message: string;
   code?: string;
+  hint?: string;
+  /** The originator's file reference — often a build intermediate
+   *  (app.ui.html) that does not exist on disk; resolution falls back to the
+   *  report entry file. */
+  filePath?: string;
   source?: string;
 }
 
@@ -179,15 +184,41 @@ export interface ProblemItem {
   code?: string;
 }
 
+/** Find where a compat-report label (`#id`, `<tag>`) lives in source text.
+ *  The CSS selector wins — that is where the flagged style is declared —
+ *  then markup/script id occurrences. Returns a 0-based anchor. */
+function anchorLabel(text: string, label: string): { line: number; column: number; length: number } | undefined {
+  const patterns: string[] = [];
+  if (label.startsWith('#')) {
+    const id = label.slice(1);
+    patterns.push(`#${id}`, `id="${id}"`, `id='${id}'`, `id: '${id}'`, `id: "${id}"`);
+  } else if (label.startsWith('<') && label.endsWith('>')) {
+    patterns.push(`<${label.slice(1, -1)}`);
+  } else {
+    return undefined;
+  }
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    for (const p of patterns) {
+      const column = lines[i].indexOf(p);
+      if (column >= 0) return { line: i, column, length: p.length };
+    }
+  }
+  return undefined;
+}
+
 /** Map a report to editor problem items. Conflicts anchor at their TS source
  *  span when present (falling back to the entry file); transpile diagnostics
- *  carry no location and anchor at the entry file's first line. Tree-shaking
+ *  carry no line, but compat-report messages lead with the node label
+ *  (`#id:`, `<tag>:`) — when the anchor file's text is readable, the item
+ *  jumps to that label's line instead of a useless 1:1. Tree-shaking
  *  removals are deliberately NOT problems — informational, and anchoring a
  *  symbol list without locations would only spam line 1. */
 export function buildProblemItems(
   report: DiagnosticsReportLite,
   root: string,
   exists: (p: string) => boolean,
+  readText?: (p: string) => string | undefined,
 ): ProblemItem[] {
   // Report paths are whatever the transpiler saw (often relative to the
   // project, sometimes a bare basename) — resolve against the root, then
@@ -224,14 +255,32 @@ export function buildProblemItems(
     });
   }
   for (const t of report.transpileDiagnostics ?? []) {
+    // filePath often names an intermediate (app.ui.html) that does not exist
+    // on disk — resolve falls through to the report's entry file.
+    const file = resolveFile(t.filePath) ?? entry;
+    let startLine = 0;
+    let startColumn = 0;
+    let endColumn = 1;
+    if (readText !== undefined) {
+      const labelMatch = /^([#<][\w-]*):\s/.exec(t.message);
+      const text = labelMatch !== null ? readText(file) : undefined;
+      const anchor = text !== undefined && labelMatch !== null
+        ? anchorLabel(text, labelMatch[1])
+        : undefined;
+      if (anchor !== undefined) {
+        startLine = anchor.line;
+        startColumn = anchor.column;
+        endColumn = anchor.column + anchor.length;
+      }
+    }
     items.push({
-      file: entry,
-      startLine: 0,
-      startColumn: 0,
-      endLine: 0,
-      endColumn: 1,
+      file,
+      startLine,
+      startColumn,
+      endLine: startLine,
+      endColumn,
       severity: t.severity === 'error' ? 'error' : t.severity === 'warning' ? 'warning' : 'information',
-      message: t.message,
+      message: t.message + (t.hint !== undefined && t.hint.length > 0 ? ` Hint: ${t.hint}` : ''),
       code: t.code,
     });
   }

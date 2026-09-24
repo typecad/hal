@@ -83,6 +83,56 @@ describe('buildProblemItems', () => {
     const items = buildProblemItems(readDiagnosticsReport(REPORT)!, root, exists);
     expect(items.every((i) => i.file === entry)).toBe(true);
   });
+
+  it('anchors label-prefixed diagnostics at their real source line and keeps the hint', () => {
+    const text = [
+      '<script>',            // 0
+      '  ui.mount(screen);', // 1
+      '</script>',           // 2
+      '<style>',             // 3
+      '  #lvtxt { font-size: 9px; }', // 4  ← the flagged style
+      '</style>',            // 5
+    ].join('\n');
+    const report = readDiagnosticsReport(JSON.stringify({
+      metadata: { sourceFile: 'main.ui' },
+      peripheralConflicts: [],
+      transpileDiagnostics: [
+        { severity: 'warning', code: 'css-mono-font-size-floor', hint: 'Use 10px minimum.',
+          filePath: 'main.ui.html', // build intermediate — must fall back to the entry file
+          message: '#lvtxt: font-size 9px is below the 1bpp legibility floor (10px).' },
+        { severity: 'warning', message: '<text>: alpha is ignored — the color renders fully opaque.' },
+        { severity: 'info', code: 'css-ua-scale', hint: 'Override per element.',
+          message: 'Display-anchored UA defaults active: root text 12px.' },
+      ],
+    }))!;
+    const items = buildProblemItems(report, root, exists, () => text);
+    // #lvtxt → the CSS selector line (0-based 4), column of the selector.
+    expect(items[0].startLine).toBe(4);
+    expect(items[0].startColumn).toBe(2);
+    expect(items[0].endColumn).toBe(2 + '#lvtxt'.length);
+    expect(items[0].message).toContain('Hint: Use 10px minimum.');
+    // <text> has no match in this text → stays anchored at 1:1.
+    expect(items[1].startLine).toBe(0);
+    expect(items[1].startColumn).toBe(0);
+    // Document-level (no label prefix) stays at 1:1 — that IS its scope.
+    expect(items[2].startLine).toBe(0);
+    expect(items[2].message).toContain('Hint: Override per element.');
+  });
+
+  it('falls back to markup/script id occurrences when no CSS selector matches', () => {
+    const text = '<button id=\'invert\'>Invert</button>';
+    const report = readDiagnosticsReport(JSON.stringify({
+      metadata: { sourceFile: 'main.ui' },
+      peripheralConflicts: [],
+      transpileDiagnostics: [
+        { severity: 'warning', message: '#invert: font-size 20px is 31% of the display height.' },
+      ],
+    }))!;
+    const items = buildProblemItems(report, root, exists, () => text);
+    expect(items[0].startLine).toBe(0);
+    expect(items[0].startColumn).toBe(8);
+    expect(items[0].endColumn).toBe(8 + "id='invert'".length);
+  });
 });
 
 describe('findDiagnosticsReport', () => {
