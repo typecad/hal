@@ -27,6 +27,7 @@
     "changeset": "changeset",
     "version": "changeset version",
     "publish": "node scripts/publish.mjs",
+    "release": "node scripts/release.mjs",
     "sync:typecad-ui": "node scripts/sync-typecad-ui.mjs",
     "test:hw:ble:full": "node packages/hal/tests/network/ble-orchestrate.mjs"
   },
