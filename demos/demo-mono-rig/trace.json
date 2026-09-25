@@ -1,0 +1,1884 @@
+{
+  "schema": "typecad-hal/trace@1",
+  "capturedAt": "2026-09-24T18:09:28.516Z",
+  "port": "COM9",
+  "baudRate": 115200,
+  "intervalMs": null,
+  "samples": [
+    {
+      "seq": 431,
+      "tMs": 431571,
+      "sysExecCycles": 103554227931,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 111431802,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 103441732129,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1070772,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 432,
+      "tMs": 432573,
+      "sysExecCycles": 103794609956,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 111797995,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 103681747067,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1071645,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 433,
+      "tMs": 433575,
+      "sysExecCycles": 104034991981,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 112164227,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 103921762002,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1072518,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 434,
+      "tMs": 434576,
+      "sysExecCycles": 104275374006,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 112530426,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 104161776949,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1073391,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 435,
+      "tMs": 435578,
+      "sysExecCycles": 104515756031,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 112896643,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 104401791896,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1074264,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 436,
+      "tMs": 436579,
+      "sysExecCycles": 104756138056,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 113262839,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 104641806840,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1075137,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 437,
+      "tMs": 437581,
+      "sysExecCycles": 104996520081,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 113629056,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 104881821787,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1076010,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 438,
+      "tMs": 438583,
+      "sysExecCycles": 105236902106,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 113995264,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 105121836731,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1076883,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 439,
+      "tMs": 439584,
+      "sysExecCycles": 105477284131,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 114361472,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 105361851669,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1077756,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 440,
+      "tMs": 440586,
+      "sysExecCycles": 105717666156,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 114727680,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 105601866619,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1078629,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 441,
+      "tMs": 441587,
+      "sysExecCycles": 105958048181,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 115093897,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 105841881560,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1079502,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 442,
+      "tMs": 442589,
+      "sysExecCycles": 106198430206,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 115460090,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 106081896507,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1080375,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 443,
+      "tMs": 443591,
+      "sysExecCycles": 106438812231,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 115826313,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 106321911448,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1081248,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 444,
+      "tMs": 444592,
+      "sysExecCycles": 106679194256,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 116192494,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 106561926392,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1082121,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 445,
+      "tMs": 445594,
+      "sysExecCycles": 106919576281,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 116558711,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 106801941336,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1082994,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 446,
+      "tMs": 446595,
+      "sysExecCycles": 107159958306,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 116924934,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 107041956271,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1083867,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 447,
+      "tMs": 447597,
+      "sysExecCycles": 107400340331,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 117291148,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 107281971215,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1084740,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 448,
+      "tMs": 448599,
+      "sysExecCycles": 107640722356,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 117657349,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 107521986156,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1085613,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 449,
+      "tMs": 449600,
+      "sysExecCycles": 107881104383,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 118023578,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 107762001112,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1086486,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 450,
+      "tMs": 450602,
+      "sysExecCycles": 108121486408,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 118389780,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 108002016059,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1087359,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 451,
+      "tMs": 451603,
+      "sysExecCycles": 108361868433,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 118755967,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 108242031012,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1088232,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 452,
+      "tMs": 452605,
+      "sysExecCycles": 108602250458,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 119122154,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 108482045962,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1089105,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 453,
+      "tMs": 453607,
+      "sysExecCycles": 108842632483,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 119488359,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 108722060909,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1089978,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 454,
+      "tMs": 454608,
+      "sysExecCycles": 109083014508,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 119854591,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 108962075844,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1090851,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 455,
+      "tMs": 455610,
+      "sysExecCycles": 109323396533,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 120220769,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 109202090797,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1091724,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 456,
+      "tMs": 456611,
+      "sysExecCycles": 109563778558,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 120586983,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 109442105735,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1092597,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 457,
+      "tMs": 457613,
+      "sysExecCycles": 109804160583,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 120953215,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 109682120676,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1093470,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 458,
+      "tMs": 458615,
+      "sysExecCycles": 110044542608,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 121319420,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 109922135623,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1094343,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 459,
+      "tMs": 459616,
+      "sysExecCycles": 110284924633,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 121685604,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 110162150576,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1095216,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 460,
+      "tMs": 460618,
+      "sysExecCycles": 110525306658,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 122051824,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 110402165523,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1096089,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 461,
+      "tMs": 461619,
+      "sysExecCycles": 110765688683,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 122418023,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 110642180476,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1096962,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 462,
+      "tMs": 462621,
+      "sysExecCycles": 111006070708,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 122784237,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 110882195426,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1097835,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 463,
+      "tMs": 463623,
+      "sysExecCycles": 111246452733,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 123150415,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 111122210367,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1098708,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 464,
+      "tMs": 464624,
+      "sysExecCycles": 111486834758,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 123516623,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 111362225311,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1099581,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 465,
+      "tMs": 465626,
+      "sysExecCycles": 111727216783,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 123882852,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 111602240249,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1100454,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 466,
+      "tMs": 466627,
+      "sysExecCycles": 111967598808,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 124249044,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 111842255193,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1101327,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 467,
+      "tMs": 467629,
+      "sysExecCycles": 112207980835,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 124615249,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 112082270149,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1102200,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 468,
+      "tMs": 468631,
+      "sysExecCycles": 112448362860,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 124981469,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 112322285090,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1103073,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 469,
+      "tMs": 469632,
+      "sysExecCycles": 112688744885,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 125347656,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 112562300028,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1103946,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 470,
+      "tMs": 470634,
+      "sysExecCycles": 112929126910,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 125713897,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 112802314969,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1104819,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 471,
+      "tMs": 471635,
+      "sysExecCycles": 113169508935,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 126080114,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 113042329907,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1105692,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 472,
+      "tMs": 472637,
+      "sysExecCycles": 113409890960,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 126446310,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 113282344848,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1106565,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 473,
+      "tMs": 473639,
+      "sysExecCycles": 113650272985,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 126812515,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 113522359789,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1107438,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 474,
+      "tMs": 474640,
+      "sysExecCycles": 113890655010,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 127178750,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 113762374727,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1108311,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 475,
+      "tMs": 475642,
+      "sysExecCycles": 114131037035,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 127544974,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 114002389662,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1109184,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 476,
+      "tMs": 476643,
+      "sysExecCycles": 114371419435,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 127911824,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 114242403760,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1110614,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 477,
+      "tMs": 477645,
+      "sysExecCycles": 114611802122,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 128278419,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 114482418437,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1112044,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 478,
+      "tMs": 478647,
+      "sysExecCycles": 114852184809,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 128644975,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 114722433117,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1113474,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 479,
+      "tMs": 479648,
+      "sysExecCycles": 115092567496,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 129011555,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 114962447788,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1114904,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 480,
+      "tMs": 480650,
+      "sysExecCycles": 115332950183,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 129378168,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 115202462465,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1116334,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 481,
+      "tMs": 481651,
+      "sysExecCycles": 115573332870,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 129744751,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 115442477133,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1117764,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 482,
+      "tMs": 482653,
+      "sysExecCycles": 115813715557,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 130111313,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 115682491807,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1119194,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 483,
+      "tMs": 483655,
+      "sysExecCycles": 116054098244,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 130477902,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 115922506481,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1120624,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 484,
+      "tMs": 484656,
+      "sysExecCycles": 116294480931,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 130844478,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 116162521155,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1122054,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 485,
+      "tMs": 485658,
+      "sysExecCycles": 116534863620,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 131211064,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 116402535829,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1123484,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 486,
+      "tMs": 486659,
+      "sysExecCycles": 116775246307,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 131577647,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 116642550503,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1124914,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 487,
+      "tMs": 487661,
+      "sysExecCycles": 117015628994,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 131944236,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 116882565183,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1126344,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 488,
+      "tMs": 488663,
+      "sysExecCycles": 117256011681,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 132310819,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 117122579860,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1127774,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 489,
+      "tMs": 489664,
+      "sysExecCycles": 117496394368,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 132677390,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 117362594525,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1129204,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 490,
+      "tMs": 490666,
+      "sysExecCycles": 117736777055,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 133043982,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 117602609202,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1130634,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 491,
+      "tMs": 491667,
+      "sysExecCycles": 117977159742,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 133410583,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 117842623864,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1132064,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 492,
+      "tMs": 492669,
+      "sysExecCycles": 118217542429,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 133777154,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 118082638529,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1133494,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 493,
+      "tMs": 493671,
+      "sysExecCycles": 118457925116,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 134143758,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 118322653197,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1134924,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 494,
+      "tMs": 494672,
+      "sysExecCycles": 118698307803,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 134510350,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 118562667868,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1136354,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 495,
+      "tMs": 495674,
+      "sysExecCycles": 118938690490,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 134876933,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 118802682530,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1137784,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 496,
+      "tMs": 496675,
+      "sysExecCycles": 119179073177,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 135243522,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 119042697204,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1139214,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 497,
+      "tMs": 497677,
+      "sysExecCycles": 119419455864,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 135610084,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 119282711884,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1140644,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 498,
+      "tMs": 498679,
+      "sysExecCycles": 119659838551,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 135976661,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 119522726564,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1142074,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 499,
+      "tMs": 499680,
+      "sysExecCycles": 119900221238,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 136343283,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 119762741226,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1143504,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 500,
+      "tMs": 500682,
+      "sysExecCycles": 120140603925,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 136709905,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 120002755894,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1144934,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 501,
+      "tMs": 501683,
+      "sysExecCycles": 120380986612,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 137076464,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 120242770571,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1146364,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 502,
+      "tMs": 502685,
+      "sysExecCycles": 120621369299,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 137443034,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 120482785233,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1147794,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 503,
+      "tMs": 503687,
+      "sysExecCycles": 120861751988,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 137809632,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 120722799901,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1149224,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 504,
+      "tMs": 504688,
+      "sysExecCycles": 121102134675,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 138176236,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 120962814569,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1150654,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    },
+    {
+      "seq": 505,
+      "tMs": 505690,
+      "sysExecCycles": 121342517362,
+      "threads": [
+        {
+          "name": "sysworkq",
+          "execCycles": 138542828,
+          "stackUnusedBytes": 7520,
+          "stackSizeBytes": 8192
+        },
+        {
+          "name": "idle",
+          "execCycles": 121202829237,
+          "stackUnusedBytes": 816,
+          "stackSizeBytes": 1024
+        },
+        {
+          "name": "main",
+          "execCycles": 1152084,
+          "stackUnusedBytes": 3616,
+          "stackSizeBytes": 4096
+        }
+      ]
+    }
+  ]
+}
