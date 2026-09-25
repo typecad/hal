@@ -7,10 +7,9 @@ import type { CreateProjectOptions } from "./templates.js";
 import { KNOWN_TARGETS, type KnownTarget } from "./scaffold.js";
 import { findPackBoard, packBoardAsTarget } from "./pack-targets.js";
 import { pickTarget } from "./board-search.js";
+import { ask, StdinClosedError, printNonInteractiveCancel, type ReadlineInterface } from "./prompt-io.js";
 import { activeBoardCatalog } from "../board-catalog/index.js";
 import { frameworksForTarget, frameworkCatalogEntry, frameworkCompatibleWithTarget, FRAMEWORK_CATALOG, frameworkTargetProfile, probeMethodsForBoard, probeRunnerQuirks } from './framework-catalog.js';
-
-type ReadlineInterface = ReturnType<typeof readline.createInterface>;
 
 /**
  * Attached serial ports for the wizard's port question — dependency-free
@@ -61,7 +60,7 @@ async function promptText(
 ): Promise<string> {
   while (true) {
     const suffix = defaultValue ? ` (${defaultValue})` : "";
-    const answer = await rl.question(`${chalk.cyan("?")} ${prompt}${suffix}: `);
+    const answer = await ask(rl, `${chalk.cyan("?")} ${prompt}${suffix}: `);
     const value = (answer.trim() || (defaultValue ?? "")).trim();
 
     if (validate) {
@@ -86,7 +85,7 @@ async function promptSelect(
   }
 
   while (true) {
-    const answer = await rl.question(`  Enter number (1-${options.length}): `);
+    const answer = await ask(rl, `  Enter number (1-${options.length}): `);
     const idx = parseInt(answer.trim(), 10) - 1;
     if (idx >= 0 && idx < options.length) {
       return options[idx].value;
@@ -101,7 +100,7 @@ async function promptConfirm(
   defaultValue: boolean,
 ): Promise<boolean> {
   const suffix = defaultValue ? " (Y/n)" : " (y/N)";
-  const answer = await rl.question(`${chalk.cyan("?")} ${prompt}${suffix}: `);
+  const answer = await ask(rl, `${chalk.cyan("?")} ${prompt}${suffix}: `);
   const trimmed = answer.trim().toLowerCase();
   if (trimmed === "") return defaultValue;
   return trimmed === "y" || trimmed === "yes";
@@ -353,6 +352,13 @@ if (partialOptions?.noStarter) {
         : {}),
     };
   } catch (err) {
+    if (err instanceof StdinClosedError) {
+      // A parent tool spawned the wizard without forwarding stdin — every
+      // prompt is undanswerable. Cancel with the flag-based escape hatch
+      // rather than hanging or dumping a raw error.
+      printNonInteractiveCancel();
+      return null;
+    }
     if (err && typeof err === 'object' && (err as any).code === 'ERR_USE_AFTER_CLOSE') {
       return null;
     }
