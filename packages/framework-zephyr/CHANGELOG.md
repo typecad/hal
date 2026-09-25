@@ -1,5 +1,536 @@
 # @typecad/framework-zephyr
 
+## 1.0.0-alpha.19
+
+### Minor Changes
+
+- fcffaae: Stage 4 — e-ink (the refresh-model proof, DISPLAY-TARGETS.md)
+  
+  Same 1bpp format as mono; the new axis is REFRESH: deferred — render on
+  signal change, flush with the panel's flash cycle, panel sleeps. The
+  zero-power static display is the feature.
+  
+  - Panel class as data: EINK_PANEL_COMPATIBLES (ssd1608/1673/1675a/1680/
+    1681, uc8151d/8175/8176/8179) classify drop-ins via isEinkDisplay;
+    synthesis marks the profile displayClass 'eink' + mono format; a new
+    displayClassForDriver strategy hook mirrors the class into the
+    engine-side build profile (the same seam colorFormatForDriver proved),
+    so deriveCapabilities flips to deferred-partial with all dynamic
+    features off — UI_REFRESH_DEFERRED + the dirty-rect accumulator path.
+  - E-ink adapter: the mono adapter parameterized for the refresh model —
+    skips the MONO01 negotiation (ssd16xx/uc81xx are MONO10-only; pushes
+    always complement) and THROTTLES flushes to one flash per 2s minimum
+    (TC_EINK_MIN_REFRESH_MS): the drivers block through the panel's BUSY
+    line inside display_write, so an unthrottled binding tick would stall
+    the app loop for seconds per change. The newest frame stays pending
+    between flashes.
+  - Transitions and keyframes deleted outright on the deferred target
+    (lowering decision): a 1-4s flash cycle cannot animate, and emitted
+    tables would invite per-tick churn triggering throttled flushes for no
+    visual change.
+  - Overlay: e-ink drop-ins ride the mipi-dbi SPI branch with
+    busy-gpios from display.busyPin (required by both binding families,
+    active-high), SPI capped at 4MHz (TFT's 80MHz default is far past the
+    controllers' shift registers), and the compatible resolution fixed to
+    prefer the drop-in driver string over the controller-default table.
+    Kconfig enables CONFIG_SSD16XX / CONFIG_UC81XX by family;
+    phandle-array props are never emitted from numeric binding fallbacks.
+  - demos/demo-eink (esp32s3 + ssd1680 296x176, compile-verified):
+    static glanceable layout — bound readout, a progress bar (fills, no
+    animation), the throttle noted on-panel.
+- e3ea6d3: Stage 3 — grayscale (gray8) lowering target (DISPLAY-TARGETS.md)
+  
+  The same UI API now lowers to 8-bit luminance for 16-gray OLED panels
+  (SSD1327-class): colors resolve to Rec.601 luminance bytes, the preview
+  renders the exact gray ramp the panel gets, and the full-frame push rides
+  one display_write of an L_8 framebuffer.
+  
+  - Pixel-format seam proven: UI_COLOR_T switches to uint8_t with a gray
+    blend (ui_blend8) and lerp (lerp_color_8); UI_COLOR_DEPTH 8;
+    UI_NATIVE_GRAY8 gates the shared full-frame paths (scroll clipping,
+    canvas absorbing overloads, per-pixel image draws) while color targets
+    stay byte-identical.
+  - Antialiasing and opacity blending RETURN on gray8 (the luminance ramp
+    replaces mono's 1bpp threshold); fonts keep their alpha4 nibble
+    bitmaps; gradients still flatten to the first-stop gray; keyframe
+    animation stays elided (an 8-16KB frame at I2C fast mode is
+    ~50-100ms — animation dies by lowering decision, per the design).
+  - Zephyr: the solomon,ssd1327 driver accepts PIXEL_FORMAT_L_8 (it
+    nibble-reduces to the panel's 16 levels) — the gray adapter keeps a
+    row-major L_8 backing store and pushes the whole frame; drop-in
+    configs (driver 'solomon,ssd1327') synthesize gray8 profiles via the
+    compatible table (isGrayDisplay / colorFormatForDriver). The overlay
+    generator emits the ssd1327 binding's required tuning props
+    (oscillator-freq, start-line, remap-value, phase-length,
+    display-offset, multiplex-ratio) with datasheet-starting defaults.
+  - Preview: gray8 storage mode (luminance bytes expand to RGB at the
+    canvas push), gray blend/lerp/dim, luminance-sampled images, and the
+    full-frame repaint semantic matching the device.
+  - demos/demo-gray (esp32s3 + ssd1327 128x128 on the rig wiring,
+    compile-verified): AA title text, three gray shades, the gradient
+    image at luminance fidelity, and a 60%-opacity blend row.
+- b9977b6: The peripheral surface round — nine new hardware classes, one import
+  
+  Everything below hangs off the single `@typecad/hal` import and the
+  generated board module, and each class re-exports only where this board's
+  facts support it (GATED_EXPORTS — the narrowed-gateway rule):
+  
+  - **Servo** — hobby RC servo output on a PWM channel: a calibrated 50 Hz
+    wrapper over the thin PWM class. Construction opts carry the servo's
+    calibrated pulse range (`minUs`/`maxUs`, defaults 1000/2000) and optional
+    travel (`maxAngle`, default 180); `writeAngle` maps the angle onto that
+    range in the LOWERED C++ (runtime arithmetic against a runtime angle — it
+    cannot fold at transpile time), and every write clamps to the calibrated
+    range so a stray value cannot command a damaging pulse width. `idle()`
+    stops driving the pulse — most servos stop actively holding position
+    without pulses.
+  - **Strip** — addressable RGB LED strip (WS2812/SK6812) over one of the
+    board's wired SPI buses: Zephyr's ws2812-spi driver synthesizes the
+    waveform on the bus's MOSI line, so whatever pads the board's devicetree
+    routes that SPI to are the pads the strip can use. `count` is a
+    construction fact (the pixel buffer is sized at build time);
+    set/fill/clear edit the buffer only and `show()` flushes it — one wire
+    transaction per show, the Arduino-Neopixel discipline.
+  - **Keyboard / Mouse** — USB HID devices over the Zephyr "next" USB stack
+    (`zephyr,hid-device`). One HID interface per program (Keyboard OR Mouse,
+    a v1 ceiling). `begin()` registers the boot report descriptor and starts
+    the device stack; the verbs maintain the boot report in the lowered C++
+    (an 8-byte keyboard report — modifier byte + 6 key slots; a 4-byte mouse
+    one — buttons + relative x/y/wheel) and each verb submits one input
+    report. Key and button arguments are `KEY.*`/`MOUSE.*` tokens mapped
+    name-for-name onto Zephyr's HID_KEY_* / button macros.
+  - **Matrix** — GPIO key-matrix scanning over the Zephyr input subsystem
+    (gpio-kbd-matrix): the driver scans the row/column grid and reports each
+    key event as ABS_X (column) + ABS_Y (row) + BTN_TOUCH (press state); the
+    lowered shim decodes that triple and trampolines into the user callback
+    as (row, col, pressed). Idle mode is interrupt-on-row — no CPU while
+    idle.
+  - **Clock** — wall-clock time over the board's RTC device: boards with a
+    hardware calendar RTC alias it (Zephyr's `rtc` convention), and every
+    board with a free counter can carry one via the `zephyr,rtc-counter`
+    shim the generated overlay synthesizes (a CHILD of the counter node —
+    the counter driver, and the Counter class with it, keep the parent), so
+    Clock exports wherever a free counter exists. v1 semantics: set/now
+    within a power session; only hardware-calendar nodes retain time across
+    power loss.
+  - **CAN** — the thin Zephyr-shaped CAN bus: one controller per board (the
+    harvested `can@` node — ESP32 TWAI, STM32 bxCAN, NXP FlexCAN…),
+    addressed by its devicetree nodelabel. `begin()` applies mode + bitrate
+    + start in the order the classic controller requires (it must stop for
+    mode/bitrate changes); `send()` builds one can_frame and submits it;
+    `onReceive()` installs an accept-all filter whose callback carries the
+    frame as scalars. LOOPBACK is the zero-hardware bench mode —
+    `begin({ loopback: true })` and every sent frame loops back to your own
+    filter: no transceiver, no wiring.
+  - **I2S** — the thin Zephyr-shaped audio stream (the harvested `i2s@`
+    node): the verbs own their setup (the PWM first-use discipline) — the
+    first `write()` configures + starts TX, the first `read()` RX, so a
+    write-only program (tone to an amplifier) never touches the RX engine.
+    Samples are 16-bit; one block per call (blockFrames stereo frames,
+    zero-padded on short writes). The one-jumper hardware loopback is the
+    bench test.
+  - **I2CResponder** — this board AS an I2C target (slave mode): the mirror
+    of I2CTarget, where the board talks to a device at an address — here the
+    board ANSWERS at one. Zephyr's i2c_target API verbatim in shape:
+    registration behind a once-guard, a controller write landing in the
+    receive ring (the UART discipline: `available()`/`read()` poll it,
+    `onReceive(len)` announces at the transaction's STOP), and a controller
+    read draining the response buffer the user fills with `write()`
+    (`onRequest` fires as the read begins — the Wire onRequest semantic).
+    Callbacks fire in the driver's interrupt context — the ISR discipline.
+  - **Power** — explicit power-state entry: the CPU node's declared
+    power-states are the facts (harvested into `zephyr.power.states.*`);
+    light states belong to the idle POLICY, while the deepest state
+    ("soft-off") is explicit-entry only — per Zephyr's own devicetree
+    comment — and that is exactly this class's surface. `offFor(ms)` is the
+    timed wake (the battery pattern: read sensors, publish, offFor(60_000),
+    repeat).
+  - **1-Wire sensors** — the DS18B20 through the existing Sensor class:
+    construction is a data-line Pin (bit-banged w1-gpio master, synthesized
+    in the overlay) plus the resolution opt; fetch/get are the same shape as
+    every bus sensor.
+  - **Simulator** — `@typecad/hal/sim` gains the i2c-responder bus sim.
+  - **Engine** — every verb is a structured hal-op IR node (`pwm.servo_*`,
+    `strip.*`, `hid.kb_*`/`hid.mouse_*`, `clock.*`, `can.*`, `power.*`,
+    `matrix.on_key`, `i2c.resp_*`) with Zephyr lowerings, hal-resolution
+    tests for each class, and hardware tests in the hal suite (servo, strip,
+    HID keyboard/mouse, matrix, onewire on the rig; clock, can, i2s common).
+- 2706586: Stage 2 — the mono (1bpp) display lowering target (DISPLAY-TARGETS.md)
+  
+  Users author the SAME .ui files; the build flattens to 1bpp and the preview
+  shows exactly what the panel gets. The dirty/band/scroll-canvas machinery is
+  bypassed under the new UI_FULL_FRAME_REDRAW define — a 128×64 frame is 1KB,
+  composited whole in the panel's backing store and pushed as ONE display_write.
+  
+  - Capabilities: any `colorFormat: "mono"` profile derives the mono lowering
+    (no displayClass needed); OLED-class mono stays interactive (immediate
+    refresh, scroll + keyframes on), e-ink keeps the deferred axis for Stage 4.
+  - Flattening rules with build-time warnings: colors → luminance threshold
+    0/1, antialias off, border-radius → square, shadows/opacity dropped,
+    gradients → first-stop fill, `:pressed` → face inversion (mono's native
+    highlight; the :pressed color transitions are not emitted).
+  - Fonts: the shared subsetting pipeline packs 1bpp glyph bitmaps (8 px/byte,
+    dataOffset in bits) — half the flash of the 4-bit alphas; the runtime's
+    ui_font_alpha_at gains the mono format branch.
+  - Images: per-image threshold (the shared luminance rule) or
+    `<img dither="floyd-steinberg">`, packed 1bpp at build; the preview renders
+    the SAME baked bits.
+  - Zephyr mono UI adapter (ui-adapter-mono.ts): vtiled MONO01 backing store
+    (the layout the ssd1306-class drivers require), mono scroll-viewport clip,
+    MONO10 fallback via inverted pushes. The mono decline in the dispatch is
+    gone; drop-in mono compatibles (solomon,ssd1306/ssd1309, sinowealth,sh1106)
+    synthesize mono profiles.
+  - Fixed in Stage 1's direct-op path: the mono framebuffer now packs VTILED
+    MONO01 with pitch == width — the old horizontal packing failed the
+    ssd1306 driver's pitch check (-EINVAL) and never reached the panel.
+    Registered profiles are now seeded into the display state (they weren't).
+  - Stage 2g: native_sim CI gate — the native-sim-mono profile rides the
+    board's built-in sdl_dc (no generated display node, MONO01 format);
+    demos/demo-mono-sim west-compiles the whole lowering on Linux runners.
+    demos/demo-mono-oled west-compiles on esp32s3 (verified: ssd1306@3c node,
+    CONFIG_SSD1306 + CONFIG_I2C self-build, zephyr.elf links).
+  - Rig path (demos/demo-mono-rig): drop-in `solomon,ssd1309` over I2C with
+    `display.i2cPins { sda, scl }` — the overlay remuxes i2c0's pinctrl to the
+    wired pins (mirroring the touch remux) and names the DT node from the
+    compatible's panel segment. The drop-in mono dispatch now routes the 1bpp
+    adapter (it previously fell through to the rgb565 display-API adapter).
+    The demo self-drives from Time-based bindings (uptime, sweeping progress,
+    a 1 Hz :pressed face-inversion toggle) — no input wiring needed.
+  - Engine fixes the rig demo surfaced: Math.* calls in ui.bind callbacks now
+    pull the math header (the include scan never saw binding-table bodies),
+    and Math.* method/call expressions infer as double so the renderer's
+    modulo→fmod promotion fires (`Math.floor(x) % n` used to emit
+    `double % int`). Known remaining gap: TEXT bindings prerender outside the
+    renderer, so modulo on doubles inside a text template still needs a
+    node-value read (see the demo's sweepPct).
+  - Hardware-verified fixes (SSD1309 rig): `:root` styling declarations now
+    apply to the screen root — parseCss previously kept only the custom
+    properties and silently dropped authored root backgrounds/colors, so the
+    UA's light screen defaults won the cascade and the panel rendered with a
+    fully-lit background (which read as white lines flanking the pressed
+    rect's border). The mono glyph bake threshold drops from 50% to ~31%
+    coverage (MONO_ALPHA_THRESHOLD 8→5): thin strokes of a 10px bold face sit
+    under 50% coverage and dropped out, leaving ragged anti-alias-looking
+    edges; 5 keeps strokes connected without over-bolding (both the panel and
+    the preview render the same baked bits).
+  - Mono light hinting: the 1bpp bake now snaps stems onto the pixel grid (a
+    simplified FreeType-autohinter mono pass — near-vertical/horizontal edge
+    runs, stem pairing, integer-width snapping, interpolated point shifts),
+    plus a conservative despeckle/hole-fill finishing pass that exempts
+    tiny-mark glyphs (a middot at 10px is legitimately one pixel). A 1.4px
+    stem renders one constant integer width instead of wobbling between 1
+    and 2 pixels along its length; stems share phase across glyphs because
+    every edge snaps to the same integer lattice. The alpha4 (color display)
+    bake stays on the raw outline, byte-identical.
+  - Pair kerning baked from opentype.js (the existing dependency — no new
+    packages): each face carries its subset's non-zero kern pairs (GPOS
+    lookups via getKerningValue, with the legacy `kern` table as fallback
+    because opentype.js never falls back itself when GPOS tables exist —
+    DejaVu ships both). The runtime applies the pair at the draw cursor via
+    a binary-searched UIFontKern table; ui_asset_text_width, span widths,
+    layout measurement (assetTextWidth), and the preview draw/width paths
+    all mirror it, so wrapping and centering measure what drawing renders.
+    Works for color and mono targets alike.
+  - Mono blue zones: the light hinting now derives the face's shared design
+    heights (baseline, x-height, cap-height — OS/2 sxHeight/sCapHeight when
+    present, 'x'/'H' glyph metrics otherwise; DejaVu ships an older OS/2) and
+    snaps horizontal edges within 0.35px of a zone to the zone's integer row
+    instead of their own rounding, so glyph-to-glyph drift that crosses an
+    integer boundary no longer puts one letter's x-height a row off. Paired
+    bars at a zone shift whole, preserving integer stem widths.
+  - Variable-weight bakes — investigated, deliberately not shipped yet:
+    opentype.js ^2 supports everything needed (glyph.getPath accepts
+    { variation: { wght } }, and font.variation.getTransform updates
+    advanceWidth from HVAR), but the repo bundles only static faces, so the
+    plan-key/CSS-weight-range semantics would land unverified. The verified
+    recipe when a variable TTF arrives: detect font.tables.fvar, clamp the
+    requested weight into the wght axis, pass variation coords to getPath,
+    read the advance from the transformed glyph, and key the parsed-font
+    cache by (path, weight) since getTransform mutates glyph.advanceWidth.
+  - Panel-verified fixes from the SSD1309 rig photo: (1) stem pairing could
+    pair the two edges of a COUNTER (an R bowl's top and bottom bars, an o's
+    inner walls) because they are adjacent with overlapping extents — snapping
+    them shut sheared the R's diagonal leg into a P and squashed the 9's
+    bowl. Pairs now require INK between the edges (a point-in-glyph probe at
+    the midpoint of the overlap), so only true strokes snap. (2) The mono
+    face subset carried only the static text's glyphs — script-level
+    ui.bind(..., 'text') targets are invisible at planning time, so bound
+    values drew with gaps ("t=12.5s" rendered "t=1 s"). Mono faces now widen
+    to the fallback charset unconditionally (~0.7KB mono1 bits; color targets
+    keep the precise per-node widening).
+  - Hinting deformation guard + the size floor: snapping a stroke to an
+    integer width deforms it by |round(gap) - gap| and squeezes the curves
+    attached to it — pairs needing more than 0.3px of deformation now keep
+    their designed width (the d/m bowls thinned below the draw threshold
+    before this). And the rig demo moves to 12px text in four 16px rows:
+    10px is this face's resolution floor (stems ~0.95px, features collide
+    with the threshold); at 12px stems quantize to 1px cleanly, counters
+    open, and every previously-damaged glyph renders complete. The demo
+    drops the fifth (#alt) line — its bound-text coverage duplicates
+    sweepPct's — and shortens the title to "SSD1309 · MONO" (the full
+    string overflows 122px at 12px).
+  - Stroke-consistency + smoothness round: (1) collinear edge fragments now
+    MERGE before pairing — a stem's edge splits where a curve junction breaks
+    the run, and the interleaved fragment blocked the stem's true partner in
+    sorted-adjacent pairing, leaving h/n/L/T/f walls unsnapped (a 1.1px stem
+    at the wrong phase renders 2px next to snapped 1px neighbors). (2) The
+    deformation cap rises 0.3 → 0.4px so genuinely-wide stems (DejaVu's '1'
+    at 1.64px) snap cleanly to 2px instead of rendering ragged raw. Cap stems
+    are heavier than lowercase BY DESIGN in this face — 2px caps against 1px
+    lowercase is correct optical weight, not inconsistency. (3) The
+    Technoblogy corner-bridge transposed to native scale: a diagonal
+    staircase step (ink at (x,y) and (x+1,y±1), both notch cells empty)
+    fills the notch cell with more surrounding ink, turning disconnected
+    staircases into 8-connected 45-degree runs. (4) 9px is the available
+    small size (bake-verified: digits and lowercase complete, counters
+    open; 8px is this face's floor) — the rig demo's percentage readout
+    uses it.
+  - Fixed the browser preview (black canvas): the preview's host runtime
+    loads in the browser through dist, and its value imports from the
+    bake-time font-assets/image-assets modules — which carry node:fs —
+    killed the entire module graph (type-only imports had been safe;
+    kerning and mono-image preview support turned them into runtime
+    imports). The browser-safe pieces now live in leaf modules with zero
+    node imports (font-kern.ts, image-mono.ts), re-exported for the bake,
+    and a graph-walking test guards the dist import graph against node
+    builtins forever. The preview snapshot builder also now binds the
+    display profile before baking fonts (matching the CLI transpile path)
+    so mono panels bake mono1 faces in the browser too, instead of an AA
+    rgb565 approximation; and mono drop-in demos declare colorFormat:
+    'mono' explicitly in their config — the preview server has no
+    framework strategy to infer it from the driver.
+  - The preview's script sandbox gains a Time shim: scripts import
+    { Time } from '@typecad/hal' and call Time.now() in ui.bind callbacks
+    (the device lowers that to the uptime clock), but the preview evaluates
+    the authored expression verbatim — every timing binding threw
+    "Time is not defined" once per tick, spamming the diagnostics panel.
+    Time.now()/nowUs() now follow the runtime's simulated clock (advances
+    by each tick's delta — deterministic under explicit deltas), and
+    sleep/busyWaitUs resolve immediately (the preview cannot block).
+  - Panel-trial round: the generated display I2C node declares
+    `clock-frequency = <400000>` (the 1KB full-frame push is
+    bandwidth-bound: ~25ms at the default 100kHz, ~7ms at fast mode —
+    animations stepped without it). Per-node text background clears are
+    skipped under UI_FULL_FRAME_REDRAW (the frame is re-seeded and
+    repainted in z order, so the clear was redundant AND erased previous
+    siblings' descenders that dipped into the box — the ladder's cut g
+    tails). New golden-bitmap suite pins the exact hinted 10/11/13px
+    A/g/R/% glyphs — rasterizer changes now fail a reviewable diff
+    instead of drifting silently. compat-report warns when a mono UI
+    uses font-size below the 10px legibility floor
+    (css-mono-font-size-floor).
+  - GPIO input on Zephyr: ui.watchPin previously emitted raw Arduino
+    pinMode/INPUT_PULLUP in setup and had no Zephyr story — the compile
+    failed the moment a mono UI watched a pin. Pin-mode configuration now
+    goes through the platform-strategy hook (setPinMode): Zephyr lowers to
+    a new __tc_gpio_configure_input helper (GPIO_INPUT | GPIO_PULL_UP on
+    the owning controller via the existing __tc_gpio_dev dispatcher),
+    Arduino keeps pinMode, and cuttlefish stops emitting Wiring tokens by
+    name on this path. demos/demo-mono-features exercises the verified-on-
+    hardware set in one flash: 1bpp images (threshold logo + Floyd-
+    Steinberg gradient), a 30-item virtualized list, a select, toast +
+    dialog triggered from the BOOT button (GPIO0) via ui.watchPin, and
+    visibility-driven pages. Scroll-drag and href navigation still need a
+    touch panel — their draw paths compile and render, interaction awaits
+    touch hardware.
+  - TrueType hinting is now the primary mono raster path: for fonts
+    shipping hinting bytecode (DejaVu does), the bake executes the
+    designer's own per-size grid fitting through opentype.js 2.0's
+    interpreter (glyph.getPath(..., { hinting: true }, font) — pixel-space
+    commands), and the geometric hinting stack (stem snapping, coalescing,
+    blue zones, corner bridging) is SKIPPED — double-hinting would fight
+    the instructions. Measured on the ladder: even 1px walls and
+    connected thin diagonals at 10px, clean round glyphs at 12, textbook
+    capitals at 17 — strictly better than the hand-built stack at every
+    size. Fonts without instructions (CFF, stripped TTFs) keep the
+    fallback stack; the alpha4 color path is untouched. Also: a stale
+    byte-budget assertion in the mono-lowering suite now budgets the
+    whole asset (the fallback charset) rather than one glyph.
+  - LVGL font-converter sources: `@font-face src: url("*.c")` with
+    lv_font_conv output (--format lvgl --bpp 1 --no-compress) bakes the
+    file's glyphs as-is into the mono1 pipeline — parser reads the bitmap
+    table, glyph_dsc metrics (adv_w in 1/16px), cmap ranges, and line
+    geometry; glyph placement follows the empirically derived rule (bitmap
+    bottom sits −ofs_y relative to the baseline; baseline = line_height −
+    base_line). No kern ships in these files. Characters outside the
+    converted symbol set bake as empty advance-only glyphs (gaps) — convert
+    with the full --range you need. The rig demo carries a temporary visual
+    test: title + button in LVGL 20px letters, uptime in our hinted 12px
+    bake, for side-by-side judging on the panel.
+  - Hardware round from that demo: NODE_PROGRESS and NODE_RANGE drew
+    INCREMENTALLY on the mono full-frame path — delta fills assume the
+    previous frame's pixels persist, but display_fillScreen wipes the frame
+    before every repaint, so the border/track vanished and only accumulated
+    fill segments survived (a lone horizontal line). Under
+    UI_FULL_FRAME_REDRAW both now full-draw every frame. And pages must be
+    position:absolute to overlay — in flow layout page B stacked at y64,
+    off-screen, so the visibility-driven flip showed a black panel.
+  - The direct list fallback's visible-row window hardcoded a 16px classic
+    font cell (+15/−16 constants): at item-height < 16 it computed
+    first > last and drew NO rows — a 24px list at item-height 11 showed
+    only its scrollbar. The window now scales with item-height, and the
+    demo uses item-height 15 to match the 11px face's cell.
+  - Preview full-frame parity: the browser preview ran the incremental
+    dirty-node path with per-node clears while the device runs
+    fillScreen-and-repaint-all — on mono they disagreed (the preview's
+    white text-clear extended past the header bar's 13px box, reading as
+    a band beneath the bar; the device had no such band after the
+    clear-skip). The preview's drawDirty now mirrors the device: on mono,
+    any dirty node repaints the WHOLE frame (fillScreen with the active
+    screen's background, every visible node in z order), text nodes skip
+    the per-node clear, and progress/range full-draw instead of delta
+    fills. Incremental behavior is untouched on color targets.
+  - compat-report warns when a <list> or <select> sits on a target with no
+    touch controller wired (ui-interactive-no-touch): they render but can
+    never be used there. The features demo's page B now models the
+    inputless idiom instead — live bound readouts (uptime, cycle counter,
+    pseudo-rssi) instead of the select and list, which also exercises the
+    documented % -on-doubles text-binding workaround (subtraction-form
+    modulo) on hardware.
+  
+  
+  Out of scope per the design: band renderer / scroll canvases / OSK on 1bpp.
+  Raw display.* ops keep the direct-op runtime beneath the UI path.
+- 84dab8a: Runtime tracing — `typecad-hal trace` turns a run into evidence
+  
+  Opt-in, sampling-based profiling in the Tracealyzer spirit: a heartbeat
+  sampler on the device, a host-side capture/report/view trio, and gates that
+  turn captures into CI verdicts. One config record drives both halves so they
+  cannot drift apart: `zephyr.trace: { enabled: true, intervalMs: 1000 }` in
+  typecad-hal.config.ts.
+  
+  - **Device sampler** (framework-zephyr): a `k_work_delayable` on the system
+    work queue samples per-thread execution cycles
+    (`k_thread_runtime_stats_get`) and stack unused/size every interval,
+    printing `[TR:` lines on the same printf/STDOUT channel the test-runner
+    protocol uses. Emitted into the entry TU only — a second copy in a
+    split-file TU would register the `SYS_INIT` twice and double every
+    heartbeat. The scaffold contributes exactly the Kconfig the sampler calls
+    (THREAD_RUNTIME_STATS, THREAD_MONITOR, THREAD_NAME, INIT_STACKS,
+    THREAD_STACK_INFO); the shim `#ifdef`s on THREAD_MONITOR +
+    THREAD_RUNTIME_STATS so a user override compiles the sampler out instead
+    of failing the link. `Thread.start` lowers a `k_thread_name_set` so user
+    threads carry labels (ENOSYS-safe without THREAD_NAME).
+  - **Host** (cuttlefish `src/trace/`): `trace capture` reads the port, groups
+    thread lines under heartbeats by seq (interleaved user prints are noise),
+    and rewrites `trace.json` after every closed heartbeat (schema
+    `typecad-hal/trace@1` — the audit sidecar pattern) so `trace view` can
+    poll it live. `trace report` computes per-thread CPU% host-side as
+    `delta(execCycles)/delta(sysExecCycles)` — no cycle/Hz units cross the
+    wire, idle appears as its own row, the column sums to ~100% — plus stack
+    high-water marks (checked against `query memory`'s static estimate) and
+    UI frame stats. `trace view` serves a dependency-free canvas timeline:
+    CPU lanes, the UI frame line, event markers.
+  - **User events** (hal): `Trace.mark("name")` / `Trace.event("name", value)`
+    lower to unconditional `__tc_trace_mark`/`__tc_trace_event` helpers — one
+    `[TR:EV:` line per call, call sites never depend on the trace config.
+    Human-rate events (transitions, requests, faults), never per-frame;
+    aggregate on the device first. Names are C string literals without colons.
+  - **UI frame + phase stats** (ui): for UI-mounted programs the emitter calls
+    the strategy's `uiFrameTimingLines` seam after `ui_tick`, feeding
+    `__tc_trace_ui_frame(delta)` — a block emitted for EVERY UI program
+    (call-site safety) that compiles away unless the traced entry block
+    defined `CUTTLEFISH_TRACE_UI`. The heartbeat reports frame count / avg /
+    max per interval as `[TR:UI:...]`, plus per-phase ui_tick microseconds as
+    `[TR:UP:...]` from cycle captures at emitTick's five slice seams
+    (bindings/transitions/draw/scroll/flush) — stripping the injected chunks
+    reproduces the plain slice concatenation byte-for-byte (the parity test).
+  - **CI gates**: `trace report --gate <metric><=|>=><limit>` (repeatable)
+    turns a capture into a regression gate — `cpu-avg:main<=50`,
+    `cpu-max:idle>=95`, `frame-max<=20`, `stack-min:main>=256` — exiting 1 on
+    violation or on absent data (a gate cannot pass on a metric the capture
+    lacks).
+  - **Continual monitoring**: `trace capture --baseline` compares the fresh
+    capture against the `trace-report.json` stamped beside every GREEN run
+    (the ratchet — a regressed run never moves the goalposts), exiting 1 on
+    drift beyond `--drift` (default 10% of baseline; CPU metrics floor at 3pp
+    so idle noise cannot fail a run). `zephyr.trace.alarms: { stackMinBytes,
+    frameMaxMs }` moves DETECTION onto the device — `[TR:ALARM:` lines the
+    moment a threshold breaches, riding the viewer's events axis as red ticks
+    and aggregating in the report. Reboots mid-capture split sessions
+    (repeated CFG or uptime regression); the viewer fetches only the visible
+    slice (`?from=&to=`) so hour-scale captures cost the same as minutes.
+  - **In-DSL trace assertions**: a test chain can end in `.trace(gate,
+    dwellMs?)` — the same gate grammar — evaluated HOST-side over the
+    heartbeats that closed inside that `it()` (the dwell keeps the window
+    populated; the test firmware inherits `zephyr.trace` from the project
+    config). Performance budgets become first-class test verdicts:
+    `describe().it().trace('cpu-avg:main<=30', 2500)`. Failure modes are
+    assertions with remedies, never crashes — an untraced test firmware, a
+    too-short dwell, or a malformed gate each fail with the fix in the
+    message.
+  - **The agent loop** (one command, verifiable verdict): `typecad-hal trace
+    capture --flash --duration 10 --gates-file trace-gates.json` — rebuild +
+    reflash, preflight the last build for the sampler (exit 2 with the remedy
+    when untraced, never a silent empty capture), auto-pick the lone serial
+    port, record, and evaluate the committed gates (exit 0/1). Progress goes
+    to stderr; `--quiet` makes stdout a single JSON summary line so captures
+    pipe cleanly into agent/CI tooling. `trace report --worst 5` answers
+    "which interval spiked, and in which phase". `typecad-hal create` stamps
+    this loop into every new project's AGENTS.md.
+  - **All boards equal by construction**: the sampler uses only kernel APIs
+    every Zephyr board has, gates on config not board facts, and degrades at
+    runtime (stack fields print `-1` where the arch cannot inspect a stack —
+    ARC's NO_UNUSED_STACK_INSPECTION). Compile/link-proven end to end on
+    xiao_ble + esp32s3_devkitc with `--autosar=strict` — the round also fixed
+    the pre-existing strict blockers it surfaced (C-style casts in the print
+    shim, `reinterpret_cast` categories in the UI canvas shims) — and
+    hardware-validated on esp32s3: `cpu-avg:idle>=50` passed over live
+    heartbeats; a deliberately failing `cpu-avg:main>=90` reported the
+    section's real values. demo-timing and demo-mono-rig are the traced
+    demos; demo-mono-sim carries the Linux CI gate.
+- 77a5904: `typecad-hal sbom` + `typecad-hal audit` — the product-compliance record pair
+  
+  Two new commands over the last build's own ground truth, never a heuristic
+  scan — the EU Cyber Resilience Act's technical-file obligations are the
+  design brief:
+  
+  - **`typecad-hal sbom`** — a build-true software bill of materials in
+    CycloneDX 1.6 JSON (default) or SPDX 2.3 JSON (generate-only): the Zephyr
+    kernel plus the west modules the last build ACTUALLY compiled
+    (linked-module filtering via `compile_commands.json`), each pinned by its
+    checked-out commit SHA, plus the hashed `zephyr.bin` artifact, the board
+    as a CycloneDX `device` component, and the toolchain in `formulation`
+    (the build environment — deliberately NOT a runtime product component,
+    the classic embedded SBOM mistake generic scanners make). Every
+    successful build stamps `<buildDir>/sbom.cdx.json` best-effort — a stamp
+    failure never fails the build. The serial number is a deterministic UUID
+    v5 over the component identities, so `--check` regenerates and compares
+    without false drift; `--diff` compares two documents. `--strict` treats
+    floating manifest revisions and missing SHAs as integrity holes. Emitted
+    documents validate against the official schemas, vendored in the test
+    fixtures.
+  - **`typecad-hal audit`** — evaluates the last build's MERGED Kconfig
+    (`<buildDir>/zephyr/.config` — the as-built truth, not config fragments)
+    against a curated Zephyr security baseline, plus a `compatible` sweep of
+    the resolved `zephyr.dts` as the attack-surface inventory. Rules are DATA
+    (`SECURITY_RULES`) evaluated over config/devicetree facts — never
+    board-name or SoC branches; a rule keys on `CONFIG_*`, and each carries
+    the CRA essential-requirement paraphrase that ties the finding to the
+    regulation. Justified exceptions are DEVIATIONS, not suppressed findings:
+    a committed `.typecad-hal/audit-waivers.json` (`{ rule, justification,
+    date }`) moves a finding into the recorded-deviations section — an empty
+    justification is rejected, because an unjustified waiver is just a muted
+    alarm. Every run writes `<buildDir>/security-audit.json` (schema
+    `typecad-hal/security-audit@1`) — the machine-readable record the future
+    CRA technical-file bundle and VEX work consume. `--strict` exits 1 on any
+    unwaived high/medium finding; `--json` prints only the report.
+  - **Shared ground truth** — `west-inventory.ts` is the as-built inventory
+    both `licenses` and `sbom` report from (the linked-module filtering and
+    build-directory discovery, moved out of licenses.ts when the sbom command
+    grew a second consumer): keep both consumers on the one inventory.
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies [fcffaae]
+- Updated dependencies [e3ea6d3]
+- Updated dependencies [b9977b6]
+- Updated dependencies [2706586]
+- Updated dependencies [84dab8a]
+- Updated dependencies [77a5904]
+  - @typecad/cuttlefish@1.0.0-alpha.19
+
 ## 1.0.0-alpha.18
 
 ### Minor Changes

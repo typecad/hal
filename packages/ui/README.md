@@ -91,7 +91,7 @@ npm run upload
   element reference
 - [`@typecad/hal`](https://www.npmjs.com/package/@typecad/hal) — the
   product this plugs into
-- [GitHub](https://github.com/justind000/typecode) — source and demos
+- [GitHub](https://github.com/typecad/hal) — source and demos
 
 ## License
 

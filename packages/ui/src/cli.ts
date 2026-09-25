@@ -30,7 +30,7 @@ defaults. It never touches the rest of your typecad-hal.config.ts, and adds a
 \`preview\` script to package.json so the desktop preview renderer starts with
 \`npm run preview\`.
 
-Docs: https://github.com/justind000/typecode/tree/main/packages/ui
+Docs: https://github.com/typecad/hal/tree/main/packages/ui
 `.trim();
 
 function printUsage(): void {
@@ -67,7 +67,7 @@ async function main(argv: string[]): Promise<number> {
       console.error("The integration wizard is interactive and needs a terminal.");
       console.error("Run `npx @typecad/ui --config` from your project directory, or configure");
       console.error("the `display` section of typecad-hal.config.ts manually:");
-      console.error("https://github.com/justind000/typecode/tree/main/packages/ui#display-configuration");
+      console.error("https://github.com/typecad/hal/tree/main/packages/ui#display-configuration");
       return 1;
     }
     const result = await runIntegrationWizard(process.cwd());

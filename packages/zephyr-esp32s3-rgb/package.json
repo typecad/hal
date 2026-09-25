@@ -1,6 +1,6 @@
 {
   "name": "@typecad/zephyr-esp32s3-rgb",
-  "version": "1.0.0-alpha.18",
+  "version": "1.0.0-alpha.19",
   "description": "TypeLED for the ESP32-S3 DevKitC onboard WS2812 RGB LED (Zephyr RTOS) — a typecad-hal library package",
   "type": "module",
   "main": "./dist/index.js",
@@ -21,12 +21,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/justind000/typecode.git",
+    "url": "git+https://github.com/typecad/hal.git",
     "directory": "packages/zephyr-esp32s3-rgb"
   },
-  "homepage": "https://github.com/justind000/typecode/tree/main/packages/zephyr-esp32s3-rgb",
+  "homepage": "https://github.com/typecad/hal/tree/main/packages/zephyr-esp32s3-rgb",
   "bugs": {
-    "url": "https://github.com/justind000/typecode/issues"
+    "url": "https://github.com/typecad/hal/issues"
   },
   "keywords": [
     "cpp",

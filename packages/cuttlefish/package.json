@@ -1,6 +1,6 @@
 {
   "name": "@typecad/cuttlefish",
-  "version": "1.0.0-alpha.18",
+  "version": "1.0.0-alpha.19",
   "description": "TypeScript to C++ transpiler \u2014 native, Arduino, and bare-metal targets",
   "type": "module",
   "main": "./dist/transpile.js",
@@ -130,12 +130,12 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/justind000/typecode.git",
+    "url": "git+https://github.com/typecad/hal.git",
     "directory": "packages/cuttlefish"
   },
-  "homepage": "https://github.com/justind000/typecode/tree/main/packages/cuttlefish",
+  "homepage": "https://github.com/typecad/hal/tree/main/packages/cuttlefish",
   "bugs": {
-    "url": "https://github.com/justind000/typecode/issues"
+    "url": "https://github.com/typecad/hal/issues"
   },
   "keywords": [
     "arduino",

@@ -1,6 +1,6 @@
 {
   "name": "@typecad/hal",
-  "version": "1.0.0-alpha.18",
+  "version": "1.0.0-alpha.19",
   "description": "TypeCAD hardware abstraction layer — GPIO, I2C, SPI, UART as regular TypeScript",
   "type": "module",
   "main": "./dist/index.js",
@@ -27,12 +27,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/justind000/typecode.git",
+    "url": "git+https://github.com/typecad/hal.git",
     "directory": "packages/hal"
   },
-  "homepage": "https://github.com/justind000/typecode/tree/main/packages/hal",
+  "homepage": "https://github.com/typecad/hal/tree/main/packages/hal",
   "bugs": {
-    "url": "https://github.com/justind000/typecode/issues"
+    "url": "https://github.com/typecad/hal/issues"
   },
   "keywords": [
     "cpp",
@@ -55,7 +55,7 @@
   },
   "author": "typecad0",
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.18"
+    "@typecad/cuttlefish": "1.0.0-alpha.19"
   },
   "sideEffects": false,
   "exports": {

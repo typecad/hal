@@ -1,6 +1,6 @@
 {
   "name": "@typecad/framework-zephyr",
-  "version": "1.0.0-alpha.18",
+  "version": "1.0.0-alpha.19",
   "description": "TypeCAD framework package for the Zephyr RTOS \u2014 west/CMake build, devicetree-driven GPIO",
   "type": "module",
   "main": "./dist/index.js",
@@ -39,10 +39,10 @@
     "dry-run": "node installer/install.mjs --dry-run"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.18"
+    "@typecad/cuttlefish": "1.0.0-alpha.19"
   },
   "devDependencies": {
-    "@typecad/hal": "1.0.0-alpha.18",
+    "@typecad/hal": "1.0.0-alpha.19",
     "typescript": "^5.7.3"
   },
   "license": "Apache-2.0",
@@ -51,12 +51,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/justind000/typecode.git",
+    "url": "git+https://github.com/typecad/hal.git",
     "directory": "packages/framework-zephyr"
   },
-  "homepage": "https://github.com/justind000/typecode/tree/main/packages/framework-zephyr",
+  "homepage": "https://github.com/typecad/hal/tree/main/packages/framework-zephyr",
   "bugs": {
-    "url": "https://github.com/justind000/typecode/issues"
+    "url": "https://github.com/typecad/hal/issues"
   },
   "keywords": [
     "ble",

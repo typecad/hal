@@ -1,6 +1,6 @@
 {
   "name": "@typecad/ui",
-  "version": "1.0.0-alpha.18",
+  "version": "1.0.0-alpha.19",
   "description": "TypeCAD UI authoring library — HTML/CSS-driven graphics for microcontrollers",
   "type": "module",
   "main": "./dist/index.js",
@@ -45,7 +45,7 @@
     "assets"
   ],
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.18",
+    "@typecad/cuttlefish": "1.0.0-alpha.19",
     "chalk": "^6.0.0",
     "css-tree": "^3.2.1",
     "decode-ico": "^0.4.1",
@@ -62,12 +62,12 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/justind000/typecode.git",
+    "url": "git+https://github.com/typecad/hal.git",
     "directory": "packages/ui"
   },
-  "homepage": "https://github.com/justind000/typecode/tree/main/packages/ui",
+  "homepage": "https://github.com/typecad/hal/tree/main/packages/ui",
   "bugs": {
-    "url": "https://github.com/justind000/typecode/issues"
+    "url": "https://github.com/typecad/hal/issues"
   },
   "keywords": [
     "arduino",

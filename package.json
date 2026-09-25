@@ -26,6 +26,7 @@
     "test:hw:ble": "cd packages/hal/tests/network && npm exec -- typecad-hal test --config ble-demo.config.ts ble-peripheral.test.ts",
     "changeset": "changeset",
     "version": "changeset version",
+    "publish": "node scripts/publish.mjs",
     "sync:typecad-ui": "node scripts/sync-typecad-ui.mjs",
     "test:hw:ble:full": "node packages/hal/tests/network/ble-orchestrate.mjs"
   },
