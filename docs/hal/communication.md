@@ -67,6 +67,32 @@ sensor.write([0x2C, 0x06]);                           // i2c_write (raw bytes)
 
 For managed sensor drivers over I2C, prefer `Sensor` with the carrier form — `new Sensor(SENSOR.sensirion_sht3xd, I2C1.device(0x44))` — which generates the devicetree node and typed channels ([Sensors](./sensors.md)). `I2CTarget` is for register-level access to parts the catalog doesn't cover.
 
+## I2C target mode — `I2CResponder`
+
+The mirror of `I2CTarget`: there the board talks **to** a device at an address; here the board **answers** at one (`i2c_target_register` behind a once-guard). A controller write lands in a receive ring; a controller read drains a response buffer you fill:
+
+```typescript
+import { I2C0 } from '@typecad/hal';
+
+const link = I2C0.responder(0x42);          // or new I2CResponder('I2C0', 0x42)
+
+link.onReceive((len: number): void => {     // a write completed — len bytes wait
+  while (link.available() > 0) {
+    const b = link.read();                  // pop the oldest (−1 when empty)
+  }
+});
+
+link.onRequest((): void => {                // a read begins — the refill point
+  link.write([0x01, 0x02, 0x03]);           // served first-byte-first; 0xFF past the end
+});
+```
+
+- Registration happens at the first responder call — install the callbacks early in setup so the address answers from boot.
+- Both callbacks fire in the driver's interrupt context: set a variable, post to a queue — don't busy-work.
+- The receive ring overflow-drops (default 64 bytes); the response buffer defaults to 32 — a `write()` longer than it is a build error.
+- Controller support varies by silicon (`-ENOSYS` prints loudly at registration when the driver has no target mode — ESP32's Zephyr driver, for instance); STM32 compiles it in under `CONFIG_I2C_TARGET`, which the build sets automatically.
+- The simulator models the whole bus (`@typecad/hal/sim`): `i2c.responder(0x42)` runs the same logic host-side, with the test bench driving controller transactions (`masterWrite`/`masterRead`) and loopback through `i2c.device(0x42)`.
+
 ## SPI — `SPITarget`
 
 One chip-select on a bus, against a statically generated `spi_dt_spec` (the overlay emits the CS pin, frequency, and mode bits as devicetree):
@@ -124,6 +150,18 @@ Two peripherals claiming the same pins (an `I2CTarget` on SCL and a `GPIO` outpu
 | `readReg(reg)` | `number` | `i2c_reg_read_byte`. |
 | `updateReg(reg, mask, value)` | `void` | Native read-modify-write (`i2c_reg_update_byte`). |
 | `write(bytes)` | `void` | Raw `i2c_write`. |
+
+### I2CResponder
+
+| Member | Returns | Description |
+| :--- | :--- | :--- |
+| `new I2CResponder(bus, address, opts?)` | `I2CResponder` | 7-bit address; `rxBufferBytes` (default 64), `txBufferBytes` (default 32). |
+| `I2C0.responder(address, opts?)` | `I2CResponder` | The bus factory — same construction. |
+| `onReceive(cb)` | `void` | `(len: number) => void` — a controller write completed; interrupt context. |
+| `onRequest(cb)` | `void` | `() => void` — a controller read begins; fill `write()` inside; interrupt context. |
+| `available()` | `number` | Bytes waiting in the receive ring. |
+| `read()` | `number` | Pop the oldest received byte; −1 when empty. |
+| `write(bytes)` | `void` | Load the response buffer for the next controller read. |
 
 ### SPITarget
 

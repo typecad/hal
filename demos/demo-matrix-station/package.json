@@ -1,0 +1,17 @@
+{
+  "name": "demo-matrix-station",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Matrix station (ESP32-S3 DevKitC) — a 2x2 GPIO key matrix driving a servo dial and an LED-strip marker, status on the console UART",
+  "type": "module",
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload",
+    "transpile": "typecad-hal build --no-transpile",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@typecad/framework-zephyr": "*"
+  }
+}

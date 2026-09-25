@@ -53,6 +53,15 @@ const config: TypecadConfig = {
       'tests/common/*.test.ts',
       'tests/board/*.test.ts',
     ],
+    // Suite-scope exclusion (the 08-uart precedent on the esp32s3 side):
+    // the F411 DOES carry USB OTG_FS (its board module exports the full
+    // USBConsole/Keyboard/Mouse set), but the HID test rig — host-side
+    // input verification — only exists on the esp32s3 desk for now. Move
+    // these to the include list when a blackpill HID rig lands.
+    exclude: [
+      'tests/board/05-hid-keyboard.test.ts',
+      'tests/board/05-hid-mouse.test.ts',
+    ],
   },
 };
 

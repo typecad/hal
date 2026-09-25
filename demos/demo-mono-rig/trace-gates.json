@@ -1,0 +1,1 @@
+{"gates":["cpu-avg:main<=25","frame-max<=60","stack-min:main>=512"]}

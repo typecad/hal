@@ -60,6 +60,7 @@ for (const file of readdirSync(bindingDir)) {
   const buses = new Set();
   if (/i2c-device\.yaml/.test(text)) buses.add('i2c');
   if (/spi-device\.yaml/.test(text)) buses.add('spi');
+  if (/w1-slave\.yaml/.test(text)) buses.add('w1');
   if (buses.size === 0) continue; // sensor-device only — not an attachable bus part
   const entry = parts.get(compatible) ?? { compatible, buses: new Set(), description, alert };
   for (const b of buses) entry.buses.add(b);

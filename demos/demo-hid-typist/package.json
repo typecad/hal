@@ -1,0 +1,17 @@
+{
+  "name": "demo-hid-typist",
+  "version": "1.0.0",
+  "private": true,
+  "description": "USB HID random typist (ESP32-S3 DevKitC) — the board enumerates as a keyboard and types a random key every 5-15 seconds",
+  "type": "module",
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload --port  COM9",
+    "transpile": "typecad-hal build --no-transpile",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@typecad/framework-zephyr": "*"
+  }
+}

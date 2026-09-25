@@ -1,0 +1,17 @@
+{
+  "name": "demo-timed-wake",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Timed-wake deep sleep (ESP32-S3 DevKitC) — wake, report over UART, Power.offFor(5000); one burst every ~5s at microamp draw between",
+  "type": "module",
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload --port COM9",
+    "transpile": "typecad-hal build --no-transpile",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "@typecad/framework-zephyr": "*"
+  }
+}
