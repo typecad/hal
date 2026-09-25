@@ -206,18 +206,6 @@ composited whole in the panel's backing store and pushed as ONE display_write.
   with the full --range you need. The rig demo carries a temporary visual
   test: title + button in LVGL 20px letters, uptime in our hinted 12px
   bake, for side-by-side judging on the panel.
-
-- GPIO input on Zephyr: ui.watchPin previously emitted raw Arduino
-  pinMode/INPUT_PULLUP and had never been ported — the compile failed the
-  moment a mono UI watched a pin. Pin-mode configuration now goes through
-  the platform-strategy hook (setPinMode): Zephyr lowers to
-  __tc_gpio_configure_input (GPIO_INPUT | GPIO_PULL_UP via the existing
-  controller dispatcher), Arduino keeps pinMode. demos/demo-mono-features
-  exercises the verified-on-hardware set in one flash: 1bpp images
-  (threshold + Floyd-Steinberg), a 30-item list, a select, toast + dialog
-  from the BOOT button via ui.watchPin, visibility-driven pages, and a
-  second screen compiling the href/ui_navigate path (activation needs
-  touch).
 - Hardware round from that demo: NODE_PROGRESS and NODE_RANGE drew
   INCREMENTALLY on the mono full-frame path — delta fills assume the
   previous frame's pixels persist, but display_fillScreen wipes the frame
