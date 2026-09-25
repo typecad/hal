@@ -17,6 +17,7 @@
 import { sensorFetch, sensorGet } from './emit.js';
 import { include } from './include.js';
 import type { I2CTarget } from './i2c-target.js';
+import type { Pin } from './gpio.js';
 import type { SPITarget } from './spi-target.js';
 import type { SensorChannelOf, SensorBusOf } from './sensor-catalog.generated.js';
 
@@ -24,8 +25,9 @@ import type { SensorChannelOf, SensorBusOf } from './sensor-catalog.generated.js
 type SensorPartId = keyof SensorChannelOf;
 
 /** The bus-device argument a part accepts, from its generated bus map:
- *  SPI-only parts take SPITarget, I2C-only take I2CTarget, dual-bus either. */
-type BusDeviceFor<B extends string> = B extends 'spi' ? SPITarget : B extends 'i2c' ? I2CTarget : I2CTarget | SPITarget;
+ *  SPI-only parts take SPITarget, I2C-only take I2CTarget, dual-bus either,
+ *  1-Wire parts take the data-line Pin (the bit-banged master's GPIO). */
+type BusDeviceFor<B extends string> = B extends 'spi' ? SPITarget : B extends 'i2c' ? I2CTarget : B extends 'w1' ? Pin : I2CTarget | SPITarget | Pin;
 export type SensorBusDevice<P extends SensorPartId = SensorPartId> = BusDeviceFor<SensorBusOf[P]>;
 
 /** Construction options. */
@@ -37,6 +39,8 @@ export interface SensorOptions {
   mode?: 0 | 1 | 2 | 3;
   /** Alert pin, on parts that expose one. */
   alert?: number;
+  /** 1-Wire parts: the converter resolution in bits (9-12). Default 12. */
+  resolution?: 9 | 10 | 11 | 12;
 }
 
 /**
@@ -55,10 +59,12 @@ export class Sensor<P extends SensorPartId = SensorPartId> {
   private readonly _spiHz: number = 1000000;
   private readonly _mode: number = 0;
   private readonly _alert: number = -1;
+  private readonly _resolution: number = 12;
 
   /** Construct a sensor handle. `part` is a `SENSOR.<name>` token; `dev`
    *  is the bus device (e.g. `I2C1.device(0x44)`) carrying bus and
-   *  address. The type parameter is editor-only — it narrows `get()` to
+   *  address — for 1-Wire parts, the data-line Pin (a bit-banged
+   *  master; wire a 4.7 kΩ external pull-up, the internal one is weak). The type parameter is editor-only — it narrows `get()` to
    *  this part's channels; the build validates against the driver's full
    *  channel list either way. */
   constructor(part: P, dev: SensorBusDevice<P>, opts?: SensorOptions) {
@@ -71,7 +77,7 @@ export class Sensor<P extends SensorPartId = SensorPartId> {
    *  last fetch. */
   fetch(): void {
     include('<zephyr/drivers/sensor.h>');
-    sensorFetch(this._part, this._bus, this._port, this._kind, this._spiHz, this._mode, this._alert);
+    sensorFetch(this._part, this._bus, this._port, this._kind, this._spiHz, this._mode, this._alert, this._resolution);
   }
 
   /** Read one channel of the last fetched sample as a number, in the
@@ -80,6 +86,6 @@ export class Sensor<P extends SensorPartId = SensorPartId> {
    *  the others in the editor. */
   get(chan: SensorChannelOf[P]): number {
     include('<zephyr/drivers/sensor.h>');
-    return sensorGet(this._part, this._bus, this._port, this._kind, this._spiHz, this._mode, this._alert, chan);
+    return sensorGet(this._part, this._bus, this._port, this._kind, this._spiHz, this._mode, this._alert, this._resolution, chan);
   }
 }

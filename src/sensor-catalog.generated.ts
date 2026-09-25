@@ -8,7 +8,7 @@
 //
 // Derived from Zephyr 4.4: dts/bindings/sensor/*.yaml (compatible, bus
 // kind, description) joined against the in-tree drivers' SENSOR_CHAN_*
-// occurrences (255 drivers scanned). 215 parts.
+// occurrences (255 drivers scanned). 217 parts.
 // Compatibles whose underscored form collides are dropped (0).
 //
 // This is the entire per-part surface of the Sensor HAL — `SENSOR.`
@@ -123,6 +123,8 @@ export const SENSOR_PART_INFO: Readonly<Record<string, SensorPartInfo>> = {
   "lm75": { compatible: "lm75", buses: ['i2c'], description: "LM75 Digital Temperature Sensor with 2-Wire Interface.", channels: ['AMBIENT_TEMP'], alert: false, kconfig: [] },
   "lm77": { compatible: "lm77", buses: ['i2c'], description: "|", channels: ['AMBIENT_TEMP'], alert: false, kconfig: [] },
   "maxbotix_mb7040": { compatible: "maxbotix,mb7040", buses: ['i2c'], description: "MB7040 ultrasonic distance sensor", channels: ['DISTANCE'], alert: false, kconfig: [] },
+  "maxim_ds18b20": { compatible: "maxim,ds18b20", buses: ['w1'], description: "Maxim 1-Wire temperature sensor", channels: ['AMBIENT_TEMP'], alert: false, kconfig: [] },
+  "maxim_ds18s20": { compatible: "maxim,ds18s20", buses: ['w1'], description: "Maxim 1-Wire ds18s20 temperature sensor", channels: [], alert: false, kconfig: [] },
   "maxim_max17055": { compatible: "maxim,max17055", buses: ['i2c'], description: "Maxim MAX17055 Fuel Gauge", channels: ['CURRENT', 'GAUGE_AVG_CURRENT', 'GAUGE_CYCLE_COUNT', 'GAUGE_DESIGN_VOLTAGE', 'GAUGE_DESIRED_CHARGING_CURRENT', 'GAUGE_DESIRED_VOLTAGE', 'GAUGE_FULL_CHARGE_CAPACITY', 'GAUGE_NOM_AVAIL_CAPACITY', 'GAUGE_REMAINING_CHARGE_CAPACITY', 'GAUGE_STATE_OF_CHARGE', 'GAUGE_TEMP', 'GAUGE_TIME_TO_EMPTY', 'GAUGE_TIME_TO_FULL', 'GAUGE_VOLTAGE'], alert: false, kconfig: [] },
   "maxim_max17262": { compatible: "maxim,max17262", buses: ['i2c'], description: "Maxim MAX17262 Fuel Gauge", channels: ['GAUGE_AVG_CURRENT', 'GAUGE_CYCLE_COUNT', 'GAUGE_DESIGN_VOLTAGE', 'GAUGE_DESIRED_CHARGING_CURRENT', 'GAUGE_DESIRED_VOLTAGE', 'GAUGE_FULL_CHARGE_CAPACITY', 'GAUGE_NOM_AVAIL_CAPACITY', 'GAUGE_REMAINING_CHARGE_CAPACITY', 'GAUGE_STATE_OF_CHARGE', 'GAUGE_TEMP', 'GAUGE_TIME_TO_EMPTY', 'GAUGE_TIME_TO_FULL', 'GAUGE_VOLTAGE'], alert: false, kconfig: [] },
   "maxim_max30101": { compatible: "maxim,max30101", buses: ['i2c'], description: "MAX30101 heart rate sensor", channels: ['AMBIENT_LIGHT', 'DIE_TEMP', 'GREEN', 'IR', 'LIGHT', 'RED'], alert: false, kconfig: [] },
@@ -433,6 +435,10 @@ export const SENSOR = {
   "lm77": "lm77",
   /** MB7040 ultrasonic distance sensor — i2c. Channels: DISTANCE */
   "maxbotix_mb7040": "maxbotix_mb7040",
+  /** Maxim 1-Wire temperature sensor — w1. Channels: AMBIENT_TEMP */
+  "maxim_ds18b20": "maxim_ds18b20",
+  /** Maxim 1-Wire ds18s20 temperature sensor — w1 (no driver channel scan) */
+  "maxim_ds18s20": "maxim_ds18s20",
   /** Maxim MAX17055 Fuel Gauge — i2c. Channels: CURRENT, GAUGE_AVG_CURRENT, GAUGE_CYCLE_COUNT, GAUGE_DESIGN_VOLTAGE, GAUGE_DESIRED_CHARGING_CURRENT, GAUGE_DESIRED_VOLTAGE, GAUGE_FULL_CHARGE_CAPACITY, GAUGE_NOM_AVAIL_CAPACITY, GAUGE_REMAINING_CHARGE_CAPACITY, GAUGE_STATE_OF_CHARGE, GAUGE_TEMP, GAUGE_TIME_TO_EMPTY, GAUGE_TIME_TO_FULL, GAUGE_VOLTAGE */
   "maxim_max17055": "maxim_max17055",
   /** Maxim MAX17262 Fuel Gauge — i2c. Channels: GAUGE_AVG_CURRENT, GAUGE_CYCLE_COUNT, GAUGE_DESIGN_VOLTAGE, GAUGE_DESIRED_CHARGING_CURRENT, GAUGE_DESIRED_VOLTAGE, GAUGE_FULL_CHARGE_CAPACITY, GAUGE_NOM_AVAIL_CAPACITY, GAUGE_REMAINING_CHARGE_CAPACITY, GAUGE_STATE_OF_CHARGE, GAUGE_TEMP, GAUGE_TIME_TO_EMPTY, GAUGE_TIME_TO_FULL, GAUGE_VOLTAGE */
@@ -877,6 +883,8 @@ export type SensorChannelOf = {
   "lm75": CHAN.AMBIENT_TEMP;
   "lm77": CHAN.AMBIENT_TEMP;
   "maxbotix_mb7040": CHAN.DISTANCE;
+  "maxim_ds18b20": CHAN.AMBIENT_TEMP;
+  "maxim_ds18s20": SensorChannelName;
   "maxim_max17055": CHAN.CURRENT | CHAN.GAUGE_AVG_CURRENT | CHAN.GAUGE_CYCLE_COUNT | CHAN.GAUGE_DESIGN_VOLTAGE | CHAN.GAUGE_DESIRED_CHARGING_CURRENT | CHAN.GAUGE_DESIRED_VOLTAGE | CHAN.GAUGE_FULL_CHARGE_CAPACITY | CHAN.GAUGE_NOM_AVAIL_CAPACITY | CHAN.GAUGE_REMAINING_CHARGE_CAPACITY | CHAN.GAUGE_STATE_OF_CHARGE | CHAN.GAUGE_TEMP | CHAN.GAUGE_TIME_TO_EMPTY | CHAN.GAUGE_TIME_TO_FULL | CHAN.GAUGE_VOLTAGE;
   "maxim_max17262": CHAN.GAUGE_AVG_CURRENT | CHAN.GAUGE_CYCLE_COUNT | CHAN.GAUGE_DESIGN_VOLTAGE | CHAN.GAUGE_DESIRED_CHARGING_CURRENT | CHAN.GAUGE_DESIRED_VOLTAGE | CHAN.GAUGE_FULL_CHARGE_CAPACITY | CHAN.GAUGE_NOM_AVAIL_CAPACITY | CHAN.GAUGE_REMAINING_CHARGE_CAPACITY | CHAN.GAUGE_STATE_OF_CHARGE | CHAN.GAUGE_TEMP | CHAN.GAUGE_TIME_TO_EMPTY | CHAN.GAUGE_TIME_TO_FULL | CHAN.GAUGE_VOLTAGE;
   "maxim_max30101": CHAN.AMBIENT_LIGHT | CHAN.DIE_TEMP | CHAN.GREEN | CHAN.IR | CHAN.LIGHT | CHAN.RED;
@@ -1101,6 +1109,8 @@ export type SensorBusOf = {
   "lm75": 'i2c';
   "lm77": 'i2c';
   "maxbotix_mb7040": 'i2c';
+  "maxim_ds18b20": 'w1';
+  "maxim_ds18s20": 'w1';
   "maxim_max17055": 'i2c';
   "maxim_max17262": 'i2c';
   "maxim_max30101": 'i2c';

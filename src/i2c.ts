@@ -12,12 +12,14 @@
 // ----------------------------------------------------------------------------
 
 import { I2CTarget } from './i2c-target.js';
+import { I2CResponder } from './i2c-responder.js';
 
 /**
  * An I2C bus. Board modules export one instance per wired bus (`I2C0`,
  * `I2C1`…). Get a device with `I2C0.device(0x44)` and call its register
  * verbs directly, or hand it to a Sensor: `new Sensor(SENSOR.x,
- * I2C0.device(0x44))`.
+ * I2C0.device(0x44))`. To make THIS board the addressed device, get a
+ * responder: `I2C0.responder(0x42)`.
  */
 export class I2CBus {
   private _bus: string;
@@ -31,5 +33,11 @@ export class I2CBus {
    *  accepts. */
   device(address: number): I2CTarget {
     return new I2CTarget(this._bus, address);
+  }
+
+  /** This board ANSWERING at 7-bit `address` — the target-mode mirror of
+   *  `device()`: `I2C0.responder(0x42).onReceive(len => …)`. */
+  responder(address: number, opts?: { rxBufferBytes?: number; txBufferBytes?: number }): I2CResponder {
+    return new I2CResponder(this._bus, address, opts);
   }
 }

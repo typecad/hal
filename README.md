@@ -83,7 +83,7 @@ directly on SPI TFT and OLED displays.
 ## Learn more
 
 - [typecad.dev](https://typecad.dev) — documentation and guides
-- [GitHub](https://github.com/justind000/typecode) — source, demos, and the
+- [GitHub](https://github.com/typecad/hal) — source, demos, and the
   project's own on-metal test suite
 - `typecad-hal --help` — every command
 

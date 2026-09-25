@@ -210,11 +210,25 @@ export interface II2CDeviceAccessor {
 
 export interface II2CBus {
   begin(): this;
-  beginSlave(address: I2CAddress): void;
   end(): void;
   setClock(hz: number): void;
   device(address: I2CAddress): II2CDeviceAccessor;
   recover(): void;
+}
+
+/**
+ * The responder's device-side surface (hal/i2c-responder.ts) — what driver
+ * code sees whether it runs against the board or the simulator. The sim
+ * adds the controller-side drivers (masterWrite/masterRead) on top; the
+ * bench is the controller there.
+ */
+export interface II2CResponder {
+  readonly address: I2CAddress;
+  onReceive(handler: (len: number) => void): void;
+  onRequest(handler: () => void): void;
+  available(): number;
+  read(): number;
+  write(data: number[] | Uint8Array): void;
 }
 
 // ---------------------------------------------------------------------------

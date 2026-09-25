@@ -1,5 +1,195 @@
 # @typecad/hal
 
+## 1.0.0-alpha.19
+
+### Minor Changes
+
+- b9977b6: The peripheral surface round — nine new hardware classes, one import
+  
+  Everything below hangs off the single `@typecad/hal` import and the
+  generated board module, and each class re-exports only where this board's
+  facts support it (GATED_EXPORTS — the narrowed-gateway rule):
+  
+  - **Servo** — hobby RC servo output on a PWM channel: a calibrated 50 Hz
+    wrapper over the thin PWM class. Construction opts carry the servo's
+    calibrated pulse range (`minUs`/`maxUs`, defaults 1000/2000) and optional
+    travel (`maxAngle`, default 180); `writeAngle` maps the angle onto that
+    range in the LOWERED C++ (runtime arithmetic against a runtime angle — it
+    cannot fold at transpile time), and every write clamps to the calibrated
+    range so a stray value cannot command a damaging pulse width. `idle()`
+    stops driving the pulse — most servos stop actively holding position
+    without pulses.
+  - **Strip** — addressable RGB LED strip (WS2812/SK6812) over one of the
+    board's wired SPI buses: Zephyr's ws2812-spi driver synthesizes the
+    waveform on the bus's MOSI line, so whatever pads the board's devicetree
+    routes that SPI to are the pads the strip can use. `count` is a
+    construction fact (the pixel buffer is sized at build time);
+    set/fill/clear edit the buffer only and `show()` flushes it — one wire
+    transaction per show, the Arduino-Neopixel discipline.
+  - **Keyboard / Mouse** — USB HID devices over the Zephyr "next" USB stack
+    (`zephyr,hid-device`). One HID interface per program (Keyboard OR Mouse,
+    a v1 ceiling). `begin()` registers the boot report descriptor and starts
+    the device stack; the verbs maintain the boot report in the lowered C++
+    (an 8-byte keyboard report — modifier byte + 6 key slots; a 4-byte mouse
+    one — buttons + relative x/y/wheel) and each verb submits one input
+    report. Key and button arguments are `KEY.*`/`MOUSE.*` tokens mapped
+    name-for-name onto Zephyr's HID_KEY_* / button macros.
+  - **Matrix** — GPIO key-matrix scanning over the Zephyr input subsystem
+    (gpio-kbd-matrix): the driver scans the row/column grid and reports each
+    key event as ABS_X (column) + ABS_Y (row) + BTN_TOUCH (press state); the
+    lowered shim decodes that triple and trampolines into the user callback
+    as (row, col, pressed). Idle mode is interrupt-on-row — no CPU while
+    idle.
+  - **Clock** — wall-clock time over the board's RTC device: boards with a
+    hardware calendar RTC alias it (Zephyr's `rtc` convention), and every
+    board with a free counter can carry one via the `zephyr,rtc-counter`
+    shim the generated overlay synthesizes (a CHILD of the counter node —
+    the counter driver, and the Counter class with it, keep the parent), so
+    Clock exports wherever a free counter exists. v1 semantics: set/now
+    within a power session; only hardware-calendar nodes retain time across
+    power loss.
+  - **CAN** — the thin Zephyr-shaped CAN bus: one controller per board (the
+    harvested `can@` node — ESP32 TWAI, STM32 bxCAN, NXP FlexCAN…),
+    addressed by its devicetree nodelabel. `begin()` applies mode + bitrate
+    + start in the order the classic controller requires (it must stop for
+    mode/bitrate changes); `send()` builds one can_frame and submits it;
+    `onReceive()` installs an accept-all filter whose callback carries the
+    frame as scalars. LOOPBACK is the zero-hardware bench mode —
+    `begin({ loopback: true })` and every sent frame loops back to your own
+    filter: no transceiver, no wiring.
+  - **I2S** — the thin Zephyr-shaped audio stream (the harvested `i2s@`
+    node): the verbs own their setup (the PWM first-use discipline) — the
+    first `write()` configures + starts TX, the first `read()` RX, so a
+    write-only program (tone to an amplifier) never touches the RX engine.
+    Samples are 16-bit; one block per call (blockFrames stereo frames,
+    zero-padded on short writes). The one-jumper hardware loopback is the
+    bench test.
+  - **I2CResponder** — this board AS an I2C target (slave mode): the mirror
+    of I2CTarget, where the board talks to a device at an address — here the
+    board ANSWERS at one. Zephyr's i2c_target API verbatim in shape:
+    registration behind a once-guard, a controller write landing in the
+    receive ring (the UART discipline: `available()`/`read()` poll it,
+    `onReceive(len)` announces at the transaction's STOP), and a controller
+    read draining the response buffer the user fills with `write()`
+    (`onRequest` fires as the read begins — the Wire onRequest semantic).
+    Callbacks fire in the driver's interrupt context — the ISR discipline.
+  - **Power** — explicit power-state entry: the CPU node's declared
+    power-states are the facts (harvested into `zephyr.power.states.*`);
+    light states belong to the idle POLICY, while the deepest state
+    ("soft-off") is explicit-entry only — per Zephyr's own devicetree
+    comment — and that is exactly this class's surface. `offFor(ms)` is the
+    timed wake (the battery pattern: read sensors, publish, offFor(60_000),
+    repeat).
+  - **1-Wire sensors** — the DS18B20 through the existing Sensor class:
+    construction is a data-line Pin (bit-banged w1-gpio master, synthesized
+    in the overlay) plus the resolution opt; fetch/get are the same shape as
+    every bus sensor.
+  - **Simulator** — `@typecad/hal/sim` gains the i2c-responder bus sim.
+  - **Engine** — every verb is a structured hal-op IR node (`pwm.servo_*`,
+    `strip.*`, `hid.kb_*`/`hid.mouse_*`, `clock.*`, `can.*`, `power.*`,
+    `matrix.on_key`, `i2c.resp_*`) with Zephyr lowerings, hal-resolution
+    tests for each class, and hardware tests in the hal suite (servo, strip,
+    HID keyboard/mouse, matrix, onewire on the rig; clock, can, i2s common).
+- 84dab8a: Runtime tracing — `typecad-hal trace` turns a run into evidence
+  
+  Opt-in, sampling-based profiling in the Tracealyzer spirit: a heartbeat
+  sampler on the device, a host-side capture/report/view trio, and gates that
+  turn captures into CI verdicts. One config record drives both halves so they
+  cannot drift apart: `zephyr.trace: { enabled: true, intervalMs: 1000 }` in
+  typecad-hal.config.ts.
+  
+  - **Device sampler** (framework-zephyr): a `k_work_delayable` on the system
+    work queue samples per-thread execution cycles
+    (`k_thread_runtime_stats_get`) and stack unused/size every interval,
+    printing `[TR:` lines on the same printf/STDOUT channel the test-runner
+    protocol uses. Emitted into the entry TU only — a second copy in a
+    split-file TU would register the `SYS_INIT` twice and double every
+    heartbeat. The scaffold contributes exactly the Kconfig the sampler calls
+    (THREAD_RUNTIME_STATS, THREAD_MONITOR, THREAD_NAME, INIT_STACKS,
+    THREAD_STACK_INFO); the shim `#ifdef`s on THREAD_MONITOR +
+    THREAD_RUNTIME_STATS so a user override compiles the sampler out instead
+    of failing the link. `Thread.start` lowers a `k_thread_name_set` so user
+    threads carry labels (ENOSYS-safe without THREAD_NAME).
+  - **Host** (cuttlefish `src/trace/`): `trace capture` reads the port, groups
+    thread lines under heartbeats by seq (interleaved user prints are noise),
+    and rewrites `trace.json` after every closed heartbeat (schema
+    `typecad-hal/trace@1` — the audit sidecar pattern) so `trace view` can
+    poll it live. `trace report` computes per-thread CPU% host-side as
+    `delta(execCycles)/delta(sysExecCycles)` — no cycle/Hz units cross the
+    wire, idle appears as its own row, the column sums to ~100% — plus stack
+    high-water marks (checked against `query memory`'s static estimate) and
+    UI frame stats. `trace view` serves a dependency-free canvas timeline:
+    CPU lanes, the UI frame line, event markers.
+  - **User events** (hal): `Trace.mark("name")` / `Trace.event("name", value)`
+    lower to unconditional `__tc_trace_mark`/`__tc_trace_event` helpers — one
+    `[TR:EV:` line per call, call sites never depend on the trace config.
+    Human-rate events (transitions, requests, faults), never per-frame;
+    aggregate on the device first. Names are C string literals without colons.
+  - **UI frame + phase stats** (ui): for UI-mounted programs the emitter calls
+    the strategy's `uiFrameTimingLines` seam after `ui_tick`, feeding
+    `__tc_trace_ui_frame(delta)` — a block emitted for EVERY UI program
+    (call-site safety) that compiles away unless the traced entry block
+    defined `CUTTLEFISH_TRACE_UI`. The heartbeat reports frame count / avg /
+    max per interval as `[TR:UI:...]`, plus per-phase ui_tick microseconds as
+    `[TR:UP:...]` from cycle captures at emitTick's five slice seams
+    (bindings/transitions/draw/scroll/flush) — stripping the injected chunks
+    reproduces the plain slice concatenation byte-for-byte (the parity test).
+  - **CI gates**: `trace report --gate <metric><=|>=><limit>` (repeatable)
+    turns a capture into a regression gate — `cpu-avg:main<=50`,
+    `cpu-max:idle>=95`, `frame-max<=20`, `stack-min:main>=256` — exiting 1 on
+    violation or on absent data (a gate cannot pass on a metric the capture
+    lacks).
+  - **Continual monitoring**: `trace capture --baseline` compares the fresh
+    capture against the `trace-report.json` stamped beside every GREEN run
+    (the ratchet — a regressed run never moves the goalposts), exiting 1 on
+    drift beyond `--drift` (default 10% of baseline; CPU metrics floor at 3pp
+    so idle noise cannot fail a run). `zephyr.trace.alarms: { stackMinBytes,
+    frameMaxMs }` moves DETECTION onto the device — `[TR:ALARM:` lines the
+    moment a threshold breaches, riding the viewer's events axis as red ticks
+    and aggregating in the report. Reboots mid-capture split sessions
+    (repeated CFG or uptime regression); the viewer fetches only the visible
+    slice (`?from=&to=`) so hour-scale captures cost the same as minutes.
+  - **In-DSL trace assertions**: a test chain can end in `.trace(gate,
+    dwellMs?)` — the same gate grammar — evaluated HOST-side over the
+    heartbeats that closed inside that `it()` (the dwell keeps the window
+    populated; the test firmware inherits `zephyr.trace` from the project
+    config). Performance budgets become first-class test verdicts:
+    `describe().it().trace('cpu-avg:main<=30', 2500)`. Failure modes are
+    assertions with remedies, never crashes — an untraced test firmware, a
+    too-short dwell, or a malformed gate each fail with the fix in the
+    message.
+  - **The agent loop** (one command, verifiable verdict): `typecad-hal trace
+    capture --flash --duration 10 --gates-file trace-gates.json` — rebuild +
+    reflash, preflight the last build for the sampler (exit 2 with the remedy
+    when untraced, never a silent empty capture), auto-pick the lone serial
+    port, record, and evaluate the committed gates (exit 0/1). Progress goes
+    to stderr; `--quiet` makes stdout a single JSON summary line so captures
+    pipe cleanly into agent/CI tooling. `trace report --worst 5` answers
+    "which interval spiked, and in which phase". `typecad-hal create` stamps
+    this loop into every new project's AGENTS.md.
+  - **All boards equal by construction**: the sampler uses only kernel APIs
+    every Zephyr board has, gates on config not board facts, and degrades at
+    runtime (stack fields print `-1` where the arch cannot inspect a stack —
+    ARC's NO_UNUSED_STACK_INSPECTION). Compile/link-proven end to end on
+    xiao_ble + esp32s3_devkitc with `--autosar=strict` — the round also fixed
+    the pre-existing strict blockers it surfaced (C-style casts in the print
+    shim, `reinterpret_cast` categories in the UI canvas shims) — and
+    hardware-validated on esp32s3: `cpu-avg:idle>=50` passed over live
+    heartbeats; a deliberately failing `cpu-avg:main>=90` reported the
+    section's real values. demo-timing and demo-mono-rig are the traced
+    demos; demo-mono-sim carries the Linux CI gate.
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies [fcffaae]
+- Updated dependencies [e3ea6d3]
+- Updated dependencies [b9977b6]
+- Updated dependencies [2706586]
+- Updated dependencies [84dab8a]
+- Updated dependencies [77a5904]
+  - @typecad/cuttlefish@1.0.0-alpha.19
+
 ## 1.0.0-alpha.18
 
 ### Minor Changes

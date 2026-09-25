@@ -93,6 +93,29 @@ export interface Suite {
   /** Start a new test case within the current describe group. */
   it(name: string): Suite;
 
+  /**
+   * In-DSL trace assertion: assert a runtime-performance gate over the
+   * heartbeats that close inside the enclosing `it()`. The gate uses the
+   * trace-gate grammar — `'cpu-avg:main<=30'`, `'cpu-max:main<=50'`,
+   * `'frame-max<=20'`, `'stack-min:main>=256'` — evaluated HOST-side from
+   * the trace sampler's output; the verdict lands as an ordinary test
+   * assertion with the section's actual values.
+   *
+   * A heartbeat group only closes when the NEXT heartbeat arrives, so pass
+   * `dwellMs` (emitted as a device-side delay before the assertion) to keep
+   * the window populated — ~2.5x the trace interval is a good floor.
+   * Requires the test firmware to be built with `zephyr.trace.enabled`.
+   *
+   * @example
+   * ```ts
+   * describe("animation budget")
+   *   .it("redraw stays cheap").expect(frames).toBe(1)
+   *   .trace("cpu-avg:main<=30", 2500)
+   *   .trace("frame-max<=20", 0);
+   * ```
+   */
+  trace(gate: string, dwellMs?: number): Suite;
+
   /** Assert a numeric value (or a function that returns one). */
   expect(actual: number | (() => number)): Expectation;
 
