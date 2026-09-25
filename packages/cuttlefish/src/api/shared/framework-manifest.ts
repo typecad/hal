@@ -179,10 +179,13 @@ export const FrameworkManifestSchema = z.object({
   ambientTypes: z.array(z.string()),
   conformance: ConformanceSchema,
   // Optional subcommand capabilities owned by the framework. When declared
-  // `{ available: true }`, the framework exports matching `doctor` / `licenses`
-  // functions that cuttlefish dispatches the corresponding CLI subcommands to.
+  // `{ available: true }`, the framework exports matching `doctor` /
+  // `licenses` / `sbom` / `audit` functions that cuttlefish dispatches the
+  // corresponding CLI subcommands to.
   doctor: SubcommandCapabilitySchema.optional(),
   licenses: SubcommandCapabilitySchema.optional(),
+  sbom: SubcommandCapabilitySchema.optional(),
+  audit: SubcommandCapabilitySchema.optional(),
   compat: CompatSchema.optional(),
 });
 

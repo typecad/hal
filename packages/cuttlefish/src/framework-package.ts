@@ -83,6 +83,8 @@ export function loadFrameworkPackage(
       libDeclGenerator: typeof mod.tryGenerateLibDecl === "function" ? mod.tryGenerateLibDecl : undefined,
       doctor: typeof mod.doctor === "function" ? mod.doctor : undefined,
       licenses: typeof mod.licenses === "function" ? mod.licenses : undefined,
+      sbom: typeof mod.sbom === "function" ? mod.sbom : undefined,
+      audit: typeof mod.audit === "function" ? mod.audit : undefined,
     };
     setLoadedFramework(framework);
     registerPlatformStrategy(strategy);

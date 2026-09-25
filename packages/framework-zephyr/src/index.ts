@@ -26,8 +26,18 @@ export { runDoctor as doctor } from './doctor.js';
 // `typecad-hal licenses` — enumerate the Zephyr kernel + west manifest projects
 // and resolve each one's SPDX license. Re-exported under the dispatcher-facing
 // alias `licenses` so the loader picks it up as mod.licenses (see
-// framework-package.ts). Mirrors framework-arduino's presenter.
+// framework-package.ts).
 export { runLicensesPresenter as licenses } from './licenses.js';
+
+// `typecad-hal sbom` — emit/verify a build-true software bill of materials
+// (CycloneDX 1.6 / SPDX 2.3). Re-exported under the dispatcher-facing alias
+// `sbom` so the loader picks it up as mod.sbom (see framework-package.ts).
+export { runSbomPresenter as sbom } from './sbom.js';
+
+// `typecad-hal audit` — evaluate the last build's merged Kconfig against the
+// security baseline, with committed waivers recorded as deviations.
+// Re-exported under the dispatcher-facing alias `audit` (same loader pattern).
+export { runAuditPresenter as audit } from './audit.js';
 
 // Chip descriptor cache (the lowering's resolved-board view; no curated
 // registry — every board reconstructs from its generated manifest).

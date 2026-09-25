@@ -36,14 +36,26 @@ export interface LoadedFramework {
 
   /**
    * Optional subcommand presenters owned by the framework. Cuttlefish dispatches
-   * `typecad-hal doctor` / `typecad-hal licenses` to these when the loaded
-   * framework provides them; otherwise it prints a no-support message. Each
-   * framework decides what (if anything) these do — e.g. framework-zephyr
-   * checks west + board target (doctor) and scans library licenses
-   * (licenses).
+   * `typecad-hal doctor` / `typecad-hal licenses` / `typecad-hal sbom` to these
+   * when the loaded framework provides them; otherwise it prints a no-support
+   * message. Each framework decides what (if anything) these do — e.g.
+   * framework-zephyr checks west + board target (doctor), scans library
+   * licenses (licenses), and emits/verifies a build-true SBOM (sbom).
    */
   doctor?: () => void;
   licenses?: (strict: boolean, all: boolean) => void;
+  /** Presenter options mirror the parsed `sbom` CLI options (structural). */
+  sbom?: (options: {
+    format?: "cyclonedx" | "spdx";
+    all?: boolean;
+    strict?: boolean;
+    check?: boolean;
+    stdout?: boolean;
+    output?: string;
+    diff?: [string, string];
+  }) => void;
+  /** Presenter options mirror the parsed `audit` CLI options (structural). */
+  audit?: (options: { strict?: boolean; json?: boolean }) => void;
 }
 
 /**
