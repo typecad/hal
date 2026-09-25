@@ -51,10 +51,10 @@ function nodeLabel(idx: number): string {
  * subsys/usb/device_next/Kconfig, include/zephyr/usb/usbd.h, and
  * samples/subsys/usb/common/sample_usbd_init.c.
  */
-export function usbdDeviceLines(chip: ZephyrChipDescriptor): string[] {
+export function usbdDeviceLines(chip: ZephyrChipDescriptor, opts?: { hid?: boolean }): string[] {
   if (!chip.usb) return [];
   const vid = chip.usb.vid ?? '0x2fe3';
-  const pid = chip.usb.pid ?? '0x0001';
+  const pid = chip.usb.pid ?? (opts?.hid ? '0x0008' : '0x0001');
   // 1200-baud touch-to-reset (BOSSA-bootloader boards): a usbd message
   // callback that reboots into the bootloader when the host sets the CDC
   // baud rate to 1200. Zephyr's CDC-ACM class publishes
@@ -132,7 +132,10 @@ export function usbdDeviceLines(chip: ZephyrChipDescriptor): string[] {
     // for boards without detection (STM32 OTG_FS).
     '    err = usbd_enable(&__tc_usbd);',
     '    if (err != 0) { printk("typecad-hal usb: enable failed: %d\\n", err); return; }',
-    '    printk("typecad-hal usb: device enabled\\n");',
+    // No success printk: the message interleaves with the hardware-test
+    // protocol on the shared uart console (a [TC:EXPECT] line corrupted
+    // mid-suite when the HID tests first brought the device up). Failures
+    // still print — a broken USB is worth the noise.
     '}',
     '// CUTTLEFISH_USBD_END',
   ];

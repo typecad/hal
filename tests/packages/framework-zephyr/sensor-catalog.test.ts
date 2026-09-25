@@ -65,18 +65,18 @@ describe('sensor name derivation (lowering ↔ overlay contract)', () => {
     const n = sensorNames('sensirion_sht3xd', 'I2C0', 0x44);
     const src = `static const struct device* ${n.devVar} = DEVICE_DT_GET(DT_NODELABEL(${n.dtLabel}));`;
     const scanned = scanSensorParts(src);
-    expect(scanned).toEqual([{ part: 'sensirion_sht3xd', busIndex: 0, port: 0x44, busKind: 'i2c', spiHz: 0, spiMode: 0, alertPin: -1 }]);
+    expect(scanned).toEqual([{ part: 'sensirion_sht3xd', busIndex: 0, port: 0x44, busKind: 'i2c', spiHz: 0, spiMode: 0, alertPin: -1, resolution: 12 }]);
   });
 
   it('round-trips an SPI sensor (CS pin form) through the scanner', () => {
     const src = 'static const struct device* __tc_sensor_bosch_bme280_spi0_cs10_dev = DEVICE_DT_GET(DT_NODELABEL(tc_bosch_bme280_spi0_cs10));';
-    expect(scanSensorParts(src)).toEqual([{ part: 'bosch_bme280', busIndex: 0, port: 10, busKind: 'spi', spiHz: 0, spiMode: 0, alertPin: -1 }]);
+    expect(scanSensorParts(src)).toEqual([{ part: 'bosch_bme280', busIndex: 0, port: 10, busKind: 'spi', spiHz: 0, spiMode: 0, alertPin: -1, resolution: 12 }]);
   });
 
   it('merges the state-block config comment into the scanned ref', () => {
     const src = 'static const struct device* __tc_sensor_bosch_bme280_spi0_cs10_dev = DEVICE_DT_GET(DT_NODELABEL(tc_bosch_bme280_spi0_cs10));' + '\n'
       + '// tc-sensor-cfg: tc_bosch_bme280_spi0_cs10 hz=10000000 mode=3 alert=-1';
-    expect(scanSensorParts(src)).toEqual([{ part: 'bosch_bme280', busIndex: 0, port: 10, busKind: 'spi', spiHz: 10000000, spiMode: 3, alertPin: -1 }]);
+    expect(scanSensorParts(src)).toEqual([{ part: 'bosch_bme280', busIndex: 0, port: 10, busKind: 'spi', spiHz: 10000000, spiMode: 3, alertPin: -1, resolution: 12 }]);
   });
 });
 

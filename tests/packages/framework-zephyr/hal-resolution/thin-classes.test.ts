@@ -98,6 +98,40 @@ describe('thin PWM lowering', () => {
   });
 });
 
+// ── Servo ───────────────────────────────────────────────────────────────────
+
+describe('servo lowering (calibrated PWM sugar)', () => {
+  it('writeUs clamps to the calibrated range and converts µs→ns', () => {
+    const out = lowerPwm({ operation: 'pwm.servo_us', pin: 17, periodNs: 20000000, minUs: 1000, maxUs: 2000, us: 'servoPos' } as any, TEST_CHIP);
+    expect(out.code).toContain('uint32_t __tc_sv_p17 = static_cast<uint32_t>(servoPos) * 1000U');
+    expect(out.code).toContain('if (__tc_sv_p17 < 1000000U) { __tc_sv_p17 = 1000000U; }');
+    expect(out.code).toContain('if (__tc_sv_p17 > 2000000U) { __tc_sv_p17 = 2000000U; }');
+    expect(out.code).toContain('pwm_set_pulse_dt(&__tc_pwm_pwm_led0, __tc_sv_p17)');
+    // The construction period is established once, like every pwm channel.
+    expect(out.code).toContain('pwm_set_dt(&__tc_pwm_pwm_led0, 20000000, 0)');
+  });
+
+  it('writeAngle clamps the travel and maps onto the calibrated pulse range', () => {
+    const out = lowerPwm({ operation: 'pwm.servo_angle', pin: 17, periodNs: 20000000, minUs: 1000, maxUs: 2000, maxAngle: 180, angle: 'a' } as any, TEST_CHIP);
+    expect(out.code).toContain('double __tc_sv_a17 = static_cast<double>(a)');
+    expect(out.code).toContain('if (__tc_sv_a17 < 0.0) { __tc_sv_a17 = 0.0; }');
+    expect(out.code).toContain('if (__tc_sv_a17 > 180.0) { __tc_sv_a17 = 180.0; }');
+    // 0 °→1000000 ns, 180 °→2000000 ns: min + angle × (max−min)/180.
+    expect(out.code).toContain('static_cast<uint32_t>(static_cast<double>(1000000) + (__tc_sv_a17 * ((static_cast<double>(2000000) - static_cast<double>(1000000)) / static_cast<double>(180.0))))');
+  });
+
+  it('idle drives a zero pulse after establishing the period', () => {
+    const out = lowerPwm({ operation: 'pwm.servo_idle', pin: 17, periodNs: 20000000 } as any, TEST_CHIP);
+    expect(out.code).toContain('pwm_set_dt(&__tc_pwm_pwm_led0, 20000000, 0)');
+    expect(out.code).toContain('pwm_set_pulse_dt(&__tc_pwm_pwm_led0, 0U)');
+  });
+
+  it('matrix pins route the servo verbs through the tc-pwm alias', () => {
+    const out = lowerPwm({ operation: 'pwm.servo_angle', pin: 5, periodNs: 20000000, minUs: 1000, maxUs: 2000, maxAngle: 180, angle: 'x' } as any, ESP32S3_DEVKITC);
+    expect(out.code).toContain('&__tc_pwm_tc_pwm5');
+  });
+});
+
 // ── ADC ─────────────────────────────────────────────────────────────────────
 
 describe('thin ADC lowering', () => {
@@ -227,6 +261,45 @@ describe('thin classes end-to-end (esp32s3 target)', () => {
       'pwm_set_pulse_dt(&__tc_pwm_tc_pwm6, 250000)',
       'static_cast<double>(0.5f) * static_cast<double>(1000000)',
       'pwm_set_dt(&__tc_pwm_tc_pwm6, 20000000, 0)',
+    ]);
+  });
+
+  it('Servo construction facts flow through the resolver into clamped C++', () => {
+    // Same LEDC matrix injection as the PWM test above — the fixture
+    // catalog's esp32s3 entry carries no silicon facts.
+    const constants = generatedConstants('esp32s3_devkitc/esp32s3/procpu');
+    constants.set('zephyr.pwm.matrix.controller', 'ledc0');
+    constants.set('zephyr.pwm.matrix.channelCount', 8);
+    for (let i = 0; i < 49; i++) constants.set(`zephyr.pwm.matrix.pins.${i}`, i);
+    const result = transpile(`
+      import { Servo } from '@typecad/hal';
+
+      const pan = new Servo(6, { minUs: 500, maxUs: 2500, maxAngle: 270 });
+      pan.writeAngle(135);
+      let pos = 90;
+      pan.writeAngle(pos);
+      pan.writeUs(1500);
+      pan.idle();
+    `, {
+      strategy: new ZephyrStrategy(),
+      target: 'zephyr',
+      boardConstants: constants,
+      platformContext: { frameworkData: { target: 'esp32s3_devkitc' } } as any,
+    });
+
+    expectCppContains(result, [
+      // The construction period is applied once on the matrix alias.
+      'pwm_set_dt(&__tc_pwm_tc_pwm6, 20000000, 0)',
+      // Calibrated range from the constructor: 500–2500 µs → 500000–2500000 ns.
+      'if (__tc_sv_p6 < 500000U) { __tc_sv_p6 = 500000U; }',
+      'if (__tc_sv_p6 > 2500000U) { __tc_sv_p6 = 2500000U; }',
+      'pwm_set_pulse_dt(&__tc_pwm_tc_pwm6, __tc_sv_p6)',
+      // writeAngle: literal 135 and the runtime variable both splice as C++.
+      'double __tc_sv_a6 = static_cast<double>(135)',
+      'double __tc_sv_a6 = static_cast<double>(pos)',
+      'if (__tc_sv_a6 > 270.0) { __tc_sv_a6 = 270.0; }',
+      // idle: zero pulse.
+      'pwm_set_pulse_dt(&__tc_pwm_tc_pwm6, 0U)',
     ]);
   });
 

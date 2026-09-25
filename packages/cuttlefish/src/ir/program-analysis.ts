@@ -36,7 +36,7 @@ function applyHalOpUsageFlags(
     | 'usesWifiQuery' | 'usesWifiConfig'
     | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS'
     | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesSensor'
-    | 'usesHwtimer' | 'usesCapacitive'
+    | 'usesHwtimer' | 'usesCapacitive' | 'usesStrip' | 'usesHid' | 'usesMatrix' | 'usesPower' | 'usesClock' | 'usesCan' | 'usesI2s'
   >,
 ): void {
   if (opName.startsWith("display.")) {
@@ -95,6 +95,13 @@ function applyHalOpUsageFlags(
   if (opName.startsWith("sensor."))    result.usesSensor = true;
   if (opName.startsWith("hwtimer.") || opName.startsWith("counter."))   result.usesHwtimer = true;
   if (opName.startsWith("capacitive.")) result.usesCapacitive = true;
+  if (opName.startsWith("strip.")) result.usesStrip = true;
+  if (opName.startsWith("hid.")) result.usesHid = true;
+  if (opName.startsWith("matrix.")) result.usesMatrix = true;
+  if (opName.startsWith("power.")) result.usesPower = true;
+  if (opName.startsWith("clock.")) result.usesClock = true;
+  if (opName.startsWith("can.")) result.usesCan = true;
+  if (opName.startsWith("i2s.")) result.usesI2s = true;
 }
 
 export interface ProgramAnalysisResult {
@@ -202,6 +209,20 @@ export interface ProgramAnalysisResult {
   usesHwtimer: boolean;
   /** Capacitive touch pins usage. Detected from capacitive.* ops. */
   usesCapacitive: boolean;
+  /** Addressable LED strip (hal/strip.ts) usage. Detected from strip.* ops. */
+  usesStrip: boolean;
+  /** USB HID keyboard/mouse (hal/hid.ts) usage. Detected from hid.* ops. */
+  usesHid: boolean;
+  /** GPIO key matrix (hal/matrix.ts) usage. Detected from matrix.* ops. */
+  usesMatrix: boolean;
+  /** Explicit power-state entry (hal/power.ts). Detected from power.* ops. */
+  usesPower: boolean;
+  /** Wall-clock time (hal/clock.ts). Detected from clock.* ops. */
+  usesClock: boolean;
+  /** CAN bus (hal/can.ts). Detected from can.* ops. */
+  usesCan: boolean;
+  /** I2S audio (hal/i2s.ts). Detected from i2s.* ops. */
+  usesI2s: boolean;
   /** Native/desktop: std::set usage (gates <set>). */
   usesSet: boolean;
   /** Native/desktop: std::algorithm usage (std::sort/find/transform etc., gates <algorithm>). */
@@ -226,7 +247,7 @@ const MATH_PATTERN = /\b(?:std::|Math\.)(floor|ceil|round|trunc|sqrt|pow|sin|cos
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesWallClock' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'usesUart' | 'usesUsb' | 'usesSPI' | 'usesI2C' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesSensor' | 'usesHwtimer' | 'usesCapacitive' | 'usesSet' | 'usesAlgorithm' | 'usesCstdio' | 'usesDigitalRead' | 'usesDisplay' | 'usesHalt'>,
+  result: Pick<ProgramAnalysisResult, 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesWallClock' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'usesUart' | 'usesUsb' | 'usesSPI' | 'usesI2C' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesSensor' | 'usesHwtimer' | 'usesCapacitive' | 'usesStrip' | 'usesHid' | 'usesMatrix' | 'usesPower' | 'usesClock' | 'usesCan' | 'usesI2s' | 'usesSet' | 'usesAlgorithm' | 'usesCstdio' | 'usesDigitalRead' | 'usesDisplay' | 'usesHalt'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -846,6 +867,13 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     usesSensor: false,
     usesHwtimer: false,
     usesCapacitive: false,
+    usesStrip: false,
+    usesHid: false,
+    usesMatrix: false,
+    usesPower: false,
+    usesClock: false,
+    usesCan: false,
+    usesI2s: false,
     hasAsync: false,
     usesSet: false,
     usesAlgorithm: false,

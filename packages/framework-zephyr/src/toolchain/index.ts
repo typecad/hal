@@ -26,6 +26,7 @@ import type { ToolchainOptions, CompileResult, UploadResult } from '@typecad/cut
 import { parseCompileErrors } from '@typecad/cuttlefish/api/shared';
 import { scaffoldZephyrProject, writeIfChanged, appendLibraryOverlayFragments } from './scaffold.js';
 import { parseZephyrDts, asBuiltJson } from '../as-built.js';
+import { stampBuildSbom } from '../sbom.js';
 import { westSpawn, buildEnv } from './west-spawn.js';
 import { discoverWest } from './west-discover.js';
 import { writeDebugConfig, resolveDebugLocations, debugArtifactsNeedRewrite, DEBUG_SERVER_PORT, DEBUG_SERVER_TCL_PORT } from './debug-config.js';
@@ -1249,6 +1250,18 @@ export const Toolchain = {
           writeIfChanged(join(cfDir, 'as-built.json'), asBuiltJson(board, facts));
         }
       } catch { /* best-effort snapshot — nothing to harvest or unreadable */ }
+    }
+
+    // SBOM stamp: after a successful build, record what the binary is made of
+    // — kernel + linked west modules with commit SHAs + the hashed firmware
+    // artifact (CycloneDX 1.6, next to zephyr.bin) — so `typecad-hal sbom
+    // --check` can gate releases on the record still matching the build
+    // (EU CRA essential-requirements support). Best-effort: a west-list or
+    // hashing failure never blocks the build.
+    if (result.status === 0) {
+      try {
+        stampBuildSbom({ buildDir, board, projectRoot });
+      } catch { /* best-effort SBOM stamp */ }
     }
 
     return {

@@ -986,14 +986,32 @@ export function buildModule(
   ts.push('');
   ts.push('// Hardware this board actually has — unavailable hardware is not importable.');
   if (wdtNodeLabel) ts.push(`export { Watchdog } from '@typecad/hal/core';`);
-  if (siliconPwm.length > 0 || pwmLedSpecs.length > 0 || pwmMatrix) ts.push(`export { PWM } from '@typecad/hal/core';`);
+  if (siliconPwm.length > 0 || pwmLedSpecs.length > 0 || pwmMatrix) ts.push(`export { PWM, Servo } from '@typecad/hal/core';`);
   if (siliconAdc.length > 0) ts.push(`export { ADC } from '@typecad/hal/core';`);
   if (siliconDac.length > 0) ts.push(`export { DAC } from '@typecad/hal/core';`);
-  if (buses.i2c.length > 0) ts.push(`export { I2CTarget } from '@typecad/hal/core';`);
+  // The responder rides the same wired-bus fact as I2CTarget — target-mode
+  // support is a controller-driver property discovered at registration
+  // (-ENOSYS prints loudly), never a board-name gate.
+  if (buses.i2c.length > 0) ts.push(`export { I2CTarget, I2CResponder } from '@typecad/hal/core';`);
   if (buses.spi.length > 0) ts.push(`export { SPITarget } from '@typecad/hal/core';`);
   if (buses.uart.length > 0) ts.push(`export { UART } from '@typecad/hal/core';`);
   if (hwtimerControllers.length > 0) ts.push(`export { Counter } from '@typecad/hal/core';`);
-  if (hasUsb) ts.push(`export { USBConsole } from '@typecad/hal/core';`);
+  // Clock rides the same free-counter facts (the zephyr,rtc-counter shim
+  // wraps the counter when the board ships no hardware rtc alias).
+  if (hwtimerControllers.length > 0) ts.push(`export { Clock } from '@typecad/hal/core';`);
+  // CAN rides the harvested controller nodes (ESP32 TWAI, STM32 bxCAN,
+  // NXP FlexCAN…); a SoC with none exports nothing.
+  if ((entry.canNodes ?? []).length > 0) ts.push(`export { CAN } from '@typecad/hal/core';`);
+  // I2S rides the harvested i2s@ controllers.
+  if ((entry.i2sNodes ?? []).length > 0) ts.push(`export { I2S } from '@typecad/hal/core';`);
+  // Power rides the SoC's declared cpu-power-states (both the ESP32 family's
+  // standby + soft-off pair and STM32's suspend-to-idle count; a SoC with no
+  // declared states exports nothing).
+  if ((entry.powerStates ?? []).length > 0) ts.push(`export { Power } from '@typecad/hal/core';`);
+  // KEY/MOUSE are ungated token tables — the derived always-available
+  // re-export line above already carries them on every board; only the HID
+  // device classes ride the USB gate.
+  if (hasUsb) ts.push(`export { USBConsole, Keyboard, Mouse } from '@typecad/hal/core';`);
   // Store/File: a persisted backend needs a storage region — either the
   // board's own storage_partition (harvested reg) or a synthesizable one
   // (flash size known, no existing partition to collide with).
@@ -1107,12 +1125,15 @@ export function buildModule(
     // GPIO driver API (`gpio_pin_configure` flags + `gpio_pin_interrupt_configure`):
     // every GPIO controller implements them, so they are universally true —
     // a platform fact, not a per-pad one. Analog/PWM ride the harvested
-    // silicon routes (honest per-pad facts).
+    // silicon routes (honest per-pad facts); PWM counts both route kinds —
+    // fixed pinctrl routes AND any-pad matrices (ESP32 LEDC, nRF psel), the
+    // same set union the pin JSDoc and the PWM export gate read, so the
+    // hover annotation and the capability flag cannot disagree.
     constants[`pins.all.${i}.capabilities.digitalInput`] = true;
     constants[`pins.all.${i}.capabilities.digitalOutput`] = true;
     constants[`pins.all.${i}.capabilities.analogInput`] = siliconAdcPins.has(p.halPin);
     constants[`pins.all.${i}.capabilities.analogOutput`] = siliconDacPins.has(p.halPin);
-    constants[`pins.all.${i}.capabilities.pwm`] = siliconPwmPins.has(p.halPin);
+    constants[`pins.all.${i}.capabilities.pwm`] = siliconPwmPins.has(p.halPin) || (matrixPwmPins?.has(p.halPin) ?? false);
     constants[`pins.all.${i}.capabilities.interrupt`] = true;
     constants[`pins.all.${i}.capabilities.pullUp`] = true;
     constants[`pins.all.${i}.capabilities.pullDown`] = true;
@@ -1120,6 +1141,34 @@ export function buildModule(
     // the pinctrl header matrix) — honestly false until a source lands.
     constants[`pins.all.${i}.capabilities.touch`] = false;
     constants[`pins.all.${i}.capabilities.openDrain`] = true;
+  });
+  // CPU power states — the harvested PM capability facts (which levels
+  // exist, their idle timing, and whether the automatic policy may enter
+  // them; ESP32's soft-off is explicit-entry only).
+  const powerStates = entry.powerStates ?? [];
+  powerStates.forEach((ps, i) => {
+    constants[`zephyr.power.states.${i}.name`] = ps.name;
+    if (ps.minResidencyUs !== undefined) constants[`zephyr.power.states.${i}.minResidencyUs`] = ps.minResidencyUs;
+    if (ps.exitLatencyUs !== undefined) constants[`zephyr.power.states.${i}.exitLatencyUs`] = ps.exitLatencyUs;
+    constants[`zephyr.power.states.${i}.enabled`] = ps.enabled;
+  });
+  if (powerStates.length > 0) {
+    constants['zephyr.power.softOff'] = powerStates.some((ps) => ps.name === 'soft-off');
+  }
+  if (entry.rtcWakeTimer) constants['zephyr.power.wakeTimer'] = true;
+  // CAN controllers — the harvested labeled nodes (the CAN class gate). The
+  // ESP32 TWAI pads ride along: loopback overlays route both TWAI functions
+  // onto the TX pad.
+  (entry.canNodes ?? []).forEach((c, i) => {
+    constants[`zephyr.can.controllers.${i}.nodeLabel`] = c.nodeLabel;
+    constants[`zephyr.can.controllers.${i}.compatible`] = c.compatible;
+    if (c.txPad !== undefined) constants[`zephyr.can.controllers.${i}.txPad`] = c.txPad;
+    if (c.rxPad !== undefined) constants[`zephyr.can.controllers.${i}.rxPad`] = c.rxPad;
+  });
+  // I2S controllers — the harvested labeled nodes (the I2S class gate).
+  (entry.i2sNodes ?? []).forEach((c, i) => {
+    constants[`zephyr.i2s.controllers.${i}.nodeLabel`] = c.nodeLabel;
+    constants[`zephyr.i2s.controllers.${i}.compatible`] = c.compatible;
   });
   constants['peripherals.i2c.count'] = buses.i2c.length;
   constants['peripherals.spi.count'] = buses.spi.length;

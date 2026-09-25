@@ -49,7 +49,7 @@ describe('typecad-hal.facts.json (option 1)', () => {
     const pins = Object.entries(c).filter(([k, v]) => /^zephyr\.pwm\.specs\.\d+\.pin$/.test(k) && v === 15);
     expect(pins.length).toBe(1);
     expect(merged.boardTs).toContain("export { ADC } from '@typecad/hal/core'");
-    expect(merged.boardTs).toContain("export { PWM } from '@typecad/hal/core'");
+    expect(merged.boardTs).toContain("export { PWM, Servo } from '@typecad/hal/core'");
     // The fingerprint moves with the facts file — the staleness check.
     const fp = JSON.parse(merged.boardJson).source.fingerprint;
     expect(fp).not.toBe(JSON.parse(plain.boardJson).source.fingerprint);

@@ -6636,6 +6636,10 @@ static inline uint8_t ui_keyframe_set_has_scroll_sensitive_geometry(uint8_t setI
 // (ui_kb_draw and ui_kb_handle_tap forward declarations are near the touch
 // state machine, above.)
 static inline void ui_tick(uint16_t deltaMs) {
+#if defined(CUTTLEFISH_TRACE_UI)
+  uint32_t __tc_trace_ui_pt = k_cycle_get_32();
+#endif
+
   // Touch poll — runs if touch is configured (defined by the emit layer)
   ui_poll_touch();
   // <drawer> slide animation (device parity with the preview's applyDrawers).
@@ -6753,6 +6757,11 @@ static inline void ui_tick(uint16_t deltaMs) {
       __ui_input_bindings[i].lastSeen[UI_TEXT_BUF] = '\0';
       __ui_input_bindings[i].cb(cur);
     }
+#if defined(CUTTLEFISH_TRACE_UI)
+  __tc_trace_ui_phase_add(0, k_cycle_get_32() - __tc_trace_ui_pt);
+  __tc_trace_ui_pt = k_cycle_get_32();
+#endif
+
   }
   // ① Advance transitions.
   for (uint16_t i = 0; i < __ui_trans_count; i++) {
@@ -6967,6 +6976,11 @@ static inline void ui_tick(uint16_t deltaMs) {
     }
     if (completing) __ui_anims[i].active = 0;
   }
+#if defined(CUTTLEFISH_TRACE_UI)
+  __tc_trace_ui_phase_add(1, k_cycle_get_32() - __tc_trace_ui_pt);
+  __tc_trace_ui_pt = k_cycle_get_32();
+#endif
+
 
   // ② Draw dirty nodes directly to the display object.
   // Begin a deferred-refresh frame: resets the dirty-rect accumulator. On TFT
@@ -8022,6 +8036,11 @@ static inline void ui_tick(uint16_t deltaMs) {
     ui_select_menu_draw();
   }
 #endif  // UI_FULL_FRAME_REDRAW
+#if defined(CUTTLEFISH_TRACE_UI)
+  __tc_trace_ui_phase_add(2, k_cycle_get_32() - __tc_trace_ui_pt);
+  __tc_trace_ui_pt = k_cycle_get_32();
+#endif
+
   // ②b Draw scrollbar + push canvas for the buffered scroll container.
   if (bufferedScrollNode >= 0 && bufferedScrollCanvas) {
     ui_push_buffered_scroll_canvas(bufferedScrollCanvas, bufferedScrollRepaintCanvas,
@@ -8046,6 +8065,11 @@ static inline void ui_tick(uint16_t deltaMs) {
     // rendering. Keep the retained pixels when no compositor is available.
     if (__ui_scroll_render_locked) __ui_scroll_render_locked[static_cast<uint16_t>(bufferedScrollNode)] = 1;
     __ui_nodes[bufferedScrollNode].dirty = 0;
+#if defined(CUTTLEFISH_TRACE_UI)
+  __tc_trace_ui_phase_add(3, k_cycle_get_32() - __tc_trace_ui_pt);
+  __tc_trace_ui_pt = k_cycle_get_32();
+#endif
+
   }
   // ── Framebuffer bulk push ────────────────────────────────────────────────
   // When a framebuffer was used this frame, publish only its changed bounds.
@@ -8061,6 +8085,11 @@ static inline void ui_tick(uint16_t deltaMs) {
   // ③ Flush — ILI9341 is immediate, no separate flush needed. On deferred-
   // refresh panels (e-ink), flush the union of this frame's dirty paint rects
   // as one partial refresh. No-op on TFT.
+#if defined(CUTTLEFISH_TRACE_UI)
+  __tc_trace_ui_phase_add(4, k_cycle_get_32() - __tc_trace_ui_pt);
+  __tc_trace_ui_pt = k_cycle_get_32();
+#endif
+
   ui_refresh_flush();
 }
 

@@ -55,6 +55,84 @@ export function pwmSetDuty(pin: number | string, periodNs: number, duty: number,
 /** Thin PWM: change the period at runtime (pwm_set_dt; the pulse resets to
  *  idle — Zephyr 4.4 has no period-only setter). */
 export function pwmSetPeriod(pin: number | string, periodNs: number, controller: string = '', channel: number = -1): void {}
+/** Servo (hal/servo.ts): command a pulse width in µs, clamped in the lowered
+ *  C++ to the calibrated [minUs, maxUs] range (runtime arithmetic — the
+ *  clamped write is one pwm_set_pulse_dt). */
+export function servoWriteUs(pin: number | string, periodNs: number, minUs: number, maxUs: number, us: number, controller: string = '', channel: number = -1): void {}
+/** Servo: command an angle (0–maxAngle, clamped) mapped onto the calibrated
+ *  pulse range — the mapping AND clamping run in the lowered C++ against the
+ *  runtime angle. */
+export function servoWriteAngle(pin: number | string, periodNs: number, minUs: number, maxUs: number, maxAngle: number, angle: number, controller: string = '', channel: number = -1): void {}
+/** Servo: stop driving the pulse (pwm_set_pulse_dt 0 — line idle). */
+export function servoIdle(pin: number | string, periodNs: number, controller: string = '', channel: number = -1): void {}
+
+/** Strip (hal/strip.ts): buffer one pixel's color — runtime index and
+ *  channel values splice into the lowered C++ buffer assignment. */
+export function stripSetPixel(bus: string, count: number, index: number, r: number, g: number, b: number): void {}
+/** Strip: buffer a uniform color across the chain (a lowered for-loop). */
+export function stripFill(bus: string, count: number, r: number, g: number, b: number): void {}
+/** Strip: flush the buffer (one led_strip_update_rgb). */
+export function stripShow(bus: string, count: number): void {}
+
+// HID (hal/hid.ts) — key/button arguments are runtime text spliced into the
+// lowered C++; the verbs maintain the boot report there.
+/** Keyboard: register the boot report descriptor + start the device stack. */
+export function hidKbBegin(): void {}
+/** Keyboard: press a key/modifier token and submit one report. */
+export function hidKbPress(key: number): void {}
+/** Keyboard: release a key/modifier token and submit one report. */
+export function hidKbRelease(key: number): void {}
+/** Keyboard: zero the report and submit. */
+export function hidKbReleaseAll(): void {}
+/** Mouse: register the boot report descriptor + start the device stack. */
+export function hidMouseBegin(): void {}
+/** Mouse: relative move + optional wheel step, one report. */
+export function hidMouseMove(dx: number, dy: number, wheel: number): void {}
+/** Mouse: press (hold) a button. */
+export function hidMousePress(button: number): void {}
+/** Mouse: release a button. */
+export function hidMouseRelease(button: number): void {}
+/** Mouse: click — press and release as two reports. */
+export function hidMouseClick(button: number): void {}
+
+/** Clock (hal/clock.ts): set the wall clock to Unix epoch seconds. */
+export function clockSet(epochSeconds: number): void {}
+/** Clock: read the wall clock as Unix epoch seconds. */
+export function clockNow(): number { return 0; }
+
+/** Power (hal/power.ts): enter soft-off via sys_poweroff() — never
+ *  returns; the board wakes by reset or a wake source. */
+export function powerOff(): void {}
+/** Power: enter soft-off with the RTC timer armed to wake (reboot) after
+ *  `ms` milliseconds. */
+export function powerOffFor(ms: number): void {}
+
+/** I2S (hal/i2s.ts): send one block of 16-bit samples (first use
+ *  configures + starts the TX direction — the construction facts ride the
+ *  op; the sample array lowers into the shim's block buffer). */
+export function i2sWrite(instance: number, hz: number, channels: number, bits: number, blockFrames: number, samples: number[]): void {}
+/** I2S: receive one block, return the first sample (first use configures +
+ *  starts RX). */
+export function i2sRead(instance: number, hz: number, channels: number, bits: number, blockFrames: number): number { return 0; }
+/** I2S: element `index` of the last received block. */
+export function i2sReadAt(instance: number, index: number): number { return 0; }
+
+/** CAN (hal/can.ts): configure mode + bitrate and start the controller.
+ *  The runtime hz/loopback splice into the lowered can_set_mode/bitrate/
+ *  start sequence (order matters: mode and bitrate need a stopped
+ *  controller). */
+export function canBegin(instance: number, hz: number, loopback: boolean): void {}
+/** CAN: send one frame — the array elements lower into the frame payload
+ *  (up to 8 bytes; the dlc is the element count). */
+export function canSend(instance: number, id: number, extended: boolean, data: number[]): void {}
+/** CAN: install the accept-all rx filter whose trampoline carries the
+ *  frame as scalars (id, len, b0..b7). */
+export function canOnReceive(instance: number, handler: string): void {}
+
+/** Matrix (hal/matrix.ts): register the (row, col, pressed) handler
+ *  trampoline — the row/column pad lists ride the op into the overlay's
+ *  gpio-kbd-matrix node. */
+export function matrixOnKey(rows: number[], cols: number[], handler: string): void {}
 
 // ---------------------------------------------------------------------------
 // ADC — analog-to-digital conversion
@@ -112,6 +190,16 @@ export function i2cRegWrite(bus: string, address: number, hz: number, reg: numbe
 export function i2cRegRead(bus: string, address: number, hz: number, reg: number): number { return 0; }
 export function i2cRegUpdate(bus: string, address: number, hz: number, reg: number, mask: number, value: number): void {}
 export function i2cDevWrite(bus: string, address: number, hz: number, data: number[] | Uint8Array): void {}
+
+// I2C responder (hal/i2c-responder.ts): this board answering as an I2C
+// target. Every op carries the construction facts (rx/tx buffer sizes) so the
+// shim's state block and each call site agree; registration
+// (i2c_target_register) is once-guarded at the first op emitted.
+export function i2cRespOnReceive(bus: string, address: number, rxBuffer: number, txBuffer: number, handler: string): void {}
+export function i2cRespOnRequest(bus: string, address: number, rxBuffer: number, txBuffer: number, handler: string): void {}
+export function i2cRespAvailable(bus: string, address: number, rxBuffer: number, txBuffer: number): number { return 0; }
+export function i2cRespRead(bus: string, address: number, rxBuffer: number, txBuffer: number): number { return -1; }
+export function i2cRespWrite(bus: string, address: number, rxBuffer: number, txBuffer: number, data: number[] | Uint8Array): void {}
 
 // ---------------------------------------------------------------------------
 // SPI — serial peripheral interface
@@ -311,9 +399,9 @@ export function rawCppExpr<T>(code: string): T {
 /** Fetch a fresh sample from a DT-bound sensor part. Args: part token, bus
  *  name, bus port (I2C address or SPI CS pin), bus kind ('i2c' | 'spi'),
  *  SPI clock Hz, SPI mode 0-3, alert pin (-1 = none). */
-export function sensorFetch(part: string, bus: string, port: number, kind: string, spiHz: number, spiMode: number, alertPin: number): void {}
+export function sensorFetch(part: string, bus: string, port: number, kind: string, spiHz: number, spiMode: number, alertPin: number, resolution: number = 12): void {}
 /** Read one channel (a SENSOR_CHAN_* suffix, see CHAN) from the fetched sample.
  *  Returns the value as a double (Zephyr's sensor_value val1 + val2/1e6).
  *  Carries the same construction facts as sensorFetch so either op alone
  *  yields a complete device. */
-export function sensorGet(part: string, bus: string, port: number, kind: string, spiHz: number, spiMode: number, alertPin: number, chan: string): number { return 0; }
+export function sensorGet(part: string, bus: string, port: number, kind: string, spiHz: number, spiMode: number, alertPin: number, resolution: number = 12, chan: string): number { return 0; }

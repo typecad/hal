@@ -125,6 +125,33 @@ export interface BoardDataEntry {
     readonly nodeLabel?: string;
     readonly parentLabel?: string;
   }[];
+  /** I2S controller nodes (labeled i2s@) — gates the I2S class. */
+  readonly i2sNodes?: readonly {
+    readonly nodeLabel: string;
+    readonly compatible: string;
+  }[];
+  /** CAN controller nodes (labeled can@/flexcan@/mcan@, CAN-compatible) —
+   *  gates the CAN class (send/receive over the Zephyr can API). */
+  readonly canNodes?: readonly {
+    readonly nodeLabel: string;
+    readonly compatible: string;
+    readonly txPad?: number;
+    readonly rxPad?: number;
+  }[];
+  /** The SoC's RTC wake timer (ESP32 family rtc_timer node) — gates
+   *  Power.offFor(ms), the timed soft-off wake. */
+  readonly rtcWakeTimer?: boolean;
+  /** CPU power states (zephyr,power-state nodes the SoC dtsi declares on
+   *  the cpu node — the PM capability fact). ESP32 declares standby
+   *  (auto-idle) + soft-off (explicit-entry, harvested enabled=false);
+   *  STM32F4 declares suspend-to-idle. */
+  readonly powerStates?: readonly {
+    /** power-state-name: 'suspend-to-idle' | 'standby' | 'soft-off' | ... */
+    readonly name: string;
+    readonly minResidencyUs?: number;
+    readonly exitLatencyUs?: number;
+    readonly enabled: boolean;
+  }[];
   /** ESP32 LEDC PWM matrix (harvested from <soc>-pinctrl.h LEDC macros):
    *  any listed pad can carry any of channelCount channels; the overlay
    *  assigns channels to the driven pads at build time. */

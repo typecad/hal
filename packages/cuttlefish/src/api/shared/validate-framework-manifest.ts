@@ -82,12 +82,18 @@ const CATEGORY_PREFIXES: Record<string, string[]> = {
   ble: ['ble.'],
   random: ['random.'],
   fs: ['fs.'],
+  strip: ['strip.'],
+  hid: ['hid.'],
+  matrix: ['matrix.'],
+  power: ['power.'],
+  clock: ['clock.'],
+  can: ['can.'],
+  i2s: ['i2s.'],
   mqtt: ['mqtt.'],
   // Unimplemented-but-recognized categories: each framework may declare these
   // as unsupported in its manifest so the coverage matrix records them as a
   // roadmap. The validator probes the resolver and confirms it does NOT lower
   // them (consistent with the 'unsupported' status).
-  i2s: ['i2s.'],
   twai: ['twai.'],
   usb: ['usb.'],
   eth: ['eth.'],
@@ -113,12 +119,24 @@ function opKindsForCategory(category: string): string[] {
 const OP_PROBE_PAYLOADS: Readonly<Record<string, object>> = {
   // i2c.write_bytes requires bus + bytes (resolver iterates bytes).
   'i2c.write_bytes': { bus: 'i2c0', address: 0x50, bytes: [0x00, 0x01] },
+  // i2c.resp_* require bus + address (the state prefix names both); the
+  // handler-carrying ops need a callback identifier, write the buffer size
+  // it clamps against, read the ring size it modulos by.
+  'i2c.resp_on_receive': { bus: 'I2C0', address: 0x42, rx: 64, tx: 32, handler: 'cb' },
+  'i2c.resp_on_request': { bus: 'I2C0', address: 0x42, rx: 64, tx: 32, handler: 'cb' },
+  'i2c.resp_available': { bus: 'I2C0', address: 0x42, rx: 64, tx: 32 },
+  'i2c.resp_read': { bus: 'I2C0', address: 0x42, rx: 64, tx: 32 },
+  'i2c.resp_write': { bus: 'I2C0', address: 0x42, rx: 64, tx: 32, bytes: [0x00, 0x01] },
   // usb.* require port (+ value/format where the resolver renders them).
   'usb.begin': { port: 'USB0' },
   'usb.print': { port: 'USB0', value: '"x"' },
   'usb.println': { port: 'USB0', value: '"x"' },
   'usb.write': { port: 'USB0', data: '"x"' },
   'usb.printf': { port: 'USB0', format: '%d', args: ['x'] },
+  // strip.* require a bus + count (the resolver routes by controller index).
+  'strip.set_pixel': { bus: 'SPI0', count: 8, index: 0, r: 0, g: 0, b: 0 },
+  'strip.fill': { bus: 'SPI0', count: 8, r: 0, g: 0, b: 0 },
+  'strip.show': { bus: 'SPI0', count: 8 },
   // adc.read / adc.read_voltage require pin.
   'adc.read': { pin: 0 },
   'adc.read_voltage': { pin: 0 },

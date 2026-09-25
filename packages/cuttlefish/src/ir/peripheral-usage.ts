@@ -410,7 +410,10 @@ function analyzeHALOp(op: HALOpIR, usage: PeripheralUsage): void {
     // PWM
     case 'pwm.set_pulse':
     case 'pwm.set_duty':
-    case 'pwm.set_period': {
+    case 'pwm.set_period':
+    case 'pwm.servo_us':
+    case 'pwm.servo_angle':
+    case 'pwm.servo_idle': {
       trackPin(op.pin, usage);
       usage.pwm = true;
       if (typeof op.pin === 'number') usage.pwmPinsUsed.add(op.pin);
@@ -460,11 +463,17 @@ function analyzeHALOp(op: HALOpIR, usage: PeripheralUsage): void {
       break;
     }
 
-    // Tier-2 thin I2C (hal/i2c-target.ts) + the legacy master ops.
+    // Tier-2 thin I2C (hal/i2c-target.ts + hal/i2c-responder.ts) + the
+    // legacy master ops.
     case 'i2c.reg_write':
     case 'i2c.reg_read':
     case 'i2c.reg_update':
     case 'i2c.dev_write':
+    case 'i2c.resp_on_receive':
+    case 'i2c.resp_on_request':
+    case 'i2c.resp_available':
+    case 'i2c.resp_read':
+    case 'i2c.resp_write':
     case 'i2c.read':
     case 'i2c.recover': {
       usage.i2c = true;
@@ -482,17 +491,23 @@ function analyzeHALOp(op: HALOpIR, usage: PeripheralUsage): void {
       const part = String(op.part ?? '');
       const busInstance = kind === 'spi'
         ? extractBusInstance(op.bus, 'SPI')
-        : extractBusInstance(op.bus, 'I2C', 'Wire');
+        : kind === 'w1'
+          // 1-Wire sensors ride a GPIO bit-bang master, not a bus
+          // controller — the data pin rides `bus`/`port` on the op.
+          ? -1
+          : extractBusInstance(op.bus, 'I2C', 'Wire');
       // Instance-level claims only: the category booleans mean EVERY
       // declared controller is in play to the resource-conflict checker
       // (resource-analysis.ts), which would raise phantom pin conflicts
       // between unused silicon instances.
       if (kind === 'spi') {
         usage.spiInstancesUsed.add(busInstance);
+      } else if (kind === 'w1') {
+        // No bus controller to claim; the pin claim is the sensor's own.
       } else {
         usage.i2cInstancesUsed.add(busInstance);
       }
-      usage.sensorPartsUsed.add(`${part}|${kind}${busInstance}|${op.port ?? 0}`);
+      usage.sensorPartsUsed.add(`${part}|${kind}${kind === 'w1' ? '' : busInstance}|${op.port ?? 0}`);
       break;
     }
 

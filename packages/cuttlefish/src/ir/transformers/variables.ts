@@ -624,7 +624,7 @@ export function variableStatementToIR(
           // flag/gain token EXPRESSIONS keep their source text — the lowering
           // maps token names to C macros; numeric opts props pass through as
           // numbers (numeric separators stripped for C++).
-          const thinPinFirst: Record<string, true> = { GPIO: true, PWM: true, ADC: true, DAC: true };
+          const thinPinFirst: Record<string, true> = { GPIO: true, PWM: true, Servo: true, ADC: true, DAC: true };
           if (thinPinFirst[className] && ctorArgs && ctorArgs.length >= 1) {
             const pinArg = ctorArgs[0];
             if (ts.isIdentifier(pinArg)) {
@@ -641,7 +641,7 @@ export function variableStatementToIR(
             // "GPIO.OUTPUT | GPIO.PULL_UP" — the token text is the IR carrier.
             fieldValues.set("_flags", ctorArgs[1].getText());
           }
-          const thinOptsCtor: Record<string, true> = { PWM: true, ADC: true, DAC: true, Counter: true };
+          const thinOptsCtor: Record<string, true> = { PWM: true, Servo: true, ADC: true, DAC: true, Counter: true, I2S: true };
           if (thinOptsCtor[className] && ctorArgs && ctorArgs.length >= 2 && ts.isObjectLiteralExpression(ctorArgs[1])) {
             for (const prop of ctorArgs[1].properties) {
               if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
@@ -651,6 +651,36 @@ export function variableStatementToIR(
               } else {
                 // Token (ADC.GAIN_1_4) or runtime expression text.
                 fieldValues.set(`_${name}`, prop.initializer.getText());
+              }
+            }
+          }
+          // Matrix (hal/matrix.ts): the ctor's single opts object carries
+          // rows/cols as arrays of pin identifiers — resolve each through
+          // halInstances (board-module pin constants seed there on lookup)
+          // and store comma-joined numbers for the op capture.
+          if (className === "Matrix" && ctorArgs && ctorArgs.length >= 1 && ts.isObjectLiteralExpression(ctorArgs[0])) {
+            const pinList = (prop: ts.PropertyAssignment | undefined): string | undefined => {
+              if (!prop || !ts.isArrayLiteralExpression(prop.initializer)) return undefined;
+              const nums: string[] = [];
+              for (const el of prop.initializer.elements) {
+                if (ts.isNumericLiteral(el)) { nums.push(el.text); continue; }
+                if (ts.isIdentifier(el)) {
+                  const inst = halInstances.get(el.text) ?? resolveHALReceiver(el);
+                  const pin = inst?.fieldValues.get("_pin") ?? inst?.fieldValues.get("pin");
+                  if (pin !== undefined) { nums.push(String(pin)); continue; }
+                }
+                return undefined;
+              }
+              return nums.join(",");
+            };
+            for (const prop of ctorArgs[0].properties) {
+              if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
+              if (prop.name.text === "rows") {
+                const v = pinList(prop);
+                if (v !== undefined) fieldValues.set("_rows", v);
+              } else if (prop.name.text === "cols") {
+                const v = pinList(prop);
+                if (v !== undefined) fieldValues.set("_cols", v);
               }
             }
           }
@@ -738,7 +768,7 @@ export function variableStatementToIR(
           // parseControllerIndex reads; SPITarget adds the cs pin (identifier
           // or property access, resolved later like every pin arg); opts carry
           // the wire facts (hz/mode/baud).
-          const thinBusFirst: Record<string, true> = { I2CTarget: true, SPITarget: true, UART: true };
+          const thinBusFirst: Record<string, true> = { I2CTarget: true, SPITarget: true, UART: true, Strip: true, I2CResponder: true };
           if (thinBusFirst[className] && ctorArgs && ctorArgs.length >= 1) {
             const busArg = ctorArgs[0];
             if (ts.isIdentifier(busArg)) {
@@ -762,10 +792,10 @@ export function variableStatementToIR(
               fieldValues.set("_cs", csArg.getText());
             }
           }
-          if (className === "I2CTarget" && ctorArgs && ctorArgs.length >= 2 && ts.isNumericLiteral(ctorArgs[1])) {
+          if ((className === "I2CTarget" || className === "I2CResponder") && ctorArgs && ctorArgs.length >= 2 && ts.isNumericLiteral(ctorArgs[1])) {
             fieldValues.set("_address", ctorArgs[1].text);
           }
-          const thinBusOpts: Record<string, true> = { I2CTarget: true, SPITarget: true, UART: true, Thread: true };
+          const thinBusOpts: Record<string, true> = { I2CTarget: true, SPITarget: true, UART: true, Thread: true, Strip: true, CAN: true, I2CResponder: true };
           if (thinBusOpts[className] && ctorArgs && ctorArgs.length >= 2) {
             // I2CTarget/UART: (bus, opts?); SPITarget: (bus, cs, opts?).
             const optsArg = ctorArgs.length === 2 ? ctorArgs[1] : ctorArgs[2];
@@ -775,6 +805,13 @@ export function variableStatementToIR(
                 const name = prop.name.text;
                 if (ts.isNumericLiteral(prop.initializer)) {
                   fieldValues.set(`_${name}`, prop.initializer.text.replace(/_/g, ""));
+                } else if (
+                  prop.initializer.kind === ts.SyntaxKind.TrueKeyword
+                  || prop.initializer.kind === ts.SyntaxKind.FalseKeyword
+                ) {
+                  // Boolean flags (CAN's loopback) — numeric-friendly text so
+                  // resolveNumericArg folds them (true → 1, false → 0).
+                  fieldValues.set(`_${name}`, prop.initializer.kind === ts.SyntaxKind.TrueKeyword ? "1" : "0");
                 } else {
                   fieldValues.set(`_${name}`, prop.initializer.getText());
                 }
@@ -791,7 +828,11 @@ export function variableStatementToIR(
             I2CTarget: { _hz: "0" },
             SPITarget: { _hz: "1000000", _mode: "0" },
             UART: { _baud: "115200", _rxBufferBytes: "64" },
+            I2CResponder: { _rxBufferBytes: "64", _txBufferBytes: "32" },
             DAC: { _resolution: "0" },
+            Sensor: { _resolution: "12" },
+            CAN: { _hz: "500000", _loopback: "0" },
+            I2S: { _hz: "16000", _channels: "2", _bits: "16", _blockFrames: "64" },
           };
           // WiFi absent-fact sentinels: fields whose class initializer is
           // `opts.x?.y` render as raw `this->_x` when the fact was omitted.
@@ -913,16 +954,32 @@ export function variableStatementToIR(
             const receiver = init.expression.expression;
             const instance = resolveHALReceiver(receiver);
             const fieldValues = new Map(instance?.fieldValues || []);
-            // For device() factory calls, copy the address/cs from the call arg
-            // so I2CTarget/SPITarget methods can resolve this._address / this._cs.
-            if (result.returnClassName === "I2CTarget" || result.returnClassName === "SPITarget") {
+            // For device()/responder() factory calls, copy the address/cs from
+            // the call arg so I2CTarget/SPITarget/I2CResponder methods can
+            // resolve this._address / this._cs.
+            if (result.returnClassName === "I2CTarget" || result.returnClassName === "SPITarget" || result.returnClassName === "I2CResponder") {
               const isSpiTarget = result.returnClassName === "SPITarget";
               const fieldName = isSpiTarget ? "_cs" : "_address";
               // The targets' __default_fields channel does not reach factory
               // results; carry the wire defaults so this._hz / this._mode
-              // resolve in the inlined method bodies.
+              // resolve in the inlined method bodies. The responder's buffer
+              // sizes default the same way (an opts-less factory result must
+              // not leak `this->_rxBufferBytes` text into the ops).
               fieldValues.set("_hz", isSpiTarget ? "1000000" : "0");
               if (isSpiTarget) fieldValues.set("_mode", "0");
+              if (result.returnClassName === "I2CResponder") {
+                fieldValues.set("_rxBufferBytes", "64");
+                fieldValues.set("_txBufferBytes", "32");
+                const ropts = init.arguments?.[1];
+                if (ropts && ts.isObjectLiteralExpression(ropts)) {
+                  for (const prop of ropts.properties) {
+                    if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
+                    if (ts.isNumericLiteral(prop.initializer)) {
+                      fieldValues.set(`_${prop.name.text}`, prop.initializer.text.replace(/_/g, ""));
+                    }
+                  }
+                }
+              }
               const firstArg = init.arguments?.[0];
               if (firstArg) {
                 if (ts.isNumericLiteral(firstArg)) fieldValues.set(fieldName, firstArg.text);
@@ -1581,8 +1638,19 @@ export function collectPointerVars(statements: readonly ts.Statement[]): Pointer
  * I2CTarget return type; the inline form's address is taken from the call's
  * numeric argument (the general path does not extract call args).
  */
-function resolveSensorDeviceArg(arg: ts.Expression): { bus: string; port: string; kind: "i2c" | "spi" } | null {
+function resolveSensorDeviceArg(arg: ts.Expression): { bus: string; port: string; kind: "i2c" | "spi" | "w1" } | null {
   const inst = resolveHALReceiver(arg);
+  // 1-Wire parts take the data-line Pin directly — the bit-banged master's
+  // GPIO. The pin number rides `bus` (and `port`); the overlay derives the
+  // w1 node names from it exactly as the i2c address does for bus parts.
+  // Numeric literals are accepted too (the raw pin number).
+  if (ts.isNumericLiteral(arg)) {
+    return { bus: arg.text, port: arg.text, kind: "w1" };
+  }
+  if (inst && inst.className === "Pin" && inst.fieldValues.has("_pin")) {
+    const pinNum = inst.fieldValues.get("_pin")!;
+    return { bus: pinNum, port: pinNum, kind: "w1" };
+  }
   const portField = inst?.className === "SPITarget" ? "_cs" : "_address";
   if (inst && (inst.className === "I2CTarget" || inst.className === "SPITarget") && inst.fieldValues.has("_bus") && inst.fieldValues.has(portField)) {
     return { bus: inst.fieldValues.get("_bus")!, port: inst.fieldValues.get(portField)!, kind: inst.className === "SPITarget" ? "spi" : "i2c" };

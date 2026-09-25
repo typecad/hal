@@ -5,6 +5,9 @@
 // the catalog: silicon PWM/ADC routes, the any-pad PWM matrix, bus roles,
 // and LED/BUTTON/connector aliases. Bare pins must stay bare — the doc's
 // absence IS the "plain GPIO" signal (the module header documents it).
+// The manifest's per-pin capabilities.pwm must read the SAME route union as
+// the JSDoc (fixed pinctrl routes + any-pad matrices) — the drift guard at
+// the bottom holds them pin-for-pin.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
@@ -94,5 +97,47 @@ describe('boardgen pin JSDoc annotations', () => {
     // A pad outside the matrix carries no PWM claim.
     expect(boardTs).toMatch(/\nexport const GPIO3 = Pin\.fromPort\('GPIO3'\);/);
     expect(boardTs).not.toMatch(/\/\*\*[^\n]*\*\/\nexport const GPIO3 = Pin\.fromPort\('GPIO3'\);/);
+  });
+
+  it('flags matrix pads PWM-capable in board.json, matching the JSDoc', () => {
+    // capabilities.pwm once consulted only fixed pinctrl routes, so matrix
+    // boards (ESP32 LEDC, nRF psel) flagged zero PWM pins and the
+    // pin-capability validator rejected every plain `new PWM(pin, …)` the
+    // module's own hover text advertised.
+    const matrix = buildModule(matrixBoard);
+    const mj = JSON.parse(matrix.boardJson) as { constants: Record<string, unknown>; pinNames: string[] };
+    const mFlag = (name: string): boolean =>
+      mj.constants[`pins.all.${mj.pinNames.indexOf(name)}.capabilities.pwm`] === true;
+    expect(mFlag('GPIO1')).toBe(true); // matrix pad (also an ADC route)
+    expect(mFlag('GPIO2')).toBe(true); // matrix pad
+    expect(mFlag('GPIO3')).toBe(false); // outside the matrix — stays bare
+
+    // Fixed-route boards are unchanged: the tim4 harvest keeps PB6, and a
+    // bare pad keeps its false.
+    const fixed = buildModule(letterPort);
+    const fj = JSON.parse(fixed.boardJson) as { constants: Record<string, unknown>; pinNames: string[] };
+    const fFlag = (name: string): boolean =>
+      fj.constants[`pins.all.${fj.pinNames.indexOf(name)}.capabilities.pwm`] === true;
+    expect(fFlag('PB6')).toBe(true);
+    expect(fFlag('PA2')).toBe(false);
+
+    // Drift guard, both route kinds: a pin's JSDoc PWM claim and its
+    // manifest flag agree pin-for-pin — the module header's own invariant
+    // ("facts and module derive from the same route sets").
+    const assertDocsAgreeWithFlags = (
+      boardTs: string,
+      json: { constants: Record<string, unknown>; pinNames: string[] },
+    ): void => {
+      const docs = [...boardTs.matchAll(/\/\*\*([^*]*)\*\/\nexport const (\w+) = Pin\.fromPort\(/g)];
+      expect(docs.length).toBeGreaterThan(0);
+      for (const m of docs) {
+        const doc = m[1]!;
+        const name = m[2]!;
+        const flag = json.constants[`pins.all.${json.pinNames.indexOf(name)}.capabilities.pwm`] === true;
+        expect(flag, `${name}: JSDoc says ${JSON.stringify(doc.trim())}`).toBe(doc.includes('PWM'));
+      }
+    };
+    assertDocsAgreeWithFlags(matrix.boardTs, mj);
+    assertDocsAgreeWithFlags(fixed.boardTs, fj);
   });
 });

@@ -201,6 +201,17 @@ export interface DtsBoardFacts {
    *  under a labeled timer parent (ESP32 timer0-2, Ambiq) — the manifest
    *  generator assigns those labels in the generated overlay. */
   readonly counterNodes: readonly DtsCounterNode[];
+  /** CPU power states (zephyr,power-state nodes the cpu node references) —
+   *  the PM capability fact: which levels exist, their timing, and whether
+   *  the idle policy may enter them (ESP32's deep_sleep is explicit-only). */
+  readonly powerStates?: readonly DtsPowerState[];
+  /** CAN controller nodes from the include chain (the CAN class gate). */
+  readonly canNodes: readonly DtsCanNode[];
+  /** I2S controller nodes from the include chain (the I2S class gate). */
+  readonly i2sNodes: readonly DtsI2sNode[];
+  /** The SoC's RTC wake timer (deep-sleep-capable, ESP32 family shape) —
+   *  the fact behind Power.offFor(ms)'s timed wake. */
+  readonly rtcWakeTimer?: boolean;
   /** GPIO controller device nodes (gpio-controller property) from the SoC
    *  dtsi include chain — the full port inventory, not just the ports the
    *  board's own facts name. Sorted by nodelabel. */
@@ -265,7 +276,34 @@ export interface DtsDacPin {
   readonly pinctrl: string;
 }
 
-/** A counter-capable device node from the include chain. */
+/** One I2S controller node (labeled i2s@ with an I2S-compatible binding). */
+export interface DtsI2sNode {
+  readonly nodeLabel: string;
+  readonly compatible: string;
+}
+
+/** One CAN controller node (labeled can@/flexcan@/mcan@ with a
+ *  CAN-compatible binding). */
+export interface DtsCanNode {
+  readonly nodeLabel: string;
+  readonly compatible: string;
+  /** ESP32 TWAI pads from the board pinctrl (loopback needs the TX pad). */
+  readonly txPad?: number;
+  readonly rxPad?: number;
+}
+
+/** One CPU power state (zephyr,power-state node): the level name
+ *  (power-state-name enum), its idle timing, and whether the automatic
+ *  policy may enter it (ESP32's soft-off deep sleep is explicit-entry
+ *  only — harvested enabled=false). */
+export interface DtsPowerState {
+  /** power-state-name: 'suspend-to-idle' | 'standby' | 'soft-off' | ... */
+  readonly name: string;
+  readonly minResidencyUs?: number;
+  readonly exitLatencyUs?: number;
+  readonly enabled: boolean;
+}
+
 export interface DtsCounterNode {
   /** The counter binding's compatible (e.g. 'nordic,nrf-rtc',
    *  'espressif,esp32-counter') — identifies the driver. */
@@ -829,6 +867,103 @@ function lintNameValueAgreement(
 // nodelabel is the fact; compatible confirms it is a watchdog.
 const WDT_NODE_RE = /(\w+):\s*watchdog@[0-9a-f]+\s*\{[^}]*?compatible\s*=\s*"([-\w,]*watchdog[-\w,]*)"/g;
 
+// CPU power states (SoC dtsi shape — every family declares them on the
+// cpu node, the list IS the PM capability fact):
+//   cpu0: cpu@0 { cpu-power-states = <&light_sleep &deep_sleep>; };
+//   power-states { light_sleep: light_sleep {
+//     compatible = "zephyr,power-state"; power-state-name = "standby";
+//     min-residency-us = <1000>; exit-latency-us = <50>; };
+//     deep_sleep: deep_sleep { ... "soft-off"; status = "disabled"; }; };
+// ESP32 marks deep_sleep disabled ("must be entered via pm_state_force() or
+// sys_poweroff() only" — explicit-entry, exactly the HAL's shape); STM32F4
+// declares only `stop` (suspend-to-idle).
+// I2S controller nodes (SoC dtsi shape: `i2s0: i2s@6000f000 {
+// compatible = "espressif,esp32-i2s"; }`). The nodelabel is the fact; the
+// board's own pinctrl reference (wired in its DTS) rides along — the
+// overlay only flips status.
+const I2S_NODE_RE = /(\w+):\s*i2s@[0-9a-f]+\s*\{[^}]*?compatible\s*=\s*"([-\w,]+)"/g;
+
+/** Harvest I2S controller nodes from the merged include-chain text. */
+function harvestI2sNodes(text: string): DtsI2sNode[] {
+  const out: DtsI2sNode[] = [];
+  I2S_NODE_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = I2S_NODE_RE.exec(text))) {
+    out.push({ nodeLabel: m[1]!, compatible: m[2]! });
+  }
+  return out;
+}
+
+// CAN controller nodes (SoC dtsi shapes: `twai: can@6002b000 {
+// compatible = "espressif,esp32-twai"; }` — STM32 `can1: can@40006400 {
+// compatible = "st,stm32-bxcan"; }`, NXP `flexcan@`, Bosch `mcan@`). The
+// nodelabel + compatible are the facts; boards gate the CAN class on them.
+// Board-shipped pinctrl/status win by being absorbed later in the chain —
+// the harvest only lists controllers, the overlay enables them.
+const CAN_NODE_RE = /(\w+):\s*(?:can|flexcan|mcan)@[0-9a-f]+\s*\{[^}]*?compatible\s*=\s*"([-\w,]+)"/g;
+
+/** Harvest CAN controller nodes from the merged include-chain text. */
+function harvestCanNodes(text: string): DtsCanNode[] {
+  const out: DtsCanNode[] = [];
+  CAN_NODE_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = CAN_NODE_RE.exec(text))) {
+    out.push({ nodeLabel: m[1]!, compatible: m[2]! });
+  }
+  // ESP32 TWAI pads (the board pinctrl's pinmux macros — TWAI_TX_GPIO5 on
+  // the devkitC). Needed for LOOPBACK: the SJA1000 self-test transmits on
+  // the TX pad and receives on the RX pad, so with no transceiver the
+  // overlay must route BOTH functions to one pad (the Zephyr test suite's
+  // own twai-enable.overlay shape).
+  if (out.length > 0) {
+    const tx = /TWAI_TX_GPIO(\d+)/.exec(text);
+    const rx = /TWAI_RX_GPIO(\d+)/.exec(text);
+    if (tx) out[0] = { ...out[0], txPad: Number(tx[1]) };
+    if (rx) out[0] = { ...out[0], rxPad: Number(rx[1]) };
+  }
+  return out;
+}
+
+// Deep-sleep wake timer (ESP32 family: the rtc_timer node the RTC domain
+// runs through deep sleep — its presence means Power.offFor(ms) can arm a
+// timed wake before soft-off). Shape-harvested, not name-gated.
+const RTC_WAKE_TIMER_RE = /rtc_timer:\s*rtc_timer@\S+\s*\{[^}]*?compatible\s*=\s*"espressif,esp32-rtc-timer"/;
+
+const CPU_POWER_STATES_RE = /cpu-power-states\s*=\s*<([^>]+)>/g;
+
+/** Harvest the CPU's declared power states from the include-chain text. */
+function harvestPowerStates(text: string): DtsPowerState[] {
+  const out: DtsPowerState[] = [];
+  const labels: string[] = [];
+  CPU_POWER_STATES_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = CPU_POWER_STATES_RE.exec(text))) {
+    for (const ref of m[1].split(/\s+/)) {
+      const label = ref.replace(/^&/, '').trim();
+      if (label) labels.push(label);
+    }
+  }
+  for (const label of labels) {
+    const nodeRe = new RegExp(
+      label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ':\\s*\\w+\\s*\\{[^}]*?compatible\\s*=\\s*"zephyr,power-state"[^}]*\\}',
+    );
+    const nm = nodeRe.exec(text);
+    if (!nm) continue;
+    const body = nm[0];
+    const name = /power-state-name\s*=\s*"([\w-]+)"/.exec(body)?.[1];
+    if (!name) continue;
+    const residency = /min-residency-us\s*=\s*<(\d+)>/.exec(body)?.[1];
+    const latency = /exit-latency-us\s*=\s*<(\d+)>/.exec(body)?.[1];
+    out.push({
+      name,
+      ...(residency !== undefined ? { minResidencyUs: Number(residency) } : {}),
+      ...(latency !== undefined ? { exitLatencyUs: Number(latency) } : {}),
+      enabled: !/status\s*=\s*"disabled"/.test(body),
+    });
+  }
+  return out;
+}
+
 // ESP32 LEDC matrix controller node (esp32s3_common.dtsi:
 // ledc0: ledc@60019000 { compatible = "espressif,esp32-ledc"; }).
 const LEDC_NODE_RE = /(ledc\d+):\s*ledc@[0-9a-f]+\s*\{/g;
@@ -991,6 +1126,9 @@ export function readBoardDts(
     storageReg = { offsetBytes: parseInt(sm[1], 16), sizeBytes: sizeKb * 1024 };
   }
   const counterNodes = harvestCounterNodes(text);
+  const powerStates = harvestPowerStates(text);
+  const canNodes = harvestCanNodes(text);
+  const i2sNodes = harvestI2sNodes(text);
 
   const { root: syntheticRoot, byLabel, refOverrides } = parseStatements(stripCommentsKeepMarkers(text));
 
@@ -1273,6 +1411,10 @@ export function readBoardDts(
     ...(hasStoragePartition ? { hasStoragePartition } : {}),
     ...(storageReg ? { storageReg } : {}),
     counterNodes,
+    ...(powerStates.length > 0 ? { powerStates } : {}),
+    ...(RTC_WAKE_TIMER_RE.test(text) ? { rtcWakeTimer: true } : {}),
+    canNodes,
+    i2sNodes,
     gpioControllers,
     ...(stripLed ? { stripLed } : {}),
     ...(usbDevice ? { usbDevice } : {}),

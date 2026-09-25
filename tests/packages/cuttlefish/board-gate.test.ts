@@ -86,7 +86,8 @@ describe('generated board module (single-import surface)', () => {
   });
 
   it('keeps board-gated classes narrowed (XIAO nRF52840 has no DAC)', () => {
-    expect(boardTs).toMatch(/export \{ PWM \} from '@typecad\/hal\/core';/);
+    // Servo rides the PWM gate — exported wherever PWM silicon routes exist.
+    expect(boardTs).toMatch(/export \{ PWM, Servo \} from '@typecad\/hal\/core';/);
     expect(boardTs).not.toMatch(/export \{ DAC \} from/);
   });
 });

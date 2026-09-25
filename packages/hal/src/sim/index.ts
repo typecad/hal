@@ -12,6 +12,7 @@ export { SimInterruptPin } from './gpio/interrupt-sim.js';
 export { SimSerialPort } from './bus/serial-sim.js';
 export { SimI2CBus } from './bus/i2c-sim.js';
 export type { I2COperationLog } from './bus/i2c-sim.js';
+export { SimI2CResponder } from './bus/i2c-responder-sim.js';
 export { SimSPIBus } from './bus/spi-sim.js';
 export type { SPIOperationLog } from './bus/spi-sim.js';
 
@@ -29,6 +30,7 @@ export type {
   InterruptPin,
   II2CBus,
   II2CDeviceAccessor,
+  II2CResponder,
   ISPIBus,
   ISPIDevice,
   IUARTBus,

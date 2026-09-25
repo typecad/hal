@@ -22,6 +22,15 @@ describe('resolveKconfigFragments', () => {
     expect(m.has('CONFIG_I2C')).toBe(false);  // not used
   });
 
+  it('gates CONFIG_I2C_TARGET on the responder flag (and only it)', () => {
+    const resp = resolveKconfigFragments({ usesI2cTarget: true }, false);
+    expect(resp.get('CONFIG_I2C_TARGET')).toBe('y');
+    // Master-only I2C must not drag the target subsystem in.
+    const master = resolveKconfigFragments({ usesI2c: true }, false);
+    expect(master.has('CONFIG_I2C_TARGET')).toBe(false);
+    expect(master.get('CONFIG_I2C')).toBe('y');
+  });
+
   it('bumps SYSTEM_WORKQUEUE_STACK_SIZE (workqueue itself is unconditional)', () => {
     const m = resolveKconfigFragments({}, false);
     // CONFIG_SYSTEM_WORKQUEUE is not a real Zephyr symbol (the workqueue is

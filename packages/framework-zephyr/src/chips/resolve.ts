@@ -230,6 +230,24 @@ export function resolveChipFromBoard(
   // (+ optional vid/pid for the device descriptor).
   const usbController = bc.get('zephyr.usb.controller') as string | undefined;
   const usbCdcInstances = bc.get('zephyr.usb.cdcInstances') as number | undefined;
+  const wakeTimer = bc.get('zephyr.power.wakeTimer') as boolean | undefined;
+  const i2sControllers: { nodeLabel: string; compatible: string }[] = [];
+  for (let ii = 0; bc.get(`zephyr.i2s.controllers.${ii}.nodeLabel`) !== undefined; ii++) {
+    i2sControllers.push({
+      nodeLabel: String(bc.get(`zephyr.i2s.controllers.${ii}.nodeLabel`)),
+      compatible: String(bc.get(`zephyr.i2s.controllers.${ii}.compatible`)),
+    });
+  }
+  const canControllers: { nodeLabel: string; compatible: string; txPad?: number; rxPad?: number }[] = [];
+  for (let ci = 0; bc.get(`zephyr.can.controllers.${ci}.nodeLabel`) !== undefined; ci++) {
+    canControllers.push({
+      nodeLabel: String(bc.get(`zephyr.can.controllers.${ci}.nodeLabel`)),
+      compatible: String(bc.get(`zephyr.can.controllers.${ci}.compatible`)),
+      ...(bc.get(`zephyr.can.controllers.${ci}.txPad`) !== undefined ? { txPad: Number(bc.get(`zephyr.can.controllers.${ci}.txPad`)) } : {}),
+      ...(bc.get(`zephyr.can.controllers.${ci}.rxPad`) !== undefined ? { rxPad: Number(bc.get(`zephyr.can.controllers.${ci}.rxPad`)) } : {}),
+    });
+  }
+
   const usbVid = bc.get('zephyr.usb.vid') as string | undefined;
   const usbPid = bc.get('zephyr.usb.pid') as string | undefined;
   // Optional 1200-baud touch-to-reset data (BOSSA-bootloader boards).
@@ -367,6 +385,9 @@ export function resolveChipFromBoard(
     ...(storageOffset != null && storageSize != null
       ? { storage: { offset: storageOffset, size: storageSize, ...(storagePreexisting ? { preexisting: true } : {}) } }
       : {}),
+    ...(wakeTimer ? { powerWakeTimer: true } : {}),
+    ...(canControllers.length > 0 ? { can: { controllers: canControllers } } : {}),
+    ...(i2sControllers.length > 0 ? { i2s: { controllers: i2sControllers } } : {}),
     ...(usbController && usbCdcInstances && usbCdcInstances > 0
       ? {
           usb: {

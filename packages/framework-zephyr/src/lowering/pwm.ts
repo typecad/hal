@@ -158,6 +158,31 @@ export function lowerPwm(
       // pulse to idle — follow with setPulse/setDuty to drive the line.
       return { code: `${marker}(void)pwm_set_dt(&${v}, ${o.periodNs}, 0);` };
     }
+    // ── Servo (hal/servo.ts) — calibrated 50 Hz sugar on the same channel ──
+    // The commanded value is runtime text; the calibrated range and travel
+    // are construction literals carried on the op. Clamping and the angle→
+    // pulse mapping run in the emitted C++ — they cannot fold at transpile
+    // time. Pulse widths convert µs→ns here (×1000).
+    case 'pwm.servo_us': {
+      const minNs = Math.round(Number(o.minUs ?? 1000) * 1000);
+      const maxNs = Math.round(Number(o.maxUs ?? 2000) * 1000);
+      return {
+        code: `{ ${marker}static bool __tc_pwm_p${o.pin}_prd = false; if (!__tc_pwm_p${o.pin}_prd) { (void)pwm_set_dt(&${v}, ${o.periodNs}, 0); __tc_pwm_p${o.pin}_prd = true; } uint32_t __tc_sv_p${o.pin} = static_cast<uint32_t>(${o.us}) * 1000U; if (__tc_sv_p${o.pin} < ${minNs}U) { __tc_sv_p${o.pin} = ${minNs}U; } if (__tc_sv_p${o.pin} > ${maxNs}U) { __tc_sv_p${o.pin} = ${maxNs}U; } (void)pwm_set_pulse_dt(&${v}, __tc_sv_p${o.pin}); }`,
+      };
+    }
+    case 'pwm.servo_angle': {
+      const minNs = Math.round(Number(o.minUs ?? 1000) * 1000);
+      const maxNs = Math.round(Number(o.maxUs ?? 2000) * 1000);
+      const maxAngle = Number(o.maxAngle ?? 180) || 180;
+      return {
+        code: `{ ${marker}static bool __tc_pwm_p${o.pin}_prd = false; if (!__tc_pwm_p${o.pin}_prd) { (void)pwm_set_dt(&${v}, ${o.periodNs}, 0); __tc_pwm_p${o.pin}_prd = true; } double __tc_sv_a${o.pin} = static_cast<double>(${o.angle}); if (__tc_sv_a${o.pin} < 0.0) { __tc_sv_a${o.pin} = 0.0; } if (__tc_sv_a${o.pin} > ${maxAngle}.0) { __tc_sv_a${o.pin} = ${maxAngle}.0; } (void)pwm_set_pulse_dt(&${v}, static_cast<uint32_t>(static_cast<double>(${minNs}) + (__tc_sv_a${o.pin} * ((static_cast<double>(${maxNs}) - static_cast<double>(${minNs})) / static_cast<double>(${maxAngle}.0))))); }`,
+      };
+    }
+    case 'pwm.servo_idle': {
+      return {
+        code: `{ ${marker}static bool __tc_pwm_p${o.pin}_prd = false; if (!__tc_pwm_p${o.pin}_prd) { (void)pwm_set_dt(&${v}, ${o.periodNs}, 0); __tc_pwm_p${o.pin}_prd = true; } (void)pwm_set_pulse_dt(&${v}, 0U); }`,
+      };
+    }
     default:
       throw new Error(
         `framework-zephyr does not yet support HAL op \`${op.operation}\`. ` +

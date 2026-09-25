@@ -42,7 +42,7 @@ export interface SensorNames {
   /** The bus port: I2C address or SPI CS pin. */
   port: number;
   /** 'i2c' | 'spi'. */
-  busKind: 'i2c' | 'spi';
+  busKind: 'i2c' | 'spi' | 'w1';
 }
 
 /** Derive a sensor's DT/C++ names. The scanner regexes the emitted __tc_
@@ -53,14 +53,16 @@ export function sensorNames(part: string, bus: string, port: number | string, bu
   const portNum = typeof port === 'number' ? port : parseInt(String(port));
   const stem = busKind === 'spi'
     ? `${partKey}_spi${busIndex}_cs${portNum}`
-    : `${partKey}_i2c${busIndex}_0x${portNum.toString(16)}`;
+    : busKind === 'w1'
+      ? `${partKey}_w1_p${portNum}`
+      : `${partKey}_i2c${busIndex}_0x${portNum.toString(16)}`;
   return {
     dtLabel: `tc_${stem}`,
     devVar: `__tc_sensor_${stem}_dev`,
     valVar: `__tc_sensor_${stem}_val`,
     busIndex,
     port: portNum,
-    busKind: busKind === 'spi' ? 'spi' : 'i2c',
+    busKind: busKind === 'spi' ? 'spi' : busKind === 'w1' ? 'w1' : 'i2c',
   };
 }
 
@@ -96,13 +98,15 @@ function requireBusKind(partKey: string, info: ReturnType<typeof requirePartInfo
  * Emit the per-sensor state block (device handle + sensor_value scratch).
  * Called from shimLines for each distinct sensor the program's ops reference.
  */
-export function sensorStateLines(part: string, bus: string, port: number | string, busKind: string = 'i2c', spiHz: number | string = 0, spiMode: number | string = 0, alertPin: number | string = -1): string[] {
+export function sensorStateLines(part: string, bus: string, port: number | string, busKind: string = 'i2c', spiHz: number | string = 0, spiMode: number | string = 0, alertPin: number | string = -1, resolution: number | string = 12): string[] {
   const partKey = sensorPartKey(String(part));
   requireBusKind(partKey, requirePartInfo(partKey), busKind);
   const n = sensorNames(part, bus, port, busKind);
   // The config comment carries construction facts (SPI clock, mode, alert
   // GPIO) to the overlay scanner — they shape the DT node, not the C++.
-  const cfg = `// tc-sensor-cfg: ${n.dtLabel} hz=${Number(spiHz)} mode=${Number(spiMode)} alert=${Number(alertPin)}`;
+  const cfg = busKind === 'w1'
+    ? `// tc-sensor-cfg: ${n.dtLabel} res=${Number(resolution)}`
+    : `// tc-sensor-cfg: ${n.dtLabel} hz=${Number(spiHz)} mode=${Number(spiMode)} alert=${Number(alertPin)}`;
   return [
     '// CUTTLEFISH_SENSOR_BEGIN',
     `static const struct device* ${n.devVar} = DEVICE_DT_GET(DT_NODELABEL(${n.dtLabel}));`,

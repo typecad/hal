@@ -241,6 +241,15 @@ export interface ZephyrDacChannel {
  * Pure-data descriptor for a Zephyr board + its SoC's peripheral layout.
  */
 export interface ZephyrChipDescriptor {
+  /** The SoC's RTC wake timer (ESP32 family rtc_timer fact) — Power.offFor
+   *  arms it (esp_sleep_enable_timer_wakeup) before soft-off. */
+  readonly powerWakeTimer?: boolean;
+  /** CAN controllers (harvested labeled can@ nodes) — the lowering
+   *  addresses the first by its DT nodelabel. */
+  readonly can?: { controllers: readonly { nodeLabel: string; compatible: string; txPad?: number; rxPad?: number }[] };
+  /** I2S controllers (harvested labeled i2s@ nodes) — the lowering
+   *  addresses each by its DT nodelabel. */
+  readonly i2s?: { controllers: readonly { nodeLabel: string; compatible: string }[] };
   /** Zephyr board target (the `west build -b <id>` argument), e.g. 'xiao_ble'. */
   readonly id: string;
   /** SoC family, e.g. 'nrf52840'. */

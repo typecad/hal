@@ -148,6 +148,9 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     // call yet), but the shim still declared DEVICE_DT_GET(DT_NODELABEL(...))
     // so the overlay must enable the node or the device symbol is missing.
     usesI2c: uses('i2c_') || uses('__tc_i2c'),
+    // I2C target mode: every i2c.resp_* lowering calls i2c_target_register
+    // (and the shim's state carries the i2c_target_* vocabulary).
+    usesI2cTarget: uses('i2c_target_'),
     // DT-bound sensor parts: the __tc_sensor_* state references and the
     // sensor_sample_fetch/sensor_channel_get calls both carry the token.
     usesSensor: uses('sensor_') || uses('__tc_sensor'),

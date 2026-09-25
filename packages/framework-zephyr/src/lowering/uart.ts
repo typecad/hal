@@ -30,7 +30,12 @@ export function uartInitLines(chip: ZephyrChipDescriptor, controllerIndex: numbe
     '// CUTTLEFISH_UART_BEGIN',
     `static const struct device* ${p}_dev = DEVICE_DT_GET(DT_NODELABEL(${ctrl.nodeLabel}));`,
     `static void ${p}_init(uint32_t baud) {`,
-    `    const struct uart_config cfg = { .baudrate = (baud ? baud : 115200), .parity = UART_CFG_PARITY_NONE, .stop_bits = UART_CFG_STOP_BITS_1, .data_bits = UART_CFG_DATA_BITS_8, .flow_ctrl = UART_CFG_FLOW_CTRL_NONE };`,
+    // 115200 8N1 is the console default — reconfiguring an already-matching
+    // port RESETS the ESP32 UART's TX path and silently eats the FIRST write
+    // that follows (poll_out completes into a reconfiguring FIFO). Only a
+    // genuinely different rate reconfigures.
+    `    if (baud == 0U || baud == 115200U) { return; }`,
+    `    const struct uart_config cfg = { .baudrate = baud, .parity = UART_CFG_PARITY_NONE, .stop_bits = UART_CFG_STOP_BITS_1, .data_bits = UART_CFG_DATA_BITS_8, .flow_ctrl = UART_CFG_FLOW_CTRL_NONE };`,
     `    uart_configure(${p}_dev, &cfg);`,
     `}`,
     '// CUTTLEFISH_UART_END',

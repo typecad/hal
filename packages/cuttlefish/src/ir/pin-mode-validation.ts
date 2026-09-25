@@ -110,7 +110,8 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
     if (op.operation === 'gpio.configure' || op.operation === 'gpio.read_cfg') {
       pinModeSet.add(pinKey);
       analogDrivenPins.delete(pinKey);
-    } else if (op.operation === 'pwm.set_pulse' || op.operation === 'pwm.set_duty') {
+    } else if (op.operation === 'pwm.set_pulse' || op.operation === 'pwm.set_duty'
+      || op.operation === 'pwm.servo_us' || op.operation === 'pwm.servo_angle' || op.operation === 'pwm.servo_idle') {
       analogDrivenPins.add(pinKey);
     } else if (op.operation === 'gpio.write' || op.operation === 'gpio.toggle') {
       analogDrivenPins.delete(pinKey);

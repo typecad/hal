@@ -78,8 +78,27 @@ const OVERLAY_ENV = 'TYPECAD_HAL_BOARD_CATALOG';
  *  33: per-pin JSDoc editor annotations on the board module's pin exports
  *  (harvested routes/roles/aliases surfaced for tsserver hover) + JSDoc on
  *  the bus/USB instance exports carrying their devicetree controller and
- *  pinctrl pad routes. */
-export const GENERATOR_REV = 33;
+ *  pinctrl pad routes.
+ *  34: the per-pin capabilities.pwm flag now includes any-pad matrix pads
+ *  (ESP32 LEDC header matrix, nRF psel synthesis) — it previously read only
+ *  fixed pinctrl routes, so matrix boards flagged zero PWM-capable pins and
+ *  the pin-capability validator rejected every plain `new PWM(pin, …)`
+ *  even though the JSDoc and the PWM export gate carried the matrix.
+ *  35: the P0 HAL surface joins the gated exports — Servo rides the PWM
+ *  gate, Keyboard/Mouse/KEY/MOUSE ride the USB gate; Strip and Matrix are
+ *  ungated (SPI-bus and pure-GPIO compositions).
+ *  39: I2S controller harvest — zephyr.i2s.controllers.* facts and the
+ *  I2S class gate.
+ *  38: CAN controller harvest — zephyr.can.controllers.* facts and the
+ *  CAN class gate (boards whose SoC ships no CAN controller export
+ *  nothing).
+ *  36+37: cpu-power-states harvest + the ESP32-family RTC wake-timer
+ *  fact (rtc_timer node shape) — zephyr.power.states.* and
+ *  zephyr.power.wakeTimer join the manifest; the wake-timer fact gates
+ *  Power.offFor(ms). — zephyr.power.states.* facts join the
+ *  manifest and gate the Power class (boards whose SoC declares no power
+ *  states export nothing). */
+export const GENERATOR_REV = 39;
 
 // ── fs-only Zephyr tree discovery ──────────────────────────────────────────
 

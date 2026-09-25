@@ -954,6 +954,200 @@ export function tryResolveSemanticCall(
       return { operation: "pwm.set_period", pin, periodNs, ...routing };
     }
 
+    case "servoWriteUs":
+    case "servoWriteAngle":
+    case "servoIdle": {
+      // Servo (hal/servo.ts) — calibrated PWM sugar. The calibrated range
+      // and travel are construction facts (numeric, field-resolved like
+      // PWM's period); the commanded us/angle is RUNTIME text spliced into
+      // the lowered C++ (the clamping/mapping cannot fold at transpile
+      // time). Routing overrides read off the instance like pwmSetPulse's.
+      // A default-calibrated servo (no opts) leaves periodNs unset too —
+      // the op omits it and the lowering owns the 50 Hz default.
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const periodNsRaw = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null) return null;
+      const periodNs = periodNsRaw ?? 20000000;
+      const controllerOverride = cleanOverrideText(instance.fieldValues.get("_controller"));
+      const pwmCh = Number(instance.fieldValues.get("_channel"));
+      const channelOverride = Number.isFinite(pwmCh) && pwmCh >= 0 ? pwmCh : undefined;
+      const routing = {
+        ...(controllerOverride !== undefined ? { controllerOverride } : {}),
+        ...(channelOverride !== undefined ? { channelOverride } : {}),
+      };
+      if (fnName === "servoWriteUs") {
+        // minUs/maxUs are constructor-folded when provided; the `?? 1000`
+        // defaults in the class body are coalesce expressions the ctor
+        // interpreter cannot fold, so a default-calibrated servo leaves the
+        // fields unset — the op omits them and the lowering owns the
+        // defaults (same numbers as the class docs).
+        const minUs = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+        const maxUs = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+        const us = resolveSemanticArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+        if (us === null) return null;
+        return {
+          operation: "pwm.servo_us", pin, periodNs,
+          ...(minUs !== null ? { minUs } : {}),
+          ...(maxUs !== null ? { maxUs } : {}),
+          us, ...routing,
+        };
+      }
+      if (fnName === "servoWriteAngle") {
+        const minUs = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+        const maxUs = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+        const maxAngle = resolveNumericArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+        const angle = resolveSemanticArg(args, 5, instance, paramNames, callArgTexts, paramDefaults);
+        if (angle === null) return null;
+        return {
+          operation: "pwm.servo_angle", pin, periodNs,
+          ...(minUs !== null ? { minUs } : {}),
+          ...(maxUs !== null ? { maxUs } : {}),
+          ...(maxAngle !== null ? { maxAngle } : {}),
+          angle, ...routing,
+        };
+      }
+      return { operation: "pwm.servo_idle", pin, periodNs, ...routing };
+    }
+
+    case "stripSetPixel":
+    case "stripFill":
+    case "stripShow": {
+      // Strip (hal/strip.ts) — the bus + chain length are construction
+      // facts; the per-call index/color values are runtime text spliced
+      // into the lowered C++.
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const count = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || count === null) return null;
+      if (fnName === "stripSetPixel") {
+        const index = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+        const r = resolveSemanticArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+        const g = resolveSemanticArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+        const b = resolveSemanticArg(args, 5, instance, paramNames, callArgTexts, paramDefaults);
+        if (index === null || r === null || g === null || b === null) return null;
+        return { operation: "strip.set_pixel", bus, count, index, r, g, b };
+      }
+      if (fnName === "stripFill") {
+        const r = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+        const g = resolveSemanticArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+        const b = resolveSemanticArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+        if (r === null || g === null || b === null) return null;
+        return { operation: "strip.fill", bus, count, r, g, b };
+      }
+      return { operation: "strip.show", bus, count };
+    }
+
+    case "hidKbBegin":
+      return { operation: "hid.kb_begin" };
+    case "hidKbPress":
+    case "hidKbRelease": {
+      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (key === null) return null;
+      return { operation: fnName === "hidKbPress" ? "hid.kb_press" : "hid.kb_release", key };
+    }
+    case "hidKbReleaseAll":
+      return { operation: "hid.kb_release_all" };
+    case "hidMouseBegin":
+      return { operation: "hid.mouse_begin" };
+    case "hidMouseMove": {
+      const dx = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const dy = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const wheel = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      if (dx === null || dy === null) return null;
+      return { operation: "hid.mouse_move", dx, dy, wheel: wheel ?? "0" };
+    }
+    case "hidMousePress":
+    case "hidMouseRelease":
+    case "hidMouseClick": {
+      const button = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (button === null) return null;
+      const op = fnName === "hidMousePress" ? "hid.mouse_press"
+        : fnName === "hidMouseRelease" ? "hid.mouse_release" : "hid.mouse_click";
+      return { operation: op, button };
+    }
+
+    case "i2sWrite": {
+      // Arg 0 is the controller index the class passes (this._instance) —
+      // read it instead of assuming the first controller (the ESP32-S3
+      // harvests two i2s@ nodes; new I2S(1) must drive I2S1).
+      const instanceIdx = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const hz = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const channels = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const bits = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const blockFrames = resolveNumericArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+      const samples = resolveI2cBufferArg(args, 5, instance, paramNames, callArgTexts, paramDefaults, callArgs);
+      if (hz === null || channels === null || bits === null || blockFrames === null || !samples) return null;
+      const bytes = samples.kind === "bytes" ? samples.bytes : [];
+      return { operation: "i2s.write", instance: instanceIdx ?? 0, hz, channels, bits, blockFrames, samples: bytes };
+    }
+    case "i2sRead": {
+      const instanceIdx = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const hz = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const channels = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const bits = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const blockFrames = resolveNumericArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+      if (hz === null || channels === null || bits === null || blockFrames === null) return null;
+      return { operation: "i2s.read", instance: instanceIdx ?? 0, hz, channels, bits, blockFrames };
+    }
+    case "i2sReadAt": {
+      const instanceIdx = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const index = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (index === null) return null;
+      return { operation: "i2s.read_at", instance: instanceIdx ?? 0, index };
+    }
+
+    case "canBegin": {
+      const instanceIdx = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const hz = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const loopback = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      if (hz === null || loopback === null) return null;
+      return { operation: "can.begin", instance: instanceIdx ?? 0, hz, loopback: loopback !== 0 };
+    }
+    case "canSend": {
+      const instanceIdx = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const id = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const extended = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const data = resolveI2cBufferArg(args, 3, instance, paramNames, callArgTexts, paramDefaults, callArgs);
+      if (id === null || extended === null || !data) return null;
+      const bytes = data.kind === "bytes" ? data.bytes : [];
+      // No slice to 8 here: the over-length diagnostic belongs to the
+      // lowering, which must see the real array length (a silent truncate
+      // would hide the bug).
+      return { operation: "can.send", instance: instanceIdx ?? 0, id, extended: extended !== 0, data: bytes };
+    }
+    case "canOnReceive": {
+      const instanceIdx = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (handler === null) return null;
+      return { operation: "can.on_receive", instance: instanceIdx ?? 0, handler };
+    }
+
+    case "clockSet": {
+      const epoch = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (epoch === null) return null;
+      return { operation: "clock.set", epoch };
+    }
+    case "clockNow":
+      return { operation: "clock.now" };
+
+    case "powerOff":
+      return { operation: "power.off" };
+    case "powerOffFor": {
+      const ms = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (ms === null) return null;
+      return { operation: "power.off_for", ms };
+    }
+
+    case "matrixOnKey": {
+      // Matrix (hal/matrix.ts) — the row/col pad lists are construction
+      // facts carried as comma-joined text by the capture; the handler is
+      // the callback() placeholder name.
+      const rows = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const cols = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const handler = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      if (rows === null || cols === null || handler === null) return null;
+      return { operation: "matrix.on_key", rows: String(rows), cols: String(cols), handler };
+    }
+
     case "adcReadRaw":
     case "adcReadMv": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
@@ -1065,6 +1259,49 @@ export function tryResolveSemanticCall(
         return { operation: "i2c.dev_write", bus, address, hz, bytes: data.bytes };
       }
       return { operation: "i2c.dev_write", bus, address, hz, bytes: [data.data] };
+    }
+
+    // I2C responder (hal/i2c-responder.ts) — uniform arg layout: bus,
+    // address, rx ring, tx buffer, then the per-verb payload. The sizes ride
+    // every op so the shim state block and the call sites cannot drift.
+    case "i2cRespOnReceive":
+    case "i2cRespOnRequest": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const address = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const rx = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const tx = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const handler = resolveSemanticArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || address === null || rx === null || tx === null || handler === null) return null;
+      return {
+        operation: fnName === "i2cRespOnReceive" ? "i2c.resp_on_receive" : "i2c.resp_on_request",
+        bus, address, rx, tx, handler,
+      };
+    }
+
+    case "i2cRespAvailable":
+    case "i2cRespRead": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const address = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const rx = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const tx = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || address === null || rx === null || tx === null) return null;
+      return {
+        operation: fnName === "i2cRespAvailable" ? "i2c.resp_available" : "i2c.resp_read",
+        bus, address, rx, tx,
+      };
+    }
+
+    case "i2cRespWrite": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const address = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const rx = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const tx = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const data = resolveI2cBufferArg(args, 4, instance, paramNames, callArgTexts, paramDefaults, callArgs);
+      if (bus === null || address === null || rx === null || tx === null || data === null) return null;
+      if (data.kind === "bytes") {
+        return { operation: "i2c.resp_write", bus, address, rx, tx, bytes: data.bytes };
+      }
+      return { operation: "i2c.resp_write", bus, address, rx, tx, bytes: [data.data] };
     }
 
     case "dacWriteValue": {
@@ -1199,8 +1436,9 @@ export function tryResolveSemanticCall(
       const spiHz = resolveNumericArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
       const spiMode = resolveSemanticArg(args, 5, instance, paramNames, callArgTexts, paramDefaults);
       const alertPin = resolveSemanticArg(args, 6, instance, paramNames, callArgTexts, paramDefaults);
+      const resolution = resolveNumericArg(args, 7, instance, paramNames, callArgTexts, paramDefaults);
       if (part === null || bus === null || port === null || busKind === null || spiHz === null || spiMode === null || alertPin === null) return null;
-      return { operation: "sensor.fetch", part, bus, port, busKind, spiHz, spiMode, alertPin };
+      return { operation: "sensor.fetch", part, bus, port, busKind, spiHz, spiMode, alertPin, ...(resolution !== null ? { resolution } : {}) };
     }
 
     case "sensorGet": {
@@ -1211,9 +1449,10 @@ export function tryResolveSemanticCall(
       const spiHz = resolveNumericArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
       const spiMode = resolveSemanticArg(args, 5, instance, paramNames, callArgTexts, paramDefaults);
       const alertPin = resolveSemanticArg(args, 6, instance, paramNames, callArgTexts, paramDefaults);
-      const chan = resolveSemanticArg(args, 7, instance, paramNames, callArgTexts, paramDefaults);
+      const resolution = resolveNumericArg(args, 7, instance, paramNames, callArgTexts, paramDefaults);
+      const chan = resolveSemanticArg(args, 8, instance, paramNames, callArgTexts, paramDefaults);
       if (part === null || bus === null || port === null || busKind === null || spiHz === null || spiMode === null || alertPin === null || chan === null) return null;
-      return { operation: "sensor.get", part, bus, port, busKind, spiHz, spiMode, alertPin, chan };
+      return { operation: "sensor.get", part, bus, port, busKind, spiHz, spiMode, alertPin, chan, ...(resolution !== null ? { resolution } : {}) };
     }
 
     default:

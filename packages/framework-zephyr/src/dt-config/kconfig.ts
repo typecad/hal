@@ -45,6 +45,12 @@ export interface KconfigUsage {
   usesFS?: boolean;
   usesHwtimer?: boolean;
   usesI2c?: boolean;
+  /** I2C target mode used (i2c.resp_* ops — the responder). Enables the
+   *  i2c_target API paths: driver implementations are gated on it (e.g.
+   *  STM32 compiles target support + selects interrupt mode only under
+   *  I2C_TARGET); controllers without target support still build and
+   *  return -ENOSYS at registration, which the shim prints loudly. */
+  usesI2cTarget?: boolean;
   usesSpi?: boolean;
   usesUart?: boolean;
   /** USB CDC-ACM serial used (usb.* ops). Selects the "next" USB device
@@ -238,6 +244,7 @@ export function resolveKconfigFragments(
   }
   if (usage.usesDac) m.set('CONFIG_DAC', 'y');
   if (usage.usesI2c) m.set('CONFIG_I2C', 'y');
+  if (usage.usesI2cTarget) m.set('CONFIG_I2C_TARGET', 'y');
   if (usage.usesSpi) m.set('CONFIG_SPI', 'y');
   // USB CDC-ACM serial: the "next" USB device stack + the CDC-ACM class.
   // Symbol names verified against Zephyr 4.3 (subsys/usb/device_next/Kconfig):

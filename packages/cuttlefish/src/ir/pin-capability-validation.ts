@@ -22,7 +22,9 @@ function assertNever(x: never): never {
 
 /** Maps a HAL operation string to the board-definition capability flag it requires. */
 function operationToCapability(op: string): string | null {
-  if (op === 'pwm.set_pulse' || op === 'pwm.set_duty' || op === 'pwm.set_period') {
+  // Every pwm.* op (set_* verbs and the servo sugar) requires a PWM-capable
+  // pin — category-wide so new pwm verbs classify themselves.
+  if (op.startsWith('pwm.')) {
     return 'pwm';
   }
   if (op === 'adc.read_raw' || op === 'adc.read_mv') {

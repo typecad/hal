@@ -203,6 +203,204 @@ export interface PwmSetPeriodOp extends PwmRoutingOverride {
   periodNs: number | string;
 }
 
+/** Servo (hal/servo.ts) — calibrated PWM sugar. The calibrated range and
+ *  travel are construction facts (omitted when default-calibrated — the
+ *  lowering owns the 1000/2000/180 defaults); the commanded us/angle is
+ *  runtime text spliced into the lowered C++, where clamping and the
+ *  angle→pulse mapping run. */
+export interface PwmServoUsOp extends PwmRoutingOverride {
+  operation: "pwm.servo_us";
+  pin: number;
+  periodNs: number | string;
+  minUs?: number;
+  maxUs?: number;
+  /** Runtime pulse-width expression text (µs) */
+  us: number | string;
+}
+
+export interface PwmServoAngleOp extends PwmRoutingOverride {
+  operation: "pwm.servo_angle";
+  pin: number;
+  periodNs: number | string;
+  minUs?: number;
+  maxUs?: number;
+  maxAngle?: number;
+  /** Runtime angle expression text (degrees) */
+  angle: number | string;
+}
+
+export interface PwmServoIdleOp extends PwmRoutingOverride {
+  operation: "pwm.servo_idle";
+  pin: number;
+  periodNs: number | string;
+}
+
+// ---------------------------------------------------------------------------
+// Strip (hal/strip.ts) — addressable RGB LEDs over the led_strip API. The
+// strip rides one of the board's wired SPI buses (ws2812-spi driver); the
+// bus name and chain length are construction facts, the per-call index and
+// color values are runtime text spliced into the lowered C++.
+// ---------------------------------------------------------------------------
+
+export interface StripSetPixelOp {
+  operation: "strip.set_pixel";
+  /** Bus display name, e.g. 'SPI0' */
+  bus: string;
+  /** Chain length (construction fact — the buffer size) */
+  count: number;
+  index: number | string;
+  r: number | string;
+  g: number | string;
+  b: number | string;
+}
+
+export interface StripFillOp {
+  operation: "strip.fill";
+  bus: string;
+  count: number;
+  r: number | string;
+  g: number | string;
+  b: number | string;
+}
+
+export interface StripShowOp {
+  operation: "strip.show";
+  bus: string;
+  count: number;
+}
+
+// ---------------------------------------------------------------------------
+// HID (hal/hid.ts) — USB keyboard/mouse over the Zephyr "next" stack. One
+// HID interface per program (a v1 ceiling like the nRF PWM matrix); the key
+// and button arguments are runtime text the lowering maps from KEY.*/MOUSE.*
+// tokens onto Zephyr's HID_KEY_* / button macros; movement values are
+// runtime expressions.
+// ---------------------------------------------------------------------------
+
+export interface HidKbBeginOp {
+  operation: "hid.kb_begin";
+}
+
+export interface HidKbPressOp {
+  operation: "hid.kb_press";
+  /** KEY.* token text or runtime expression */
+  key: number | string;
+}
+
+export interface HidKbReleaseOp {
+  operation: "hid.kb_release";
+  key: number | string;
+}
+
+export interface HidKbReleaseAllOp {
+  operation: "hid.kb_release_all";
+}
+
+export interface HidMouseBeginOp {
+  operation: "hid.mouse_begin";
+}
+
+export interface HidMouseMoveOp {
+  operation: "hid.mouse_move";
+  dx: number | string;
+  dy: number | string;
+  wheel: number | string;
+}
+
+export interface HidMousePressOp {
+  operation: "hid.mouse_press";
+  /** MOUSE.* token text or runtime expression */
+  button: number | string;
+}
+
+export interface HidMouseReleaseOp {
+  operation: "hid.mouse_release";
+  button: number | string;
+}
+
+export interface HidMouseClickOp {
+  operation: "hid.mouse_click";
+  button: number | string;
+}
+
+// ---------------------------------------------------------------------------
+// Matrix (hal/matrix.ts) — GPIO key-matrix scanning over the input
+// subsystem. The row/column pad lists are construction facts; the handler
+// is the resolved C callback name for the shim's trampoline.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Power (hal/power.ts) — explicit soft-off entry. No pin, no facts beyond
+// the class gate (the SoC's declared cpu-power-states).
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Clock (hal/clock.ts) — wall-clock time over the rtc DT alias. The epoch
+// argument is runtime text spliced into the lowered conversion.
+// ---------------------------------------------------------------------------
+
+export interface ClockSetOp {
+  operation: "clock.set";
+  epoch: number | string;
+}
+
+export interface ClockNowOp {
+  operation: "clock.now";
+}
+
+// ---------------------------------------------------------------------------
+// CAN (hal/can.ts) — frames over the harvested can@ controller. Id/hz are
+// runtime text; the payload lowers from an array literal (≤8 bytes).
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// I2S (hal/i2s.ts) — 16-bit audio blocks over the harvested i2s@ node.
+// Construction facts (rate/channels/block) ride every op; the sample array
+// lowers from a literal (≤ blockFrames × channels entries).
+
+export interface CanBeginOp {
+  operation: "can.begin";
+  instance: number;
+  hz: number | string;
+  loopback: boolean;
+}
+
+export interface CanSendOp {
+  operation: "can.send";
+  instance: number;
+  id: number | string;
+  extended: boolean;
+  /** Payload bytes, 0-8 entries (unused positions omitted). */
+  data: (number | string)[];
+}
+
+export interface CanOnReceiveOp {
+  operation: "can.on_receive";
+  instance: number;
+  /** Resolved C++ callback function name. */
+  handler: string;
+}
+
+export interface PowerOffOp {
+  operation: "power.off";
+}
+
+export interface PowerOffForOp {
+  operation: "power.off_for";
+  /** Wake delay in milliseconds (runtime text spliced into the armed call). */
+  ms: number | string;
+}
+
+export interface MatrixOnKeyOp {
+  operation: "matrix.on_key";
+  /** Row pad numbers (comma-joined text from the construction capture) */
+  rows: string;
+  /** Column pad numbers */
+  cols: string;
+  /** Resolved C++ callback function name */
+  handler: string;
+}
+
 export interface AdcReadRawOp {
   operation: "adc.read_raw";
   pin: number;
@@ -304,6 +502,56 @@ export interface I2cDevWriteOp {
   address: number;
   hz: number;
   /** Byte values — numeric literals or runtime expressions */
+  bytes: (number | string)[];
+}
+
+/** I2C responder (hal/i2c-responder.ts) — this board answering as an I2C
+ *  target. Every op carries the construction facts so the shim's state
+ *  block and each call site agree. */
+export interface I2cRespOnReceiveOp {
+  operation: "i2c.resp_on_receive";
+  bus: string;
+  address: number;
+  /** Receive ring size in bytes */
+  rx: number;
+  /** Response buffer size in bytes */
+  tx: number;
+  /** Callback identifier from callback() */
+  handler: string;
+}
+
+export interface I2cRespOnRequestOp {
+  operation: "i2c.resp_on_request";
+  bus: string;
+  address: number;
+  rx: number;
+  tx: number;
+  handler: string;
+}
+
+export interface I2cRespAvailableOp {
+  operation: "i2c.resp_available";
+  bus: string;
+  address: number;
+  rx: number;
+  tx: number;
+}
+
+export interface I2cRespReadOp {
+  operation: "i2c.resp_read";
+  bus: string;
+  address: number;
+  rx: number;
+  tx: number;
+}
+
+export interface I2cRespWriteOp {
+  operation: "i2c.resp_write";
+  bus: string;
+  address: number;
+  rx: number;
+  tx: number;
+  /** Response bytes — numeric literals or runtime expressions */
   bytes: (number | string)[];
 }
 
@@ -940,8 +1188,10 @@ export interface SensorFetchOp {
   bus: string;
   /** Bus port: 7-bit I2C address, or the SPI chip-select pin number. */
   port: number | string;
-  /** 'i2c' | 'spi' — which DT child shape the overlay emits. */
+  /** 'i2c' | 'spi' | 'w1' — which DT child shape the overlay emits. */
   busKind: string;
+  /** 1-Wire parts: the converter resolution in bits (9-12, default 12). */
+  resolution?: number;
   /** SPI clock Hz (0 = the 1 MHz default). */
   spiHz: number | string;
   /** SPI mode 0-3. */
@@ -989,28 +1239,27 @@ export interface SensorGetOp {
 // ops 'supported' and adds a lowering — no manifest-schema or validator change
 // is needed because the category is already recognized.
 
-export interface I2sInitOp {
-  operation: "i2s.init";
-  /** Sample rate in Hz */
-  sampleRate: number | string;
-  /** Number of channels (1 = mono, 2 = stereo) */
-  channels?: number | string;
-  /** Bits per sample (8, 16, 24, 32) */
-  bitsPerSample?: number | string;
-}
 export interface I2sWriteOp {
   operation: "i2s.write";
-  /** C expression for the sample buffer */
-  data: string;
-  /** Number of bytes to write */
-  length: number | string;
+  instance: number;
+  hz: number;
+  channels: number;
+  bits: number;
+  blockFrames: number;
+  samples: (number | string)[];
 }
 export interface I2sReadOp {
   operation: "i2s.read";
-  /** Buffer variable name */
-  buffer: string;
-  /** Number of bytes to read */
-  length: number | string;
+  instance: number;
+  hz: number;
+  channels: number;
+  bits: number;
+  blockFrames: number;
+}
+export interface I2sReadAtOp {
+  operation: "i2s.read_at";
+  instance: number;
+  index: number | string;
 }
 
 // ---------------------------------------------------------------------------
@@ -1183,6 +1432,32 @@ export type HALOpIR =
   | PwmSetPulseOp
   | PwmSetDutyOp
   | PwmSetPeriodOp
+  | PwmServoUsOp
+  | PwmServoAngleOp
+  | PwmServoIdleOp
+  | StripSetPixelOp
+  | StripFillOp
+  | StripShowOp
+  | HidKbBeginOp
+  | HidKbPressOp
+  | HidKbReleaseOp
+  | HidKbReleaseAllOp
+  | HidMouseBeginOp
+  | HidMouseMoveOp
+  | HidMousePressOp
+  | HidMouseReleaseOp
+  | HidMouseClickOp
+  | MatrixOnKeyOp
+  | PowerOffOp
+  | CanBeginOp
+  | I2sWriteOp
+  | I2sReadOp
+  | I2sReadAtOp
+  | CanSendOp
+  | CanOnReceiveOp
+  | PowerOffForOp
+  | ClockSetOp
+  | ClockNowOp
   | AdcReadRawOp
   | AdcReadMvOp
   | DacWriteValueOp
@@ -1195,6 +1470,11 @@ export type HALOpIR =
   | I2cRegReadOp
   | I2cRegUpdateOp
   | I2cDevWriteOp
+  | I2cRespOnReceiveOp
+  | I2cRespOnRequestOp
+  | I2cRespAvailableOp
+  | I2cRespReadOp
+  | I2cRespWriteOp
   | SpiTransceiveOp
   | SpiDevWriteOp
   | SpiRegReadOp
@@ -1299,8 +1579,7 @@ export type HALOpIR =
   | SensorFetchOp
   | SensorGetOp
   // Hardware timer
-  // I2S / digital audio (unimplemented surface)
-  | I2sInitOp
+  // I2S / digital audio
   | I2sWriteOp
   | I2sReadOp
   // TWAI / CAN (unimplemented surface)
@@ -1360,12 +1639,22 @@ export const HAL_OPERATION_KINDS = [
   // Thin Zephyr-shaped peripherals
   'gpio.configure', 'gpio.read_cfg', 'gpio.shift_out', 'gpio.shift_in',
   'pwm.set_pulse', 'pwm.set_duty', 'pwm.set_period',
+  'pwm.servo_us', 'pwm.servo_angle', 'pwm.servo_idle',
+  'strip.set_pixel', 'strip.fill', 'strip.show',
+  'hid.kb_begin', 'hid.kb_press', 'hid.kb_release', 'hid.kb_release_all',
+  'hid.mouse_begin', 'hid.mouse_move', 'hid.mouse_press', 'hid.mouse_release', 'hid.mouse_click',
+  'matrix.on_key',
+  'power.off',
+  'can.begin', 'can.send', 'can.on_receive',
+  'power.off_for',
+  'clock.set', 'clock.now',
   'adc.read_raw', 'adc.read_mv',
   'dac.write_value',
   'wdt.setup', 'wdt.feed',
   'counter.on_alarm', 'counter.start', 'counter.stop',
   // Tier-2 thin buses
   'i2c.reg_write', 'i2c.reg_read', 'i2c.reg_update', 'i2c.dev_write',
+  'i2c.resp_on_receive', 'i2c.resp_on_request', 'i2c.resp_available', 'i2c.resp_read', 'i2c.resp_write',
   'spi.transceive', 'spi.dev_write', 'spi.reg_read',
   'uart.poll_write', 'uart.rx_arm', 'uart.rx_available', 'uart.rx_peek', 'uart.rx_read',
   'thread.start', 'thread.join',
@@ -1411,8 +1700,9 @@ export const HAL_OPERATION_KINDS = [
   'sensor.fetch',
   'sensor.get',
   // Hardware timer
-  // I2S / digital audio (unimplemented — declared unsupported by all frameworks)
-  'i2s.init', 'i2s.write', 'i2s.read',
+  // I2S / digital audio (Zephyr: the harvested i2s@ controllers; the legacy
+  // i2s.init is gone — the new class lazy-configures on first use)
+  'i2s.write', 'i2s.read', 'i2s.read_at',
   // TWAI / CAN (unimplemented)
   'twai.init', 'twai.send', 'twai.receive',
   // USB CDC-ACM serial port

@@ -328,7 +328,10 @@ export function collectI2s(program: ProgramIR | undefined): Map<number, { hz: nu
       const o = op as Record<string, unknown>;
       const name = o.operation;
       if (name === 'i2s.write' || name === 'i2s.read') {
-        const inst = Math.min(Number(o.instance ?? 0), 1);
+        // Raw instance (no clamp): the strategy loop folds usage through
+        // lowerI2s's clamp, so the facts must stay keyed by what the ops
+        // actually carry.
+        const inst = Number(o.instance ?? 0);
         if (!out.has(inst)) {
           out.set(inst, {
             hz: Number(o.hz ?? 16000),
@@ -347,6 +350,101 @@ export function collectI2s(program: ProgramIR | undefined): Map<number, { hz: nu
   visit(program);
   visitResolvedHalOps(program, visit);
   return out;
+}
+
+/**
+ * Which can / i2s / clock verbs the program's ops actually use — the init
+ * blocks emit only the state those verbs reference (Zephyr's -Werror turns
+ * an unreferenced static function/variable into a build failure: a
+ * send-only CAN program must not carry the rx trampoline, a now()-only
+ * Clock program must not carry the set() conversion helper). Returns
+ * undefined when there is no program to scan (probe flows) — callers then
+ * fall back to emitting every controller with the full state set.
+ */
+export function collectVerbUsage(program: ProgramIR | undefined): {
+  can: Map<number, { begin: boolean; send: boolean; onReceive: boolean }>;
+  i2s: Map<number, { write: boolean; read: boolean; readAt: boolean }>;
+  clock: { set: boolean; now: boolean };
+} | undefined {
+  if (!program) return undefined;
+  const out = {
+    can: new Map<number, { begin: boolean; send: boolean; onReceive: boolean }>(),
+    i2s: new Map<number, { write: boolean; read: boolean; readAt: boolean }>(),
+    clock: { set: false, now: false },
+  };
+  const canFlags = (inst: number) => {
+    let f = out.can.get(inst);
+    if (!f) { f = { begin: false, send: false, onReceive: false }; out.can.set(inst, f); }
+    return f;
+  };
+  const i2sFlags = (inst: number) => {
+    let f = out.i2s.get(inst);
+    if (!f) { f = { write: false, read: false, readAt: false }; out.i2s.set(inst, f); }
+    return f;
+  };
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    const n = node as Record<string, unknown>;
+    const op = n.operation;
+    if (op && typeof op === 'object') {
+      const o = op as Record<string, unknown>;
+      const name = o.operation;
+      const inst = Number(o.instance ?? 0);
+      switch (name) {
+        case 'can.begin': canFlags(inst).begin = true; break;
+        case 'can.send': canFlags(inst).send = true; break;
+        case 'can.on_receive': canFlags(inst).onReceive = true; break;
+        case 'i2s.write': i2sFlags(inst).write = true; break;
+        case 'i2s.read': i2sFlags(inst).read = true; break;
+        case 'i2s.read_at': i2sFlags(inst).readAt = true; break;
+        case 'clock.set': out.clock.set = true; break;
+        case 'clock.now': out.clock.now = true; break;
+        default: break;
+      }
+    }
+    for (const v of Object.values(n)) {
+      if (Array.isArray(v)) { for (const item of v) visit(item); }
+      else if (v && typeof v === 'object') visit(v);
+    }
+  };
+  visit(program);
+  visitResolvedHalOps(program, visit);
+  return out;
+}
+
+/**
+ * Collect the distinct I2C responders the program's ops reference
+ * (i2c.resp_*), keyed `${bus}|${address}` — one target-mode address per
+ * constructed responder. Mirrors collectSpiTargets: the construction facts
+ * (rx/tx sizes) ride every op, so the first seen wins and the state block
+ * cannot drift from the call sites.
+ */
+export function collectI2cResponders(program: ProgramIR | undefined): Map<string, { bus: string; address: number; rx: number; tx: number }> | undefined {
+  if (!program) return undefined;
+  const responders = new Map<string, { bus: string; address: number; rx: number; tx: number }>();
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    const n = node as Record<string, unknown>;
+    const op = n.operation;
+    if (op && typeof op === 'object') {
+      const o = op as Record<string, unknown>;
+      if (String(o.operation).startsWith('i2c.resp_')) {
+        const bus = String(o.bus ?? '');
+        const address = Number(o.address ?? 0);
+        const key = `${bus}|${address}`;
+        if (!responders.has(key)) {
+          responders.set(key, { bus, address, rx: Number(o.rx ?? 64), tx: Number(o.tx ?? 32) });
+        }
+      }
+    }
+    for (const v of Object.values(n)) {
+      if (Array.isArray(v)) { for (const item of v) visit(item); }
+      else if (v && typeof v === 'object') visit(v);
+    }
+  };
+  visit(program);
+  visitResolvedHalOps(program, visit);
+  return responders;
 }
 
 /**
@@ -453,7 +551,8 @@ import { pwmInitLines } from './lowering/pwm.js';
 import { dacInitLines } from './lowering/dac.js';
 import { fsInitLines } from './lowering/fs.js';
 import { hwtimerInitLines } from './lowering/hwtimer.js';
-import { i2cInitLines } from './lowering/i2c.js';
+import { i2cInitLines, i2cResponderStateLines } from './lowering/i2c.js';
+import { parseControllerIndex } from './lowering/util.js';
 import { stripInitLines } from './lowering/strip.js';
 import { hidInitLines } from './lowering/hid.js';
 import { matrixInitLines } from './lowering/matrix.js';
@@ -977,10 +1076,26 @@ export class ZephyrStrategy implements PlatformStrategy {
     // declared controller's __tc_<bus>N_dev trips -Wunused-variable under
     // Zephyr's -Werror (collectUsedBusIndices; probes with no program emit all).
     const usedBuses = collectUsedBusIndices(program);
+    // Verb-level usage for the can.*/i2s.*/clock.* init blocks (see
+    // collectVerbUsage) — undefined when there is no program (probe flows
+    // emit the full state set).
+    const verbUsage = collectVerbUsage(program);
     if (uses('usesI2C') && chip.i2c) {
       for (let i = 0; i < chip.i2c.controllers.length; i++) {
         if (usedBuses && !usedBuses.i2c.has(i)) continue;
         guardBody.push(...i2cInitLines(chip, i));
+      }
+      // I2C responders — one target-mode state block per constructed
+      // responder (bus|address), against the controller handles above
+      // (collectI2cResponders; the ops mark the bus used, so the handle
+      // the registration references is always present).
+      const responders = collectI2cResponders(program);
+      if (responders) {
+        for (const r of responders.values()) {
+          const idx = parseControllerIndex(r.bus);
+          if (idx >= chip.i2c.controllers.length) continue;
+          guardBody.push(...i2cResponderStateLines(chip, idx, r.address, r.rx, r.tx));
+        }
       }
     }
     if (uses('usesSPI') && chip.spi) {
@@ -1007,26 +1122,57 @@ export class ZephyrStrategy implements PlatformStrategy {
     // Wall-clock shim — the epoch<->civil helpers + the rtc alias handle
     // (the DT node comes from the overlay generator's shim synthesis).
     if (uses('usesClock')) {
-      guardBody.push(...clockInitLines());
+      const clockUsage = verbUsage?.clock ?? { set: true, now: true };
+      guardBody.push(...clockInitLines(clockUsage));
     }
     // CAN — per-controller device handle + the rx trampoline (the DT node
-    // is the board's own can@ node, enabled by the overlay).
+    // is the board's own can@ node, enabled by the overlay). Only the
+    // controllers the program addresses, and only the state its verbs
+    // reference (collectVerbUsage; probes with no program emit all). Usage
+    // folds through the same clamp lowerCan applies to out-of-range
+    // instances, so the state block for the clamped controller emits.
     if (uses('usesCan') && chip.can) {
-      for (let i = 0; i < chip.can.controllers.length; i++) {
-        guardBody.push(...canInitLines(chip, i));
+      const nCtrl = chip.can.controllers.length;
+      const canUsage = verbUsage?.can;
+      const folded = Array.from({ length: nCtrl }, () => ({ begin: false, send: false, onReceive: false }));
+      if (canUsage) {
+        for (const [inst, flags] of canUsage) {
+          const f = folded[Math.max(0, Math.min(inst, nCtrl - 1))]!;
+          f.begin = f.begin || flags.begin;
+          f.send = f.send || flags.send;
+          f.onReceive = f.onReceive || flags.onReceive;
+        }
+      }
+      for (let i = 0; i < nCtrl; i++) {
+        const f = folded[i]!;
+        if (canUsage && !f.begin && !f.send && !f.onReceive) continue;
+        guardBody.push(...canInitLines(chip, i, canUsage ? f : { begin: true, send: true, onReceive: true }));
       }
     }
     // I2S — per-controller slab + block buffers + lazy direction inits,
-    // sized from the construction facts the ops carry.
+    // sized from the construction facts the ops carry. Same used-instance
+    // and clamp-fold discipline as CAN.
     if (uses('usesI2s') && chip.i2s) {
       const i2sFacts = collectI2s(program);
-      const controllerCount = chip.i2s.controllers.length;
-      for (let i = 0; i < controllerCount; i++) {
-        const f = i2sFacts?.get(i);
-        const channels = f?.channels ?? 2;
-        const bits = f?.bits ?? 16;
-        const blockFrames = f?.blockFrames ?? 64;
-        guardBody.push(...i2sInitLines(chip, i, blockFrames * channels * (bits / 8)));
+      const nCtrl = chip.i2s.controllers.length;
+      const i2sUsage = verbUsage?.i2s;
+      const folded = Array.from({ length: nCtrl }, () => ({ write: false, read: false, readAt: false }));
+      if (i2sUsage) {
+        for (const [inst, flags] of i2sUsage) {
+          const f = folded[Math.max(0, Math.min(inst, nCtrl - 1))]!;
+          f.write = f.write || flags.write;
+          f.read = f.read || flags.read;
+          f.readAt = f.readAt || flags.readAt;
+        }
+      }
+      for (let i = 0; i < nCtrl; i++) {
+        const f = folded[i]!;
+        if (i2sUsage && !f.write && !f.read && !f.readAt) continue;
+        const facts = i2sFacts?.get(i);
+        const channels = facts?.channels ?? 2;
+        const bits = facts?.bits ?? 16;
+        const blockFrames = facts?.blockFrames ?? 64;
+        guardBody.push(...i2sInitLines(chip, i, blockFrames * channels * (bits / 8), i2sUsage ? f : { write: true, read: true, readAt: true }));
       }
     }
     if (uses('usesUart') && chip.uart) {

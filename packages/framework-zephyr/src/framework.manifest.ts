@@ -235,6 +235,12 @@ export default defineFrameworkManifest({
         'i2c.reg_read': 'supported',
         'i2c.reg_update': 'supported',
         'i2c.dev_write': 'supported',
+        // I2C responder (hal/i2c-responder.ts): this board as an I2C target.
+        'i2c.resp_on_receive': 'supported',
+        'i2c.resp_on_request': 'supported',
+        'i2c.resp_available': 'supported',
+        'i2c.resp_read': 'supported',
+        'i2c.resp_write': 'supported',
       },
     },
     spi: {
@@ -635,6 +641,19 @@ export default defineFrameworkManifest({
   doctor: { available: true },
 
   // `typecad-hal licenses` enumerates the Zephyr kernel + west manifest projects
-  // and resolves each one's SPDX license (mirrors framework-arduino).
+  // and resolves each one's SPDX license.
   licenses: { available: true },
+
+  // `typecad-hal sbom` emits a build-true SBOM (CycloneDX 1.6 / SPDX 2.3):
+  // linked west modules + kernel with commit SHAs and licenses, the hashed
+  // firmware artifact, the board, and the toolchain in `formulation`;
+  // --check/--diff gate the record against the build.
+  sbom: { available: true },
+
+  // `typecad-hal audit` evaluates the last build's merged Kconfig against a
+  // security baseline (shell/console exposure, entropy, watchdog, hard-coded
+  // credentials...), with committed waivers (.typecad-hal/audit-waivers.json)
+  // recorded as deviations and a machine-readable sidecar
+  // (<buildDir>/security-audit.json).
+  audit: { available: true },
 });
