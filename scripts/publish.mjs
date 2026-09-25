@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------------------
-// publish.mjs — the release workflow's publish command (release.yml:
-// changesets/action `publish: npm run publish`).
+// publish.mjs — the local publish command (`npm run publish`, run after
+// `npx changeset version`). Releases are cut from a contributor machine,
+// never CI — CI checkouts lack the gitignored staged-asset copies npm packs.
 //
 // Gates the npm publish on the bundled VS Code extension being fresh:
 // sync:typecad-ui is idempotent — it compiles the extension from tracked
