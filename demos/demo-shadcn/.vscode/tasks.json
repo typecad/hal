@@ -5,11 +5,42 @@
       "type": "shell",
       "command": "npx typecad-hal build --compile --upload --debug",
       "options": {
-        "cwd": "${workspaceFolder}/src/out"
+        "cwd": "${workspaceFolder}/src"
       },
       "group": {
         "kind": "build",
         "isDefault": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "typecad-hal: debug server (west)",
+      "type": "shell",
+      "command": "npx typecad-hal debug-server start --flash",
+      "options": {
+        "cwd": "${workspaceFolder}/src",
+        "env": {
+          "NO_COLOR": "1"
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "typecad-hal-debug-server",
+        "pattern": {
+          "regexp": "__cuttlefish_never_matches__"
+        },
+        "background": {
+          "beginsPattern": "Transpiling",
+          "endsPattern": "^TYPECAD_HAL: debug server ready on 3333"
+        }
+      }
+    },
+    {
+      "label": "typecad-hal: stop debug server",
+      "type": "shell",
+      "command": "npx typecad-hal debug-server stop",
+      "options": {
+        "cwd": "${workspaceFolder}/src"
       },
       "problemMatcher": []
     }

@@ -56,11 +56,13 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerIntel = registerIntel;
+exports.pickPort = pickPort;
 const fs = __importStar(require("node:fs"));
 const path = __importStar(require("node:path"));
 const node_module_1 = require("node:module");
 const vscode = __importStar(require("vscode"));
 const board_facts_1 = require("./board-facts");
+const hal_root_1 = require("./hal-root");
 const terminal_1 = require("./terminal");
 const DEBOUNCE_MS = 400;
 let root;
@@ -88,15 +90,24 @@ let lastBoardName;
 // Routing through Function keeps a real, native dynamic import in the
 // emitted JavaScript.
 const nativeImport = new Function('specifier', 'return import(specifier);');
-/** Register the intel surface for the workspace rooted at `workspaceRoot`. */
-function registerIntel(context, workspaceRoot) {
-    root = workspaceRoot;
-    status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+/**
+ * Register the intel surface, rooted wherever `resolveRoot` points. The
+ * resolver is content-based (hal-root.ts) and re-queried whenever the
+ * workspace shape changes — combined projects are multi-root (hw/ + fw/) and
+ * must root on the fw side, never on workspaceFolders[0] by assumption.
+ */
+function registerIntel(context, resolveRoot) {
+    root = resolveRoot();
+    if (!root)
+        return;
+    // Priority 99 sits the hal chip just right of typeCAD/pcb's (101) — stable
+    // ordering, board state before firmware state.
+    status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
     status.command = 'typecad-intel.reanalyze';
     status.text = '$(circuit-board) typeCAD/hal';
     status.tooltip = 'typeCAD/hal — click to re-analyze the project';
     status.show();
-    collection = vscode.languages.createDiagnosticCollection('typecad-intel');
+    collection = vscode.languages.createDiagnosticCollection('typecad-hal');
     chipDecoration = vscode.window.createTextEditorDecorationType({
         after: {
             color: new vscode.ThemeColor('editorCodeLens.foreground'),
@@ -122,7 +133,23 @@ function registerIntel(context, workspaceRoot) {
     // Explicit port (re)selection — the cached choice otherwise holds until it
     // disappears from the attached-port list or the window reloads. Escaping
     // the picker keeps the current port.
-    vscode.commands.registerCommand('typecad-intel.selectPort', () => void pickPort(true)), vscode.languages.registerHoverProvider([{ language: 'typescript' }, { language: 'javascript' }], { provideHover }), vscode.languages.registerCodeActionsProvider([{ language: 'typescript' }, { language: 'javascript' }], { provideCodeActions }), vscode.languages.registerCodeLensProvider([{ language: 'typescript' }, { language: 'javascript' }, { language: 'typecad-ui' }], { provideCodeLenses, resolveCodeLens }), vscode.window.onDidChangeActiveTextEditor(() => updateDecorations()), vscode.workspace.onDidChangeTextDocument(() => scheduleDecorations()), vscode.workspace.onDidSaveTextDocument((doc) => {
+    vscode.commands.registerCommand('typecad-intel.selectPort', () => void pickPort(true)), vscode.languages.registerHoverProvider([{ language: 'typescript' }, { language: 'javascript' }], { provideHover }), vscode.languages.registerCodeActionsProvider([{ language: 'typescript' }, { language: 'javascript' }], { provideCodeActions }), vscode.languages.registerCodeLensProvider([{ language: 'typescript' }, { language: 'javascript' }, { language: 'typecad-ui' }], { provideCodeLenses, resolveCodeLens }), vscode.window.onDidChangeActiveTextEditor(() => updateDecorations()), vscode.workspace.onDidChangeTextDocument(() => scheduleDecorations()), 
+    // A reshaped workspace can move the project — re-root and start over
+    // (the watchers are glob-based, so only the analysis inputs move).
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        const next = resolveRoot();
+        if (!next || next === root)
+            return;
+        root = next;
+        enginePromise = undefined; // re-resolve the engine from the new root
+        boardFacts = loadBoardFacts();
+        // Root-derived caches that would otherwise keep serving the OLD
+        // project's facts (the sensor catalog resolves hal's copy per-root).
+        sensorCatalog = undefined;
+        lastAnalysis = undefined;
+        updateDecorations();
+        schedule(0);
+    }), vscode.workspace.onDidSaveTextDocument((doc) => {
         const lang = doc.languageId;
         if (lang === 'typescript' || lang === 'javascript' || doc.fileName.endsWith('.ui'))
             schedule();
@@ -136,7 +163,10 @@ function registerIntel(context, workspaceRoot) {
     schedule(250);
 }
 function watch(glob, onChangeExtra) {
-    const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(root, glob));
+    // Workspace-scoped rather than root-pinned: a bare glob matches inside
+    // every workspace folder, so multi-root projects keep seeing fw-side churn
+    // on either side of a re-root.
+    const watcher = vscode.workspace.createFileSystemWatcher(glob);
     const changed = () => {
         onChangeExtra?.();
         schedule();
@@ -278,16 +308,18 @@ function toVscodeDiagnostic(d, entryFile) {
             : vscode.DiagnosticSeverity.Information;
     const message = d.hint ? `${d.message}\n💡 ${d.hint}` : d.message;
     const range = rangeOf(d);
+    const make = (text, uri) => {
+        const diagnostic = new vscode.Diagnostic(range, text, severity);
+        // Problems-panel attribution — pairs with typeCAD/pcb's diagnostics.
+        diagnostic.source = 'typeCAD/hal';
+        return [uri, diagnostic];
+    };
     const resolved = resolveDiagnosticFile(d.filePath, entryFile);
-    if (resolved.uri) {
-        return [resolved.uri, new vscode.Diagnostic(range, message, severity)];
-    }
     // The named file can't be located — file the diagnostic on the entry with
     // its intended location in the message rather than dropping it.
-    return [
-        vscode.Uri.file(entryFile),
-        new vscode.Diagnostic(range, `[${d.filePath}] ${message}`, severity),
-    ];
+    return resolved.uri
+        ? make(message, resolved.uri)
+        : make(`[${d.filePath}] ${message}`, vscode.Uri.file(entryFile));
 }
 function rangeOf(d) {
     // Engine lines/columns are 1-based; VS Code positions are 0-based.
@@ -322,7 +354,10 @@ function firstLine(text) {
 // I2C0.device(0x48)` (a device on a board bus). Same-file declarations only;
 // returning undefined lets tsserver's hover stand unchanged.
 function provideHover(document, position) {
-    if (!boardFacts)
+    // Firmware hovers stop at the root — hw/ files are the typeCAD/pcb
+    // extension's hover domain, and the two stack confusingly when both fire
+    // on one identifier.
+    if (!boardFacts || !(0, hal_root_1.isUnderRoot)(document.uri.fsPath, root))
         return undefined;
     const wordRange = document.getWordRangeAtPosition(position, /[A-Za-z_$][\w$]*/);
     if (!wordRange)
@@ -372,7 +407,7 @@ function provideCodeActions(document, range) {
         if (edits.length === 0)
             continue;
         const action = new vscode.CodeAction(fix.title
-            ?? (fix.swap ? `TypeCAD: Use ${fix.swap.to} instead of ${fix.swap.from}` : 'TypeCAD: Apply suggested fix'), vscode.CodeActionKind.QuickFix);
+            ?? (fix.swap ? `typeCAD/hal: Use ${fix.swap.to} instead of ${fix.swap.from}` : 'typeCAD/hal: Apply suggested fix'), vscode.CodeActionKind.QuickFix);
         action.edit = new vscode.WorkspaceEdit();
         action.edit.set(document.uri, edits);
         action.diagnostics = [diag];
@@ -382,7 +417,7 @@ function provideCodeActions(document, range) {
         // on the next save).
         action.command = {
             command: 'typecad-intel.fixApplied',
-            title: 'TypeCAD fix applied',
+            title: 'typeCAD/hal fix applied',
             arguments: [document.uri, { line: diag.range.start.line, code: diag.code, message: diag.message }],
         };
         actions.push(action);
@@ -443,6 +478,12 @@ function updateDecorations() {
         const lang = editor.document.languageId;
         if (lang !== 'typescript' && lang !== 'javascript')
             continue;
+        // Fact chips are fw-source furniture; anything outside the root only
+        // ever gets cleared, never chipped.
+        if (!(0, hal_root_1.isUnderRoot)(editor.document.uri.fsPath, root)) {
+            editor.setDecorations(chipDecoration, []);
+            continue;
+        }
         if (!boardFacts) {
             editor.setDecorations(chipDecoration, []);
             continue;
@@ -461,6 +502,8 @@ function updateDecorations() {
 // -- CodeLens: Flash & Monitor on the entry, Run on Hardware on test files ----
 function provideCodeLenses(document) {
     const lenses = [];
+    if (!(0, hal_root_1.isUnderRoot)(document.uri.fsPath, root))
+        return lenses;
     const top = new vscode.Range(0, 0, 0, 0);
     if (lastEntryFile && sameFile(document.uri.fsPath, lastEntryFile)) {
         lenses.push(new vscode.CodeLens(top, { title: '▶ Flash & Monitor', command: 'typecad-intel.flashMonitor', arguments: [document.uri] }));
@@ -530,13 +573,18 @@ async function pickPort(force = false) {
 async function runFlashMonitor(uri) {
     const entry = uri?.fsPath ?? lastEntryFile ?? vscode.window.activeTextEditor?.document.uri.fsPath;
     if (!entry || !root) {
-        void vscode.window.showWarningMessage('TypeCAD: no entry file — run an analysis first (TypeCAD: Re-analyze Project).');
+        void vscode.window.showWarningMessage('typeCAD/hal: no entry file — run an analysis first (typeCAD/hal: Re-analyze Project).');
         return;
     }
     const port = await pickPort();
     if (!port)
         return;
-    (0, terminal_1.typecadTerminal)().sendText(`npx typecad-hal build --compile --upload --monitor --port ${port}`);
+    // typecad-hal.diagnostics.onBuild keeps the report fresh on every addon
+    // build; the Problems mapping picks it up via the watcher in diagnostics.ts.
+    const withDiagnostics = vscode.workspace.getConfiguration('typecad-hal.diagnostics').get('onBuild') === true
+        ? ' --diagnostics'
+        : '';
+    (0, terminal_1.typecadTerminal)(root).sendText(`npx typecad-hal build --compile --upload --monitor --port ${port}${withDiagnostics}`);
 }
 async function runHardwareTests(uri) {
     if (!root)
@@ -548,7 +596,7 @@ async function runHardwareTests(uri) {
     if (!port)
         return;
     const rel = path.relative(root, file).replaceAll('\\', '/');
-    (0, terminal_1.typecadTerminal)().sendText(`npx typecad-hal test "${rel}" --port ${port}`);
+    (0, terminal_1.typecadTerminal)(root).sendText(`npx typecad-hal test "${rel}" --port ${port}`);
 }
 /**
  * Locate and parse the workspace's generated board module + manifest — the

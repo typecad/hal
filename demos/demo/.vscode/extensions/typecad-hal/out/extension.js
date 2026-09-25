@@ -16,10 +16,18 @@
 // Command ids keep their historical `typecad-intel.*` / `typecad-debug.*`
 // prefixes verbatim so existing keybindings and muscle memory survive.
 //
-// Activation is shared: `workspaceContains:**/typecad-hal.config.ts` (the
-// normal path — a TypeCAD project is open) plus `onLanguage:typescript` (so
-// the palette works the moment a TS file is focused). Without a workspace
-// folder the extension does nothing.
+// Activation is `workspaceContains:**/typecad-hal.config.ts` (the normal
+// path — a TypeCAD project is open); palette commands activate implicitly via
+// their onCommand events, so no `onLanguage:typescript` is needed — that event
+// made the extension (and its typeCAD/pcb sibling) wake up in every
+// TypeScript workspace on earth. Without a workspace folder the extension
+// does nothing.
+//
+// The root is content-based, never workspaceFolders[0]: combined typeCAD
+// projects are multi-root (hw/ + fw/), so the folder whose chain carries
+// typecad-hal.config.ts wins (see hal-root.ts), with the first folder as the
+// fallback for nested-config layouts. Both consumers re-resolve when the
+// workspace shape changes.
 // ---------------------------------------------------------------------------
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -57,16 +65,22 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.activate = activate;
 exports.deactivate = deactivate;
+const fs = __importStar(require("node:fs"));
 const vscode = __importStar(require("vscode"));
+const hal_root_1 = require("./hal-root");
 const intel_1 = require("./intel");
 const declarations_1 = require("./declarations");
+const trace_1 = require("./trace");
+const diagnostics_1 = require("./diagnostics");
 function activate(context) {
-    const folder = vscode.workspace.workspaceFolders?.[0];
-    if (!folder)
+    const folderPaths = () => (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
+    if (folderPaths().length === 0)
         return;
-    const root = folder.uri.fsPath;
-    (0, intel_1.registerIntel)(context, root);
-    (0, declarations_1.registerDeclarations)(context, root);
+    const resolveRoot = () => (0, hal_root_1.findHalRoot)(folderPaths(), (p) => fs.existsSync(p)) ?? folderPaths()[0];
+    (0, intel_1.registerIntel)(context, resolveRoot);
+    (0, declarations_1.registerDeclarations)(context, resolveRoot);
+    (0, trace_1.registerTrace)(context, resolveRoot);
+    (0, diagnostics_1.registerDiagnostics)(context, resolveRoot);
 }
 function deactivate() { }
 //# sourceMappingURL=extension.js.map

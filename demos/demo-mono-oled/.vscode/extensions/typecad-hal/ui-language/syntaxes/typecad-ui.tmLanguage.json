@@ -1,0 +1,1269 @@
+{
+  "name": "TypeCAD UI",
+  "scopeName": "source.typecad-ui",
+  "injections": {
+    "L:(source.ts, source.js, source.coffee)": {
+      "patterns": [
+        {
+          "match": "(?<![_$./'\"[:alnum:]])\\$(?=[_[:alpha:]][_$[:alnum:]]*)",
+          "name": "punctuation.definition.variable.typecad-ui"
+        },
+        {
+          "match": "(?<![_$./'\"[:alnum:]])(\\$\\$)(?=props|restProps|slots)",
+          "name": "punctuation.definition.variable.typecad-ui"
+        }
+      ]
+    },
+    "L:(meta.script.typecad-ui | meta.style.typecad-ui) (meta.lang.js | meta.lang.javascript) - (meta source)": {
+      "patterns": [
+        {
+          "begin": "(?<=>)(?!</)",
+          "end": "(?=</)",
+          "name": "meta.embedded.block.typecad-ui",
+          "contentName": "source.js",
+          "patterns": [
+            {
+              "include": "source.js"
+            }
+          ]
+        }
+      ]
+    },
+    "L:(meta.script.typecad-ui | meta.style.typecad-ui) (meta.lang.ts | meta.lang.typescript) - (meta source)": {
+      "patterns": [
+        {
+          "begin": "(?<=>)(?=[^\\n]+</(script|style)[\\s>])",
+          "end": "(?=</(script|style)[\\s>])",
+          "name": "meta.embedded.block.typecad-ui",
+          "contentName": "source.ts",
+          "patterns": [
+            {
+              "include": "source.ts"
+            }
+          ]
+        },
+        {
+          "begin": "(?<=>)(?!</)",
+          "while": "^(?!\\s*</(script|style)[\\s>])",
+          "name": "meta.embedded.block.typecad-ui",
+          "contentName": "source.ts",
+          "patterns": [
+            {
+              "include": "source.ts"
+            }
+          ]
+        }
+      ]
+    },
+    "L:(meta.script.typecad-ui | meta.style.typecad-ui) meta.lang.coffee - (meta source)": {
+      "patterns": [
+        {
+          "begin": "(?<=>)(?!</)",
+          "end": "(?=</)",
+          "name": "meta.embedded.block.typecad-ui",
+          "contentName": "source.coffee",
+          "patterns": [
+            {
+              "include": "source.coffee"
+            }
+          ]
+        }
+      ]
+    },
+    "L:meta.script.typecad-ui - meta.lang - (meta source)": {
+      "patterns": [
+        {
+          "begin": "(?<=>)(?!</)",
+          "end": "(?=</)",
+          "name": "meta.embedded.block.typecad-ui",
+          "contentName": "source.js",
+          "patterns": [
+            {
+              "include": "source.js"
+            }
+          ]
+        }
+      ]
+    },
+    "L:meta.style.typecad-ui meta.lang.stylus - (meta source)": {
+      "patterns": [
+        {
+          "begin": "(?<=>)(?!</)",
+          "end": "(?=</)",
+          "name": "meta.embedded.block.typecad-ui",
+          "contentName": "source.stylus",
+          "patterns": [
+            {
+              "include": "source.stylus"
+            }
+          ]
+        }
+      ]
+    },
+    "L:meta.style.typecad-ui meta.lang.sass - (meta source)": {
+      "patterns": [
+        {
+          "begin": "(?<=>)(?!</)",
+          "end": "(?=</)",
+          "name": "meta.embedded.block.typecad-ui",
+          "contentName": "source.sass",
+          "patterns": [
+            {
+              "include": "source.sass"
+            }
+          ]
+        }
+      ]
+    },
+    "L:meta.style.typecad-ui meta.lang.css - (meta source)": {
+      "patterns": [
+        {
+          "begin": "(?<=>)(?!</)",
+          "end": "(?=</)",
+          "name": "meta.embedded.block.typecad-ui",
+          "contentName": "source.css",
+          "patterns": [
+            {
+              "include": "source.css"
+            }
+          ]
+        }
+      ]
+    },
+    "L:meta.style.typecad-ui meta.lang.scss - (meta source)": {
+      "patterns": [
+        {
+          "begin": "(?<=>)(?!</)",
+          "end": "(?=</)",
+          "name": "meta.embedded.block.typecad-ui",
+          "contentName": "source.css.scss",
+          "patterns": [
+            {
+              "include": "source.css.scss"
+            }
+          ]
+        }
+      ]
+    },
+    "L:meta.style.typecad-ui meta.lang.less - (meta source)": {
+      "patterns": [
+        {
+          "begin": "(?<=>)(?!</)",
+          "end": "(?=</)",
+          "name": "meta.embedded.block.typecad-ui",
+          "contentName": "source.css.less",
+          "patterns": [
+            {
+              "include": "source.css.less"
+            }
+          ]
+        }
+      ]
+    },
+    "L:meta.style.typecad-ui meta.lang.postcss - (meta source)": {
+      "patterns": [
+        {
+          "begin": "(?<=>)(?!</)",
+          "end": "(?=</)",
+          "name": "meta.embedded.block.typecad-ui",
+          "contentName": "source.css.postcss",
+          "patterns": [
+            {
+              "include": "source.css.postcss"
+            }
+          ]
+        }
+      ]
+    },
+    "L:meta.style.typecad-ui - meta.lang - (meta source)": {
+      "patterns": [
+        {
+          "begin": "(?<=>)(?!</)",
+          "end": "(?=</)",
+          "name": "meta.embedded.block.typecad-ui",
+          "contentName": "source.css",
+          "patterns": [
+            {
+              "include": "source.css"
+            }
+          ]
+        }
+      ]
+    },
+    "L:meta.template.typecad-ui meta.lang.pug - (meta source)": {
+      "patterns": [
+        {
+          "begin": "(?<=>)(?!</)",
+          "end": "(?=</)",
+          "name": "meta.embedded.block.typecad-ui",
+          "contentName": "text.pug",
+          "patterns": [
+            {
+              "include": "text.pug"
+            }
+          ]
+        }
+      ]
+    },
+    "L:meta.template.typecad-ui - meta.lang - (meta source)": {
+      "patterns": [
+        {
+          "begin": "(?<=>)\\s",
+          "end": "(?=</template)",
+          "patterns": [
+            {
+              "include": "#scope"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "patterns": [
+    {
+      "include": "#scope"
+    }
+  ],
+  "repository": {
+    "scope": {
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "include": "#special-tags"
+        },
+        {
+          "include": "#tags"
+        },
+        {
+          "include": "#interpolation"
+        },
+        {
+          "begin": "(?<=>|})",
+          "end": "(?=<|{)",
+          "name": "text.typecad-ui"
+        }
+      ]
+    },
+    "comments": {
+      "begin": "<!--",
+      "end": "-->",
+      "captures": {
+        "0": {
+          "name": "punctuation.definition.comment.typecad-ui"
+        }
+      },
+      "name": "comment.block.typecad-ui",
+      "patterns": [
+        {
+          "begin": "(@)(component)",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.keyword.typecad-ui"
+            },
+            "2": {
+              "name": "storage.type.class.component.typecad-ui keyword.declaration.class.component.typecad-ui"
+            }
+          },
+          "end": "(?=-->)",
+          "contentName": "comment.block.documentation.typecad-ui",
+          "patterns": [
+            {
+              "match": ".*?(?=-->)",
+              "captures": {
+                "0": {
+                  "patterns": [
+                    {
+                      "include": "text.html.markdown"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "include": "text.html.markdown"
+            }
+          ]
+        },
+        {
+          "match": "\\G-?>|<!--(?!>)|<!-(?=-->)|--!>",
+          "name": "invalid.illegal.characters-not-allowed-here.typecad-ui"
+        }
+      ]
+    },
+    "destructuring": {
+      "patterns": [
+        {
+          "begin": "(?={)",
+          "end": "(?<=})",
+          "name": "meta.embedded.expression.typecad-ui source.ts",
+          "patterns": [
+            {
+              "include": "source.ts#object-binding-pattern"
+            }
+          ]
+        },
+        {
+          "begin": "(?=\\[)",
+          "end": "(?<=\\])",
+          "name": "meta.embedded.expression.typecad-ui source.ts",
+          "patterns": [
+            {
+              "include": "source.ts#array-binding-pattern"
+            }
+          ]
+        }
+      ]
+    },
+    "destructuring-const": {
+      "patterns": [
+        {
+          "begin": "(?={)",
+          "end": "(?<=})",
+          "name": "meta.embedded.expression.typecad-ui source.ts",
+          "patterns": [
+            {
+              "include": "source.ts#object-binding-pattern-const"
+            }
+          ]
+        },
+        {
+          "begin": "(?=\\[)",
+          "end": "(?<=\\])",
+          "name": "meta.embedded.expression.typecad-ui source.ts",
+          "patterns": [
+            {
+              "include": "source.ts#array-binding-pattern-const"
+            }
+          ]
+        }
+      ]
+    },
+    "interpolation": {
+      "patterns": [
+        {
+          "begin": "\\{",
+          "end": "\\}",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.section.embedded.begin.typecad-ui"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.section.embedded.end.typecad-ui"
+            }
+          },
+          "contentName": "meta.embedded.expression.typecad-ui source.ts",
+          "patterns": [
+            {
+              "begin": "\\G\\s*(?={)",
+              "end": "(?<=})",
+              "patterns": [
+                {
+                  "include": "source.ts#object-literal"
+                }
+              ]
+            },
+            {
+              "include": "source.ts"
+            }
+          ]
+        }
+      ]
+    },
+    "special-tags": {
+      "patterns": [
+        {
+          "include": "#special-tags-void"
+        },
+        {
+          "include": "#special-tags-block-begin"
+        },
+        {
+          "include": "#special-tags-block-end"
+        }
+      ]
+    },
+    "special-tags-keywords": {
+      "match": "([#@/:])(else\\s+if|[a-z]*)",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.keyword.typecad-ui"
+        },
+        "2": {
+          "patterns": [
+            {
+              "match": "if|else\\s+if|else",
+              "name": "keyword.control.conditional.typecad-ui"
+            },
+            {
+              "match": "each|key",
+              "name": "keyword.control.typecad-ui"
+            },
+            {
+              "match": "await|then|catch",
+              "name": "keyword.control.flow.typecad-ui"
+            },
+            {
+              "match": "snippet",
+              "name": "keyword.control.typecad-ui"
+            },
+            {
+              "match": "html",
+              "name": "keyword.other.typecad-ui"
+            },
+            {
+              "match": "render",
+              "name": "keyword.other.typecad-ui"
+            },
+            {
+              "match": "debug",
+              "name": "keyword.other.debugger.typecad-ui"
+            },
+            {
+              "match": "const",
+              "name": "storage.type.typecad-ui"
+            }
+          ]
+        }
+      }
+    },
+    "special-tags-modes": {
+      "patterns": [
+        {
+          "begin": "(?<=(if|key|then|catch|html|render).*?)\\G",
+          "end": "(?=})",
+          "name": "meta.embedded.expression.typecad-ui source.ts",
+          "patterns": [
+            {
+              "include": "source.ts"
+            }
+          ]
+        },
+        {
+          "begin": "(?<=snippet.*?)\\G",
+          "end": "(?=})",
+          "name": "meta.embedded.expression.typecad-ui source.ts",
+          "patterns": [
+            {
+              "match": "\\G\\s*([_$[:alpha:]][_$[:alnum:]]*)\\s*(?=<)",
+              "captures": {
+                "1": {
+                  "name": "entity.name.function.ts"
+                }
+              }
+            },
+            {
+              "begin": "(?<=<)",
+              "end": "(?=>)",
+              "contentName": "meta.type.parameters.ts",
+              "patterns": [
+                {
+                  "include": "source.ts"
+                }
+              ]
+            },
+            {
+              "begin": "(?<=>\\s*\\()",
+              "end": "(?=})",
+              "name": "meta.embedded.expression.typecad-ui source.ts",
+              "patterns": [
+                {
+                  "include": "source.ts"
+                }
+              ]
+            },
+            {
+              "begin": "\\G",
+              "end": "(?=})",
+              "name": "meta.embedded.expression.typecad-ui source.ts",
+              "patterns": [
+                {
+                  "include": "source.ts"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "begin": "(?<=const.*?)\\G",
+          "end": "(?=})",
+          "patterns": [
+            {
+              "include": "#destructuring-const"
+            },
+            {
+              "begin": "\\G\\s*([_$[:alpha:]][_$[:alnum:]]+)\\s*",
+              "end": "(?=[:=])",
+              "beginCaptures": {
+                "1": {
+                  "name": "variable.other.constant.typecad-ui"
+                }
+              }
+            },
+            {
+              "begin": "(?=:)",
+              "end": "(?=\\=)",
+              "name": "meta.type.annotation.typecad-ui",
+              "patterns": [
+                {
+                  "include": "source.ts"
+                }
+              ]
+            },
+            {
+              "begin": "(?=\\=)",
+              "name": "meta.embedded.expression.typecad-ui source.ts",
+              "end": "(?=})",
+              "patterns": [
+                {
+                  "include": "source.ts"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "begin": "(?<=each.*?)\\G",
+          "end": "(?=})",
+          "patterns": [
+            {
+              "begin": "\\G\\s*?(?=\\S)",
+              "end": "(?=(?:(?:^\\s*|\\s+)(as))|\\s*(}|,))",
+              "contentName": "meta.embedded.expression.typecad-ui source.ts",
+              "patterns": [
+                {
+                  "include": "source.ts"
+                }
+              ]
+            },
+            {
+              "begin": "(as)|(?=}|,)",
+              "beginCaptures": {
+                "1": {
+                  "name": "keyword.control.as.typecad-ui"
+                }
+              },
+              "end": "(?=})",
+              "patterns": [
+                {
+                  "include": "#destructuring"
+                },
+                {
+                  "begin": "\\(",
+                  "end": "\\)|(?=})",
+                  "captures": {
+                    "0": {
+                      "name": "meta.brace.round.typecad-ui"
+                    }
+                  },
+                  "contentName": "meta.embedded.expression.typecad-ui source.ts",
+                  "patterns": [
+                    {
+                      "include": "source.ts"
+                    }
+                  ]
+                },
+                {
+                  "match": "(\\s*([_$[:alpha:]][_$[:alnum:]]*)\\s*)",
+                  "captures": {
+                    "1": {
+                      "name": "meta.embedded.expression.typecad-ui source.ts",
+                      "patterns": [
+                        {
+                          "include": "source.ts"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "match": ",",
+                  "name": "punctuation.separator.typecad-ui"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "begin": "(?<=await.*?)\\G",
+          "end": "(?=})",
+          "patterns": [
+            {
+              "begin": "\\G\\s*?(?=\\S)",
+              "end": "\\s+(then)|(?=})",
+              "endCaptures": {
+                "1": {
+                  "name": "keyword.control.flow.typecad-ui"
+                }
+              },
+              "contentName": "meta.embedded.expression.typecad-ui source.ts",
+              "patterns": [
+                {
+                  "include": "source.ts"
+                }
+              ]
+            },
+            {
+              "begin": "(?<=then\\b)",
+              "end": "(?=})",
+              "contentName": "meta.embedded.expression.typecad-ui source.ts",
+              "patterns": [
+                {
+                  "include": "source.ts"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "begin": "(?<=debug.*?)\\G",
+          "end": "(?=})",
+          "patterns": [
+            {
+              "match": "[_$[:alpha:]][_$[:alnum:]]*",
+              "captures": {
+                "0": {
+                  "name": "meta.embedded.expression.typecad-ui source.ts",
+                  "patterns": [
+                    {
+                      "include": "source.ts"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "match": ",",
+              "name": "punctuation.separator.typecad-ui"
+            }
+          ]
+        }
+      ]
+    },
+    "special-tags-void": {
+      "begin": "({)\\s*((?:[@:])(else\\s+if|[a-z]*))",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.block.begin.typecad-ui"
+        },
+        "2": {
+          "patterns": [
+            {
+              "include": "#special-tags-keywords"
+            }
+          ]
+        }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.typecad-ui"
+        }
+      },
+      "name": "meta.special.$3.typecad-ui",
+      "patterns": [
+        {
+          "include": "#special-tags-modes"
+        }
+      ]
+    },
+    "special-tags-block-begin": {
+      "begin": "({)\\s*(#([a-z]*))",
+      "end": "(})",
+      "name": "meta.special.$3.typecad-ui meta.special.start.typecad-ui",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.block.begin.typecad-ui"
+        },
+        "2": {
+          "patterns": [
+            {
+              "include": "#special-tags-keywords"
+            }
+          ]
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.block.end.typecad-ui"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#special-tags-modes"
+        }
+      ]
+    },
+    "special-tags-block-end": {
+      "begin": "({)\\s*(/([a-z]*))",
+      "end": "(})",
+      "name": "meta.special.$3.typecad-ui meta.special.end.typecad-ui",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.block.begin.typecad-ui"
+        },
+        "2": {
+          "patterns": [
+            {
+              "include": "#special-tags-keywords"
+            }
+          ]
+        }
+      },
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.definition.block.end.typecad-ui"
+        }
+      }
+    },
+    "attributes": {
+      "patterns": [
+        {
+          "include": "#attributes-comments"
+        },
+        {
+          "include": "#attributes-directives"
+        },
+        {
+          "include": "#attributes-keyvalue"
+        },
+        {
+          "include": "#attributes-attach"
+        },
+        {
+          "include": "#attributes-interpolated"
+        }
+      ]
+    },
+    "attributes-comments": {
+      "patterns": [
+        {
+          "match": "//.*$",
+          "name": "comment.line.double-slash.typecad-ui"
+        },
+        {
+          "begin": "/\\*",
+          "end": "\\*/",
+          "name": "comment.block.typecad-ui"
+        }
+      ]
+    },
+    "attributes-attach": {
+      "begin": "(?<!:|=)\\s*({@attach\\s)",
+      "end": "(\\})",
+      "captures": {
+        "1": {
+          "name": "entity.other.attribute-name.typecad-ui"
+        }
+      },
+      "contentName": "meta.embedded.expression.typecad-ui source.ts",
+      "patterns": [
+        {
+          "include": "source.ts"
+        }
+      ]
+    },
+    "attributes-interpolated": {
+      "begin": "(?<!:|=)\\s*({)",
+      "end": "(\\})",
+      "captures": {
+        "1": {
+          "name": "entity.other.attribute-name.typecad-ui"
+        }
+      },
+      "contentName": "meta.embedded.expression.typecad-ui source.ts",
+      "patterns": [
+        {
+          "include": "source.ts"
+        }
+      ]
+    },
+    "attributes-keyvalue": {
+      "begin": "((?:--)?[_$[:alpha:]][_\\-$[:alnum:]]*)",
+      "beginCaptures": {
+        "0": {
+          "patterns": [
+            {
+              "match": "--.*",
+              "name": "support.type.property-name.typecad-ui"
+            },
+            {
+              "match": ".*",
+              "name": "entity.other.attribute-name.typecad-ui"
+            }
+          ]
+        }
+      },
+      "end": "(?=\\s*+[^=\\s])",
+      "name": "meta.attribute.$1.typecad-ui",
+      "patterns": [
+        {
+          "begin": "=",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.separator.key-value.typecad-ui"
+            }
+          },
+          "end": "(?<=[^\\s=])(?!\\s*=)|(?=/?>)",
+          "patterns": [
+            {
+              "include": "#attributes-value"
+            }
+          ]
+        }
+      ]
+    },
+    "attributes-value": {
+      "patterns": [
+        {
+          "include": "#interpolation"
+        },
+        {
+          "match": "(?:(['\"])([0-9._]+[\\w%]{,4})(\\1))|(?:([0-9._]+[\\w%]{,4})(?=\\s|/?>))",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.string.begin.typecad-ui"
+            },
+            "2": {
+              "name": "constant.numeric.decimal.typecad-ui"
+            },
+            "3": {
+              "name": "punctuation.definition.string.end.typecad-ui"
+            },
+            "4": {
+              "name": "constant.numeric.decimal.typecad-ui"
+            }
+          }
+        },
+        {
+          "match": "([^\\s\"'=<>`/]|/(?!>))+",
+          "name": "string.unquoted.typecad-ui",
+          "patterns": [
+            {
+              "include": "#interpolation"
+            }
+          ]
+        },
+        {
+          "begin": "(['\"])",
+          "end": "\\1",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.typecad-ui"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.typecad-ui"
+            }
+          },
+          "name": "string.quoted.typecad-ui",
+          "patterns": [
+            {
+              "include": "#interpolation"
+            }
+          ]
+        }
+      ]
+    },
+    "attributes-directives-keywords": {
+      "patterns": [
+        {
+          "match": "on|use|bind",
+          "name": "keyword.control.typecad-ui"
+        },
+        {
+          "match": "transition|in|out|animate",
+          "name": "keyword.other.animation.typecad-ui"
+        },
+        {
+          "match": "let",
+          "name": "storage.type.typecad-ui"
+        },
+        {
+          "match": "class|style",
+          "name": "entity.other.attribute-name.typecad-ui"
+        }
+      ]
+    },
+    "attributes-directives-types": {
+      "patterns": [
+        {
+          "match": "(?<=(on):).*$",
+          "name": "entity.name.type.typecad-ui"
+        },
+        {
+          "match": "(?<=(bind):).*$",
+          "name": "variable.parameter.typecad-ui"
+        },
+        {
+          "match": "(?<=(use|transition|in|out|animate):).*$",
+          "name": "variable.function.typecad-ui"
+        },
+        {
+          "match": "(?<=(let|class|style):).*$",
+          "name": "variable.parameter.typecad-ui"
+        }
+      ]
+    },
+    "attributes-directives-types-assigned": {
+      "patterns": [
+        {
+          "match": "(?<=(bind):)this$",
+          "name": "variable.language.typecad-ui"
+        },
+        {
+          "match": "(?<=(bind):).*$",
+          "name": "entity.name.type.typecad-ui"
+        },
+        {
+          "match": "(?<=(class):).*$",
+          "name": "entity.other.attribute-name.class.typecad-ui"
+        },
+        {
+          "match": "(?<=(style):).*$",
+          "name": "support.type.property-name.typecad-ui"
+        },
+        {
+          "include": "#attributes-directives-types"
+        }
+      ]
+    },
+    "attributes-directives": {
+      "begin": "(?<!<)(on|use|bind|transition|in|out|animate|let|class|style)(:)(?:((?:--)?[_$[:alpha:]][_\\-$[:alnum:]]*(?=\\s*=))|((?:--)?[_$[:alpha:]][_\\-$[:alnum:]]*))((\\|\\w+)*)",
+      "beginCaptures": {
+        "1": {
+          "patterns": [
+            {
+              "include": "#attributes-directives-keywords"
+            }
+          ]
+        },
+        "2": {
+          "name": "punctuation.definition.keyword.typecad-ui"
+        },
+        "3": {
+          "patterns": [
+            {
+              "include": "#attributes-directives-types-assigned"
+            }
+          ]
+        },
+        "4": {
+          "patterns": [
+            {
+              "include": "#attributes-directives-types"
+            }
+          ]
+        },
+        "5": {
+          "patterns": [
+            {
+              "match": "\\w+",
+              "name": "support.function.typecad-ui"
+            },
+            {
+              "match": "\\|",
+              "name": "punctuation.separator.typecad-ui"
+            }
+          ]
+        }
+      },
+      "end": "(?=\\s*+[^=\\s])",
+      "name": "meta.directive.$1.typecad-ui",
+      "patterns": [
+        {
+          "begin": "=",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.separator.key-value.typecad-ui"
+            }
+          },
+          "end": "(?<=[^\\s=])(?!\\s*=)|(?=/?>)",
+          "patterns": [
+            {
+              "include": "#attributes-value"
+            }
+          ]
+        }
+      ]
+    },
+    "attributes-generics": {
+      "begin": "(generics)(=)([\"'])",
+      "beginCaptures": {
+        "1": {
+          "name": "entity.other.attribute-name.typecad-ui"
+        },
+        "2": {
+          "name": "punctuation.separator.key-value.typecad-ui"
+        },
+        "3": {
+          "name": "punctuation.definition.string.begin.typecad-ui"
+        }
+      },
+      "end": "(\\3)",
+      "endCaptures": {
+        "1": {
+          "name": "punctuation.definition.string.end.typecad-ui"
+        }
+      },
+      "contentName": "meta.embedded.expression.typecad-ui source.ts",
+      "patterns": [
+        {
+          "include": "#type-parameters"
+        }
+      ]
+    },
+    "type-parameters": {
+      "name": "meta.type.parameters.ts",
+      "patterns": [
+        {
+          "include": "source.ts#comment"
+        },
+        {
+          "name": "storage.modifier.ts",
+          "match": "(?<![_$[:alnum:]])(?:(?<=\\.\\.\\.)|(?<!\\.))(extends|in|out|const)(?![_$[:alnum:]])(?:(?=\\.\\.\\.)|(?!\\.))"
+        },
+        {
+          "include": "source.ts#type"
+        },
+        {
+          "include": "source.ts#punctuation-comma"
+        },
+        {
+          "name": "keyword.operator.assignment.ts",
+          "match": "(=)(?!>)"
+        }
+      ]
+    },
+    "tags": {
+      "patterns": [
+        {
+          "include": "#tags-lang"
+        },
+        {
+          "include": "#tags-void"
+        },
+        {
+          "include": "#tags-general-end"
+        },
+        {
+          "include": "#tags-general-start"
+        }
+      ]
+    },
+    "tags-name": {
+      "patterns": [
+        {
+          "match": "slot",
+          "name": "keyword.control.typecad-ui"
+        },
+        {
+          "match": "([\\w]+(?:\\.[\\w]+)+)|([A-Z][\\w]*)",
+          "captures": {
+            "1": {
+              "patterns": [
+                {
+                  "match": "\\w+",
+                  "name": "support.class.component.typecad-ui"
+                },
+                {
+                  "match": "\\.",
+                  "name": "punctuation.definition.keyword.typecad-ui"
+                }
+              ]
+            },
+            "2": {
+              "name": "support.class.component.typecad-ui"
+            }
+          }
+        },
+        {
+          "match": "[a-z][\\w0-9:]*-[\\w0-9:-]*",
+          "name": "meta.tag.custom.typecad-ui entity.name.tag.typecad-ui"
+        },
+        {
+          "match": "[a-z][\\w0-9:-]*",
+          "name": "entity.name.tag.typecad-ui"
+        }
+      ]
+    },
+    "tags-start-attributes": {
+      "begin": "\\G",
+      "end": "(?=/?>)",
+      "name": "meta.tag.start.typecad-ui",
+      "patterns": [
+        {
+          "include": "#attributes"
+        }
+      ]
+    },
+    "tags-lang-start-attributes": {
+      "begin": "\\G",
+      "end": "(?=/>)|>",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.tag.end.typecad-ui"
+        }
+      },
+      "name": "meta.tag.start.typecad-ui",
+      "patterns": [
+        {
+          "include": "#attributes-generics"
+        },
+        {
+          "include": "#attributes"
+        }
+      ]
+    },
+    "tags-start-node": {
+      "match": "(<)([^/\\s>/]*)",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.tag.begin.typecad-ui"
+        },
+        "2": {
+          "patterns": [
+            {
+              "include": "#tags-name"
+            }
+          ]
+        }
+      },
+      "name": "meta.tag.start.typecad-ui"
+    },
+    "tags-end-node": {
+      "match": "(</)(.*?)\\s*(>)|(/>)",
+      "captures": {
+        "1": {
+          "name": "meta.tag.end.typecad-ui punctuation.definition.tag.begin.typecad-ui"
+        },
+        "2": {
+          "name": "meta.tag.end.typecad-ui",
+          "patterns": [
+            {
+              "include": "#tags-name"
+            }
+          ]
+        },
+        "3": {
+          "name": "meta.tag.end.typecad-ui punctuation.definition.tag.end.typecad-ui"
+        },
+        "4": {
+          "name": "meta.tag.start.typecad-ui punctuation.definition.tag.end.typecad-ui"
+        }
+      }
+    },
+    "tags-lang": {
+      "begin": "<(script|style|template)",
+      "end": "</\\1\\s*>|/>",
+      "beginCaptures": {
+        "0": {
+          "patterns": [
+            {
+              "include": "#tags-start-node"
+            }
+          ]
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "patterns": [
+            {
+              "include": "#tags-end-node"
+            }
+          ]
+        }
+      },
+      "name": "meta.$1.typecad-ui",
+      "patterns": [
+        {
+          "begin": "\\G(?=\\s*[^>]*?(type|lang)\\s*=\\s*(['\"]|)(?:text/)?(\\w+)\\2)",
+          "end": "(?=</|/>)",
+          "name": "meta.lang.$3.typecad-ui",
+          "patterns": [
+            {
+              "include": "#tags-lang-start-attributes"
+            }
+          ]
+        },
+        {
+          "include": "#tags-lang-start-attributes"
+        }
+      ]
+    },
+    "tags-void": {
+      "begin": "(<)(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)(?=\\s|/?>)",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.definition.tag.begin.typecad-ui"
+        },
+        "2": {
+          "name": "entity.name.tag.typecad-ui"
+        }
+      },
+      "end": "/?>",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.tag.begin.typecad-ui"
+        }
+      },
+      "name": "meta.tag.void.typecad-ui",
+      "patterns": [
+        {
+          "include": "#attributes"
+        }
+      ]
+    },
+    "tags-general-start": {
+      "begin": "(<)([^/\\s>/]*)",
+      "end": "(/?>)",
+      "beginCaptures": {
+        "0": {
+          "patterns": [
+            {
+              "include": "#tags-start-node"
+            }
+          ]
+        }
+      },
+      "endCaptures": {
+        "1": {
+          "name": "meta.tag.start.typecad-ui punctuation.definition.tag.end.typecad-ui"
+        }
+      },
+      "name": "meta.scope.tag.$2.typecad-ui",
+      "patterns": [
+        {
+          "include": "#tags-start-attributes"
+        }
+      ]
+    },
+    "tags-general-end": {
+      "begin": "(</)([^/\\s>]*)",
+      "end": "(>)",
+      "beginCaptures": {
+        "1": {
+          "name": "meta.tag.end.typecad-ui punctuation.definition.tag.begin.typecad-ui"
+        },
+        "2": {
+          "name": "meta.tag.end.typecad-ui",
+          "patterns": [
+            {
+              "include": "#tags-name"
+            }
+          ]
+        }
+      },
+      "endCaptures": {
+        "1": {
+          "name": "meta.tag.end.typecad-ui punctuation.definition.tag.end.typecad-ui"
+        }
+      },
+      "name": "meta.scope.tag.$2.typecad-ui"
+    }
+  }
+}

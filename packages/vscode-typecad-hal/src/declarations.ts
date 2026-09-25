@@ -21,9 +21,9 @@ import { exec } from 'node:child_process';
 // Registration
 // ---------------------------------------------------------------------------
 
-/** Register the declaration-generation surface for the workspace rooted at `workspaceRoot`. */
-export function registerDeclarations(context: vscode.ExtensionContext, _workspaceRoot: string): void {
-  const declGenerator = new DeclarationGenerator();
+/** Register the declaration-generation surface, rooted wherever `resolveRoot` points. */
+export function registerDeclarations(context: vscode.ExtensionContext, resolveRoot: () => string | undefined): void {
+  const declGenerator = new DeclarationGenerator(resolveRoot);
 
   const genDeclCmd = vscode.commands.registerCommand(
     'typecad-debug.generateDeclaration',
@@ -45,6 +45,8 @@ export function registerDeclarations(context: vscode.ExtensionContext, _workspac
 // ---------------------------------------------------------------------------
 
 class DeclarationGenerator implements vscode.Disposable {
+  constructor(private readonly resolveRoot: () => string | undefined) {}
+
   /**
    * Generate a .d.ts sidecar for a C++ file if one is not already present.
    */
@@ -57,7 +59,7 @@ class DeclarationGenerator implements vscode.Disposable {
     const result = await this.generateDeclaration(cppPath, declPath);
     if (result) {
       void vscode.window.showInformationMessage(
-        `TypeCAD: Generated ${path.basename(declPath)} from ${path.basename(cppPath)}. Review and adjust types if needed.`,
+        `typeCAD/hal: Generated ${path.basename(declPath)} from ${path.basename(cppPath)}. Review and adjust types if needed.`,
       );
     }
   }
@@ -68,13 +70,13 @@ class DeclarationGenerator implements vscode.Disposable {
   async generateForCurrentFile(): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
-      void vscode.window.showErrorMessage('TypeCAD: No active editor');
+      void vscode.window.showErrorMessage('typeCAD/hal: No active editor');
       return;
     }
 
     const filePath = editor.document.uri.fsPath;
     if (!filePath.endsWith('.cpp')) {
-      void vscode.window.showErrorMessage('TypeCAD: Active file must be a .cpp file');
+      void vscode.window.showErrorMessage('typeCAD/hal: Active file must be a .cpp file');
       return;
     }
 
@@ -82,11 +84,11 @@ class DeclarationGenerator implements vscode.Disposable {
     const result = await this.generateDeclaration(filePath, declPath);
 
     if (result) {
-      void vscode.window.showInformationMessage(`TypeCAD: Generated ${path.basename(declPath)}`);
+      void vscode.window.showInformationMessage(`typeCAD/hal: Generated ${path.basename(declPath)}`);
       const doc = await vscode.workspace.openTextDocument(result);
       await vscode.window.showTextDocument(doc);
     } else {
-      void vscode.window.showWarningMessage('TypeCAD: No classes or constants found in C++ file');
+      void vscode.window.showWarningMessage('typeCAD/hal: No classes or constants found in C++ file');
     }
   }
 
@@ -97,21 +99,21 @@ class DeclarationGenerator implements vscode.Disposable {
    */
   private async generateDeclaration(cppPath: string, declPath: string): Promise<string | null> {
     return new Promise((resolve) => {
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-      // Local-CLI fallback for development inside this monorepo (the engine
-      // lives in @typecad/cuttlefish since the package consolidation).
-      const localCliPath = workspaceFolders
-        ? path.join(workspaceFolders[0].uri.fsPath, 'packages/cuttlefish/src/cli.ts')
+      // The resolved project root (multi-root aware) — the CLI and its
+      // node_modules live there, not necessarily in workspaceFolders[0].
+      const root = this.resolveRoot();
+      const localCliPath = root
+        ? path.join(root, 'packages/cuttlefish/src/cli.ts')
         : null;
 
       const cmd = localCliPath && fs.existsSync(localCliPath)
         ? `npx tsx "${localCliPath}" gen-decls "${cppPath}"`
         : `npx typecad-hal gen-decls "${cppPath}"`;
 
-      exec(cmd, { cwd: workspaceFolders?.[0]?.uri.fsPath }, (error) => {
+      exec(cmd, { cwd: root }, (error) => {
         if (error) {
-          console.error('TypeCAD: Failed to generate declaration:', error);
-          void vscode.window.showErrorMessage(`TypeCAD: Failed to generate declaration: ${error.message}`);
+          console.error('typeCAD/hal: Failed to generate declaration:', error);
+          void vscode.window.showErrorMessage(`typeCAD/hal: Failed to generate declaration: ${error.message}`);
           resolve(null);
           return;
         }

@@ -15,23 +15,40 @@
 // Command ids keep their historical `typecad-intel.*` / `typecad-debug.*`
 // prefixes verbatim so existing keybindings and muscle memory survive.
 //
-// Activation is shared: `workspaceContains:**/typecad-hal.config.ts` (the
-// normal path — a TypeCAD project is open) plus `onLanguage:typescript` (so
-// the palette works the moment a TS file is focused). Without a workspace
-// folder the extension does nothing.
+// Activation is `workspaceContains:**/typecad-hal.config.ts` (the normal
+// path — a TypeCAD project is open); palette commands activate implicitly via
+// their onCommand events, so no `onLanguage:typescript` is needed — that event
+// made the extension (and its typeCAD/pcb sibling) wake up in every
+// TypeScript workspace on earth. Without a workspace folder the extension
+// does nothing.
+//
+// The root is content-based, never workspaceFolders[0]: combined typeCAD
+// projects are multi-root (hw/ + fw/), so the folder whose chain carries
+// typecad-hal.config.ts wins (see hal-root.ts), with the first folder as the
+// fallback for nested-config layouts. Both consumers re-resolve when the
+// workspace shape changes.
 // ---------------------------------------------------------------------------
 
+import * as fs from 'node:fs';
 import * as vscode from 'vscode';
+import { findHalRoot } from './hal-root';
 import { registerIntel } from './intel';
 import { registerDeclarations } from './declarations';
+import { registerTrace } from './trace';
+import { registerDiagnostics } from './diagnostics';
 
 export function activate(context: vscode.ExtensionContext): void {
-  const folder = vscode.workspace.workspaceFolders?.[0];
-  if (!folder) return;
-  const root = folder.uri.fsPath;
+  const folderPaths = (): string[] =>
+    (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
+  if (folderPaths().length === 0) return;
 
-  registerIntel(context, root);
-  registerDeclarations(context, root);
+  const resolveRoot = (): string | undefined =>
+    findHalRoot(folderPaths(), (p) => fs.existsSync(p)) ?? folderPaths()[0];
+
+  registerIntel(context, resolveRoot);
+  registerDeclarations(context, resolveRoot);
+  registerTrace(context, resolveRoot);
+  registerDiagnostics(context, resolveRoot);
 }
 
 export function deactivate(): void {}

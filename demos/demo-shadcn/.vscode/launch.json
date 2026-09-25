@@ -5,14 +5,10 @@
       "type": "cortex-debug",
       "request": "attach",
       "cwd": "${workspaceFolder}",
-      "executable": "${workspaceFolder}/src/out/build/zephyr/zephyr.elf",
-      "servertype": "openocd",
-      "configFiles": [
-        "${workspaceFolder}/src/out/.typecad-hal/openocd.cfg"
-      ],
-      "interface": "jtag",
-      "gdbPath": "C:/Users/justi/micromamba/zephyr-sdk/zephyr-sdk-1.0.1/xtensa-espressif_esp32s3_zephyr-elf/bin/xtensa-espressif_esp32s3_zephyr-elf-gdb.exe",
-      "serverpath": "C:/Users/justi/.espressif/tools/openocd-esp32/v0.12.0-esp32-20260424/openocd-esp32/bin/openocd.exe",
+      "executable": "${workspaceFolder}/src/build/zephyr/zephyr.elf",
+      "servertype": "external",
+      "gdbTarget": "localhost:3333",
+      "gdbPath": "C:/Users/justi/micromamba/zephyr-sdk/zephyr-sdk-1.0.1/gnu/xtensa-espressif_esp32s3_zephyr-elf/bin/xtensa-espressif_esp32s3_zephyr-elf-gdb.exe",
       "postAttachCommands": [
         "set directories .",
         "set remote hardware-watchpoint-limit 2",
@@ -23,7 +19,8 @@
         "thb main",
         "c"
       ],
-      "preLaunchTask": "typecad-hal: build + flash (debug)"
+      "preLaunchTask": "typecad-hal: debug server (west)",
+      "postDebugTask": "typecad-hal: stop debug server"
     }
   ]
 }

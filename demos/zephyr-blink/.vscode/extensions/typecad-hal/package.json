@@ -2,7 +2,7 @@
   "name": "vscode-typecad-hal",
   "displayName": "typeCAD/hal",
   "description": "The typeCAD/hal VS Code extension — .ui syntax highlighting, board-aware diagnostics and hovers from the project's own engine, quick-fixes, and C++ declaration generation",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "publisher": "typecad",
   "license": "Apache-2.0",
@@ -18,7 +18,6 @@
     "Linters"
   ],
   "activationEvents": [
-    "onLanguage:typescript",
     "workspaceContains:**/typecad-hal.config.ts"
   ],
   "main": "./out/extension.js",
@@ -27,7 +26,7 @@
       {
         "id": "typecad-ui",
         "aliases": [
-          "TypeCAD UI",
+          "typeCAD/hal UI",
           "typecad-ui"
         ],
         "extensions": [
@@ -63,25 +62,70 @@
     "commands": [
       {
         "command": "typecad-intel.reanalyze",
-        "title": "TypeCAD: Re-analyze Project"
+        "title": "typeCAD/hal: Re-analyze Project"
       },
       {
         "command": "typecad-intel.flashMonitor",
-        "title": "TypeCAD: Flash & Monitor"
+        "title": "typeCAD/hal: Flash & Monitor"
       },
       {
         "command": "typecad-intel.runTests",
-        "title": "TypeCAD: Run Tests on Hardware"
+        "title": "typeCAD/hal: Run Tests on Hardware"
       },
       {
         "command": "typecad-intel.selectPort",
-        "title": "TypeCAD: Select Serial Port"
+        "title": "typeCAD/hal: Select Serial Port"
       },
       {
         "command": "typecad-debug.generateDeclaration",
-        "title": "TypeCAD: Generate Declaration from C++"
+        "title": "typeCAD/hal: Generate Declaration from C++"
+      },
+      {
+        "command": "typecad-trace.capture",
+        "title": "typeCAD/hal: Trace — Capture from Board"
+      },
+      {
+        "command": "typecad-trace.view",
+        "title": "typeCAD/hal: Trace — View Timeline"
+      },
+      {
+        "command": "typecad-trace.report",
+        "title": "typeCAD/hal: Trace — Show Report"
+      },
+      {
+        "command": "typecad-trace.enable",
+        "title": "typeCAD/hal: Trace — Enable in Project"
+      },
+      {
+        "command": "typecad-diagnostics.generate",
+        "title": "typeCAD/hal: Diagnostics — Generate Report"
+      },
+      {
+        "command": "typecad-diagnostics.showProblems",
+        "title": "typeCAD/hal: Diagnostics — Show Problems"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "typeCAD/hal Trace",
+      "properties": {
+        "typecad-hal.trace.captureDurationSeconds": {
+          "type": "number",
+          "default": 15,
+          "minimum": 0,
+          "description": "Capture length for typeCAD/hal: Trace — Capture from Board (0 = until Ctrl+C in the terminal)."
+        },
+        "typecad-hal.trace.openViewerOnCapture": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open the live Trace timeline panel when a capture starts."
+        },
+        "typecad-hal.diagnostics.onBuild": {
+          "type": "boolean",
+          "default": false,
+          "description": "Pass --diagnostics on builds launched from the addon (Flash & Monitor), keeping diagnostics.md/json fresh."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
