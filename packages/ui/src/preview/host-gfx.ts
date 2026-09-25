@@ -72,7 +72,7 @@ export class HostAdafruitGFX {
   // packed RGB888, with rgb666 quantizing channels to 6 bits at the push
   // boundary — mirroring the device's panel. Set by PreviewUIRuntime from the
   // snapshot's colorFormat before the first frame.
-  private storage: "rgb565" | "rgb666" | "rgb888" = "rgb565";
+  private storage: "rgb565" | "rgb666" | "rgb888" | "gray8" = "rgb565";
   private textSizeX = 1;
   private textSizeY = 1;
   private wrap = true;
@@ -98,7 +98,7 @@ export class HostAdafruitGFX {
   }
 
   /** Set the buffer's storage depth (see the `storage` field). */
-  setStorageMode(mode: "rgb565" | "rgb666" | "rgb888"): void {
+  setStorageMode(mode: "rgb565" | "rgb666" | "rgb888" | "gray8"): void {
     this.storage = mode;
   }
 
@@ -581,6 +581,12 @@ export class HostAdafruitGFX {
         out[p] = (c >> 16) & 0xff;
         out[p + 1] = (c >> 8) & 0xff;
         out[p + 2] = c & 0xff;
+      } else if (this.storage === "gray8") {
+        // Gray8: the buffer holds luminance bytes — expand v → (v,v,v).
+        const v = c & 0xff;
+        out[p] = v;
+        out[p + 1] = v;
+        out[p + 2] = v;
       } else if (this.storage === "rgb565") {
         // 565 target: buffer holds packed 565 — unpack to 888.
         const { r, g, b } = rgb565ToRgb888(c);

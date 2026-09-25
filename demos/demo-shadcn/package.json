@@ -7,7 +7,7 @@
   "scripts": {
     "build": "typecad-hal build",
     "compile": "typecad-hal build --compile",
-    "upload": "typecad-hal build --compile --upload",
+    "upload": "typecad-hal build --compile --upload --port COM10",
     "preview": "typecad-hal preview --config ./typecad-hal.config.ts",
     "lint": "eslint src/"
   },

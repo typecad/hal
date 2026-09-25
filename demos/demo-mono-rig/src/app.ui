@@ -46,7 +46,7 @@
   }
   #lvtxt {
     font-family: "RigMono";
-    font-size: 9px;
+    font-size: 10px;
   }
   #ourline {
     padding: 2px 3px;
