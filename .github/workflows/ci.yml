@@ -37,11 +37,14 @@ jobs:
       - name: Build all packages
         run: npm run build --workspaces
 
-  # Stage 2g (DISPLAY-TARGETS.md) — the standing no-hardware gate: the whole
-  # mono (1bpp) lowering — flattening, full-frame redraw adapter, 1bpp fonts
-  # and images — compiles and links on native_sim's built-in SDL panel
-  # (zephyr,sdl-dc, MONO01). Linux-only: the POSIX arch does not build on
-  # Windows runners. The SDL window needs libsdl2-dev at link time. The color
+  # Stage 2g (DISPLAY-TARGETS.md) — the standing no-hardware gates on
+  # native_sim: (a) the whole mono (1bpp) lowering — flattening, full-frame
+  # redraw adapter, 1bpp fonts and images — compiles and links on native_sim's
+  # built-in SDL panel (zephyr,sdl-dc, MONO01); (b) the multi-module canary —
+  # cross-module imports, GPIO, timing — so general-firmware regressions that
+  # only break at C compile/link time fail CI instead of a user's first
+  # `--compile`. Linux-only: the POSIX arch does not build on Windows
+  # runners. The SDL window needs libsdl2-dev at link time. The color
   # lowering rides the same gate shape once a color native_sim profile lands.
   native-sim-mono:
     runs-on: ubuntu-latest
@@ -77,3 +80,6 @@ jobs:
 
       - name: Compile the mono lowering on native_sim
         run: cd demos/demo-mono-sim && npx typecad-hal build --compile
+
+      - name: Compile the multi-module canary on native_sim
+        run: cd demos/demo-canary && npx typecad-hal build --compile

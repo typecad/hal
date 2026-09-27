@@ -1,0 +1,14 @@
+{
+  "name": "demo-canary",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Multi-module compile canary on native_sim — GPIO + timing + cross-module imports lowered and west-compiled on every CI run (Linux only; the POSIX arch does not build on Windows)",
+  "type": "module",
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile"
+  },
+  "dependencies": {
+    "@typecad/framework-zephyr": "*"
+  }
+}

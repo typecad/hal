@@ -35,6 +35,9 @@ interface BoardGenStrategy {
     padAliases?: readonly { exportName: string; padName: string }[];
     peripherals: { i2c: boolean; spi: boolean; uart: boolean };
     buildTarget?: string;
+    /** Declared on-chip flash size (KB) — overrides the soc-dtsi flash
+     *  harvest so Store/File gate in for external-flash boards. */
+    storageKb?: number;
   }): { boardTs: string; boardJson: string; gatedExports?: readonly string[] };
 }
 
@@ -136,6 +139,8 @@ export async function generateContractBoard(config: ResolvedTypecadConfig): Prom
     // The physical build target, when named — its catalog record is the
     // truth west compiles against (storage/flash facts).
     ...(config.buildTarget ? { buildTarget: config.buildTarget } : {}),
+    // Declared flash size, when the soc-dtsi harvest can't see it.
+    ...(config.storageKb ? { storageKb: config.storageKb } : {}),
   });
   // (3) The narrowed pad set: the contract's own canonical names — the
   // board module the framework generated exposes the soc's datasheet sweep

@@ -1607,6 +1607,10 @@ export function generateBoardModuleFromContract(opts: {
    *  family harvest (an overlay-synthesized partition colliding with the
    *  target board's own storage_partition is a dtc label error). */
   buildTarget?: string;
+  /** Declared on-chip flash size (KB). Overrides the soc-dtsi flash
+   *  harvest (which cannot see external flash declared in a board dts);
+   *  a buildTarget catalog record still wins over it. */
+  storageKb?: number;
 }): { boardTs: string; boardJson: string; gatedExports: readonly string[] } {
   const pads: { name: string; controller: string; pin: number }[] = [];
   for (const name of opts.pinNames) {
@@ -1636,8 +1640,12 @@ export function generateBoardModuleFromContract(opts: {
   // catalog record wins (the target's dts is what west compiles against —
   // synthesizing a second storage_partition against a board that ships one
   // is a dtc duplicate-label error). Otherwise the soc-dtsi family harvest
-  // stands: smallest declared module size, region synthesized.
+  // stands: smallest declared module size, region synthesized. An explicit
+  // storageKb declaration overrides the harvest — external-flash boards
+  // declare flash in the board dts, which the harvest can never see, and
+  // without a declared size Store/File stay gated off.
   let flashKb = socFlashKbFromTree(opts.zephyrBase, opts.soc);
+  if (opts.storageKb) flashKb = opts.storageKb;
   let storageReg: BoardDataEntry['storageReg'];
   let hasStoragePartition: boolean | undefined;
   if (opts.buildTarget) {

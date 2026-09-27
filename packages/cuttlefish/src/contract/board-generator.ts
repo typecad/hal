@@ -52,7 +52,7 @@ export function generateBoardFile(opts: GenerateBoardOptions): string {
 
   // The ungated surface is derived from the project's own hal copy (same
   // resolution as HAL source parsing).
-  const { ungated: BOARD_UNGATED_EXPORTS, ungatedTypes: BOARD_UNGATED_TYPE_EXPORTS } =
+  const { ungated: BOARD_UNGATED_EXPORTS, ungatedTypes: BOARD_UNGATED_TYPE_EXPORTS, gated } =
     getBoardGateData(projectDir);
 
   const cuttlefishDir = path.join(projectDir, CUTTLEFISH_DIR);
@@ -86,6 +86,19 @@ export function generateBoardFile(opts: GenerateBoardOptions): string {
   if (gatedExports && gatedExports.length > 0) {
     lines.push('// Hardware this SoC supports — carried over from the contract board facts.');
     lines.push(`export { ${gatedExports.join(', ')} } from '@typecad/hal/core';`);
+    lines.push('');
+  }
+
+  // Gated classes the board's facts did NOT support are listed here: silent
+  // absence is how users end up shimming around a gate they never heard of.
+  // Named explicitly, the withholding is greppable and self-explaining.
+  const supported = new Set(gatedExports ?? []);
+  const withheld = gated.filter((name) => !supported.has(name));
+  if (withheld.length > 0) {
+    lines.push('// Gated on board facts and NOT available on this board — importing one of');
+    lines.push('// these fails at module resolution. If you expected one of them, the');
+    lines.push('// board facts (contract, SoC storage/analog facts) did not support it:');
+    lines.push(`//   ${withheld.join(', ')}`);
     lines.push('');
   }
 

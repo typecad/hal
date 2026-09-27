@@ -32,6 +32,7 @@ const CONFIG_FILENAME = "typecad-hal.config.ts";
  *  misspelled keys that the AST extraction would otherwise drop silently. */
 const KNOWN_TOP_LEVEL_KEYS: ReadonlySet<string> = new Set([
   "entry", "board", "soc", "contract", "framework", "psram", "lint",
+  "storageKb",
   "output", "frameworkData", "include", "exclude", "test", "toolchain",
   "console", "native", "zephyr", "display",
 ]);
@@ -51,6 +52,10 @@ export interface ResolvedTypecadConfig {
   soc?: string;
   /** Path to a TypeCAD contract file (*.contract.json). */
   contract?: string;
+  /** Declared on-chip flash size (KB) for contract projects — the escape
+   *  hatch that gates Store/File in when the soc-dtsi flash harvest comes
+   *  up empty (external-flash boards). */
+  storageKb?: number;
   /** Build target identifier (the framework's board id, e.g. 'blackpill_f411ce/stm32f411xe'). */
   buildTarget?: string;
   /** Output framework (e.g. 'zephyr'). */
@@ -508,6 +513,9 @@ export function parseConfigFile(configPath: string): ResolvedTypecadConfig | und
 
   const contract = flat.get("contract");
   if (typeof contract === "string") resolved.contract = contract;
+
+  const storageKb = flat.get("storageKb");
+  if (typeof storageKb === "number") resolved.storageKb = storageKb;
 
   // The build target (what `west build -b` receives) has a single source of
   // truth: `board:` for board-target projects. `frameworkData.buildTarget`

@@ -57,6 +57,7 @@ describe('contract MCU-only config with a generated Zephyr board', () => {
         "  soc: 'stm32f411xe',",
         "  contract: './board.contract.json',",
         "  framework: '@typecad/framework-zephyr',",
+        "  storageKb: 512,",
         "  frameworkData: { buildTarget: 'my_pcb' },",
         '  zephyr: { customBoard: true },',
         '};',
@@ -71,6 +72,7 @@ describe('contract MCU-only config with a generated Zephyr board', () => {
     expect(config!.board).toBeUndefined();
     expect(config!.contract).toBe('./board.contract.json');
     expect(config!.buildTarget).toBe('my_pcb');
+    expect(config!.storageKb).toBe(512);
     expect((config!.zephyrConfig as Record<string, unknown>).customBoard).toBe(true);
   });
 
@@ -100,6 +102,15 @@ describe('contract MCU-only config with a generated Zephyr board', () => {
     expect(board).toContain("export { UART, Store, File } from '@typecad/hal/core';");
     // HAL imports so `import { Time } from '@typecad/hal'` resolves.
     expect(board).toContain("import { Pin, I2CBus, SPIBus, UART } from '@typecad/hal/core';");
+    // Gates the board's facts did NOT support are named in the file — silent
+    // absence is what forces users to shim around a gate they never heard of.
+    expect(board).toContain('NOT available on this board');
+    const withheldLine = board.split('\n').find((l) => l.startsWith('//   ')) ?? '';
+    expect(withheldLine).toContain('ADC');
+    expect(withheldLine).toContain('DAC');
+    expect(withheldLine).toContain('Watchdog');
+    expect(withheldLine).not.toContain('Store');
+    expect(withheldLine).not.toContain('File');
   });
 
   it('layers the strategy-resolved gated exports + storage facts onto the contract board', async () => {
@@ -132,6 +143,43 @@ describe('contract MCU-only config with a generated Zephyr board', () => {
     const manifest = JSON.parse(generated.boardJson);
     expect(manifest.constants['zephyr.storage.offset']).toBeDefined();
     expect(manifest.constants['zephyr.storage.size']).toBeGreaterThan(0);
+  });
+
+  it('gates Store/File in from a declared storageKb when the dtsi harvest sees no flash', async () => {
+    writeProject({ 'board.contract.json': CONTRACT });
+    // A "zephyr tree" with no dts at all: socFlashKbFromTree returns
+    // undefined, exactly like an external-flash board whose flash lives in
+    // the board dts rather than the soc dtsi.
+    const emptyBase = join(tmp, 'zephyr-fixture');
+    const { mkdirSync } = await import('node:fs');
+    mkdirSync(emptyBase, { recursive: true });
+
+    const { generateBoardModuleFromContract } = await import('../../../packages/framework-zephyr/src/boardgen');
+
+    const withoutDeclaration = generateBoardModuleFromContract({
+      soc: 'esp32s3',
+      zephyrBase: emptyBase,
+      pinNames: ['GPIO4', 'GPIO5'],
+      peripherals: { i2c: false, spi: false, uart: true },
+    });
+    expect(withoutDeclaration.gatedExports).not.toContain('Store');
+    const bareManifest = JSON.parse(withoutDeclaration.boardJson);
+    expect(bareManifest.constants['zephyr.storage.size']).toBeUndefined();
+
+    const declared = generateBoardModuleFromContract({
+      soc: 'esp32s3',
+      zephyrBase: emptyBase,
+      pinNames: ['GPIO4', 'GPIO5'],
+      peripherals: { i2c: false, spi: false, uart: true },
+      storageKb: 4096,
+    });
+    expect(declared.gatedExports).toContain('Store');
+    expect(declared.gatedExports).toContain('File');
+    // The synthesized storage region rides board.json from the declared size.
+    const manifest = JSON.parse(declared.boardJson);
+    expect(manifest.constants['zephyr.storage.offset']).toBeDefined();
+    expect(manifest.constants['zephyr.storage.size']).toBeGreaterThan(0);
+    expect(manifest.constants['zephyr.storage.size']).toBeLessThanOrEqual(4096 * 1024);
   });
 
   it('still rejects a config that sets both board and contract', () => {

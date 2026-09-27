@@ -84,6 +84,12 @@ export const TypecadConfigSchema = z.object({
   soc: z.string().optional(),
   contract: z.string().optional(),
   framework: z.string().optional(),
+  /** Declared on-chip flash size (KB) for contract projects. Gates in the
+   *  persistent Store/File surface when neither the soc-dtsi flash harvest
+   *  nor a buildTarget catalog record declares a size — external-flash
+   *  boards declare flash in the board dts, which the soc-dtsi harvest
+   *  cannot see. */
+  storageKb: z.number().int().positive().optional(),
   /** ESP32 PSRAM type. When set, the framework emits the PSRAM-enabling
    *  Kconfig/define so canvas allocations prefer external RAM (large scroll
    *  viewports/lists stop failing on PSRAM targets). No effect on boards
