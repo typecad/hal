@@ -4,7 +4,8 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { parseSource } from "../../ast/parse.js";
-import { requiredIncludes, getCurrentBoardConstants, mcuPinForwardMap, mcuPinReverseMap, halInstances, topLevelAliasReceivers, pinAliasMap } from "../build-ir-state.js";
+import { requiredIncludes, getCurrentBoardConstants, mcuPinForwardMap, mcuPinReverseMap, halInstances, topLevelAliasReceivers, pinAliasMap, topLevelClasses } from "../build-ir-state.js";
+import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { mapPeripheralName } from "../../mapping/peripheral-names.js";
 import { escapeCppStringLiteral } from "../../utils/strings.js";
 
@@ -42,6 +43,43 @@ export const halClassRegistry = new Map<string, HALClassEntry>();
 export const halGlobalFunctions = new Map<string, HALMethodEntry>();
 export const halSingletons = new Map<string, { className: string; fieldValues: Map<string, string>; includes?: string[] }>();
 export const halCtorIncludes = new Map<string, string[]>();
+
+// ── Class-field HAL instances ────────────────────────────────────────────────
+// A class field initialized with `new <HALClass>(...)` (e.g. a GPIO member
+// `private enable = new GPIO(4, GPIO.OUTPUT)`) makes the FIELD a HAL object,
+// so method bodies reach hardware through `this.enable.set(...)`. The field's
+// instance is resolved once per class (resolveHALReceiver on the initializer)
+// and activated while that class's method bodies are lowered — class-scoped,
+// so same-named fields in two classes never collide. Without this, every
+// `this.<field>.<hal-method>()` inside a class resolved to nothing and fell
+// through as raw text (unlowered C++ referencing the HAL class verbatim).
+let activeThisHalFields: Map<string, HALInstance> | undefined;
+
+/** Activate a class's field-instance map while its members are lowered. */
+export function setActiveThisHalFields(fields: Map<string, HALInstance> | undefined): void {
+  activeThisHalFields = fields;
+}
+
+/** The currently-active class-field map (for save/restore around a class). */
+export function getActiveThisHalFields(): Map<string, HALInstance> | undefined {
+  return activeThisHalFields;
+}
+
+/** Class-field HAL instances keyed by CLASS name — persists after the class's
+ *  members are lowered so `instance.field` receivers outside the class
+ *  (main.ts attaching `probe.probeInput.onInterrupt(...)`) resolve through
+ *  the declaring class's field map. */
+const classHalFields = new Map<string, Map<string, HALInstance>>();
+
+/** Record a class's field-instance map under its name. */
+export function registerClassHalFields(className: string, fields: Map<string, HALInstance>): void {
+  classHalFields.set(className, fields);
+}
+
+/** Look up a class's HAL field map (the receiver-type resolved path). */
+export function getClassHalFields(className: string): Map<string, HALInstance> | undefined {
+  return classHalFields.get(className);
+}
 
 // Guard: only load once per process
 export let halModulesLoaded = false;
@@ -167,6 +205,22 @@ export function extractCtorFieldMap(ctor: ts.ConstructorDeclaration): { fieldMap
         // this._field = paramName (constructor parameter)
         if (ts.isIdentifier(right)) {
           fieldMap.set(left.name.text, right.text);
+        }
+        // this._field = typeof-narrowing ternary — the hal idiom for union
+        // params: `typeof pin === 'number' ? pin : pin.number`. Both branches
+        // name the same parameter; map it so instance construction resolves
+        // the field (GPIO's ctor is the canonical case).
+        if (ts.isConditionalExpression(right)) {
+          const branchParam = (e: ts.Expression): string | undefined => {
+            if (ts.isIdentifier(e)) return e.text;
+            if (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.expression)) return e.expression.text;
+            return undefined;
+          };
+          const whenTrue = branchParam(right.whenTrue);
+          const whenFalse = branchParam(right.whenFalse);
+          if (whenTrue && whenTrue === whenFalse) {
+            fieldMap.set(left.name.text, whenTrue);
+          }
         }
         // this._field = "stringLiteral" (default value)
         if (ts.isStringLiteral(right)) {
@@ -454,6 +508,40 @@ export function httpUrlArgText(arg: ts.Expression): string | null {
 /** Resolve a call receiver to a tracked HAL instance. */
 export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null {
   const result = (() => {
+    // Class-field receiver: this.enable.set(...) — the field carries a HAL
+    // instance resolved from its `new <HALClass>(...)` initializer (see
+    // setActiveThisHalFields). Checked before variable resolution: `this.x`
+    // is never a bare identifier.
+    if (ts.isPropertyAccessExpression(receiver)
+      && receiver.expression.kind === ts.SyntaxKind.ThisKeyword
+      && ts.isIdentifier(receiver.name)
+      && activeThisHalFields) {
+      const fieldInst = activeThisHalFields.get(receiver.name.text);
+      if (fieldInst) return fieldInst;
+      return null;
+    }
+    // Instance-field receiver: probe.probeInput.onInterrupt(...) — `probe` is
+    // a user-class instance whose class declares the field as a HAL object.
+    // The variable's IR type names the class; the class's field map carries
+    // the instance. Prefer the side map (rewritten by each class's REAL
+    // build, after that file's imports registered — pin constants resolve,
+    // GPIO5 → 5); the halInstance stamped on the prebuilt class IR is the
+    // fallback for classes whose real build has not run yet, and may carry
+    // unresolved pin TEXT (the prebuild scans no imports).
+    if (ts.isPropertyAccessExpression(receiver)
+      && ts.isIdentifier(receiver.expression)
+      && ts.isIdentifier(receiver.name)) {
+      const varType = getCurrentIrTypeScope()?.locals.get(receiver.expression.text)
+        ?? getCurrentIrTypeScope()?.globals.get(receiver.expression.text);
+      const className = typeof varType === "string" ? varType.replace(/\*+$/, "").trim() : undefined;
+      if (className) {
+        const sideMapInst = classHalFields.get(className)?.get(receiver.name.text);
+        if (sideMapInst) return sideMapInst;
+        const cls = topLevelClasses.get(className);
+        const field = cls?.fields.find((f) => f.name === receiver.name.text) as { halInstance?: HALInstance } | undefined;
+        if (field?.halInstance) return field.halInstance;
+      }
+    }
     // Variable reference: led.method()
     if (ts.isIdentifier(receiver)) {
       const inst = halInstances.get(receiver.text);
@@ -674,6 +762,19 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
       const args = receiver.arguments as ts.NodeArray<ts.Expression> | undefined;
       const fieldValues = resolveCtorFieldValues(classEntry.ctorFieldMap, args, classEntry.ctorDefaults);
       if (fieldValues) {
+        // A `_pin` value that names a tracked Pin instance (a board-module
+        // pin constant like GPIO4) resolves through it to the pin NUMBER —
+        // the same resolution the variable-declaration path applies. Without
+        // this, a class field `new GPIO(GPIO4, GPIO.OUTPUT)` carries
+        // _pin="GPIO4" and every op fails to fold the pin.
+        const pinText = fieldValues.get("_pin");
+        if (pinText !== undefined && /^[A-Za-z_]\w*$/.test(pinText)) {
+          const refInst = halInstances.get(pinText);
+          const resolvedPin = refInst?.fieldValues.get("_pin");
+          if (resolvedPin !== undefined) {
+            fieldValues.set("_pin", resolvedPin);
+          }
+        }
         return { className, fieldValues };
       }
     }

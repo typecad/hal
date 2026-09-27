@@ -137,10 +137,18 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
   // Emit interfaces as C++ structs BEFORE type aliases — an alias may
   // reference an interface (`using EntryPatch = Entry;`), so the struct must
   // be declared first (demo #10 fix A: alias-to-user-type ordering).
+  //
+  // Method-bearing interfaces lower to abstract structs (pure-virtual
+  // methods). Emitting NOTHING for them — the old behavior — left every
+  // reference to the type name undefined in C++ (params, fields, `extends`).
+  // Fields stay plain data members so field-only interfaces remain the
+  // aggregate structs the value-type lowering expects.
+  const programInterfaceNames = new Set(program.interfaces.map((iface: any) => iface.name));
   for (const iface of program.interfaces) {
     const appendLine = effectiveEmitMode === "split" ? appendHeaderLine : appendSourceLine;
     emitCommentLines(iface.leadingComments, "", (line) => appendLine(ctx, line));
-    if (iface.fields.length > 0 || iface.indexSignature) {
+    const hasBody = iface.fields.length > 0 || !!iface.indexSignature || iface.methods.length > 0;
+    if (hasBody) {
       if (iface.parentScope) {
         appendLine(ctx, `namespace ${iface.parentScope} {`);
         ctx.interfaceNamespaceMap.set(iface.name, iface.parentScope);
@@ -154,7 +162,16 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
       if (typeParams.size > 0) {
         appendLine(ctx, `template<typename ${Array.from(typeParams).join(", typename ")}>`);
       }
-      appendLine(ctx, `struct ${iface.name} {`);
+      const baseClause = (iface.extendsInterfaces ?? [])
+        .filter((base: string) => programInterfaceNames.has(base))
+        .map((base: string) => `public ${base}`)
+        .join(", ");
+      appendLine(ctx, `struct ${iface.name}${baseClause ? ` : ${baseClause}` : ""} {`);
+      if (iface.methods.length > 0) {
+        // Polymorphic delete through the interface pointer needs a virtual
+        // destructor (mirrors the class emitter's base-class dtor).
+        appendLine(ctx, `  virtual ~${iface.name}() = default;`);
+      }
       for (const field of iface.fields) {
         const fieldType = normalizeCppTypeForTarget(field.cppType);
         // Escape the field name with the SAME function class-field declarations
@@ -172,6 +189,13 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
         const keyType = normalizeCppTypeForTarget(iface.indexSignature.keyType);
         const valueType = normalizeCppTypeForTarget(iface.indexSignature.valueType);
         appendLine(ctx, `  std::map<${keyType}, ${valueType}> data;`);
+      }
+      if (iface.methods.length > 0) {
+        for (const method of iface.methods) {
+          const methodParams = ctx.statementRenderer.renderParameters(method.parameters);
+          const returnType = normalizeCppTypeForTarget(method.returnType);
+          appendLine(ctx, `  virtual ${returnType} ${escapeCppKeyword(method.name, reservedNames)}(${methodParams}) = 0;`);
+        }
       }
       appendLine(ctx, "};");
       if (iface.parentScope) {

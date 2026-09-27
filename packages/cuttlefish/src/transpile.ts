@@ -380,6 +380,13 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // the loadHALModules warm-up below so the registry reflects the project's
   // hal copy, not whatever an earlier run in this process pinned.
   setHALProjectDir(options.projectRoot ?? entryDir);
+  // Warm the HAL registry BEFORE the cross-module class prebuild below: the
+  // prebuild lowers class bodies too, and HAL-object fields (new <HALClass>)
+  // can only resolve their instances — stamping them onto the prebuilt class
+  // IR, where the entry file's instance-field receivers find them — when the
+  // registry is populated. The per-file loadHALModules() call inside
+  // buildProgramIR stays a cheap no-op either way.
+  loadHALModules(true);
 
   profiler.endTimer("setup:caches");
 

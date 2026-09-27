@@ -7,7 +7,7 @@ import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
 import { collectChainedHALEmits, emitLinesToIR, halOpsToIR } from "./hal-emit-helpers.js";
 import { resolveNamespaceMethodCall } from "./namespace-methods.js";
-import { makeSourceSpan } from "../ast-node-utils.js";
+import { makeSourceSpan, makeDiagnostic } from "../ast-node-utils.js";
 
 /**
  * Resolve a HAL method call using the HAL resolver.
@@ -291,6 +291,22 @@ export function tryResolveHALExpression(
         // usable as a sub-expression. Statement context keeps the `return`
         // via tryResolveHALMethod. Demo #33 Finding B.
         const exprValue = result.returnValue.replace(/^\s*return\s+/, "");
+        // A factory's returnValue is its raw TypeScript construction text
+        // (`new I2CResponder(this._bus, address, opts)`) — the HAL class has
+        // no C++ definition in the output, so emitting it verbatim produces
+        // broken C++ that references JS-only fields (this._bus, opts). Bind
+        // factories to a variable (`const r = I2C0.responder(addr)`) — the
+        // var-init path tracks the instance and lowers its method calls.
+        if (result.returnClassName && /^new\s/.test(exprValue.trim())) {
+          diagnostics.push(makeDiagnostic(
+            sourceText,
+            call.pos,
+            `A HAL factory result used directly in an expression cannot be lowered — ${result.returnClassName} has no C++ class in the output. Bind it to a variable first (const r = ...; r.method(...)) so its method calls lower to HAL operations.`,
+            "error",
+            "hal-factory-in-expression",
+          ));
+          return { ir: { kind: "raw", value: "0 /* HAL factory in expression context */" }, sideEffects: result.emitLines };
+        }
         return { ir: { kind: "raw", value: exprValue }, sideEffects: result.emitLines };
       }
       if (result.emitLines.length > 0) {

@@ -1,10 +1,11 @@
 ﻿import ts from "typescript";
 import { Diagnostic } from "../types.js";
 import { CppType, ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSetterIR, EnumIR, ExpressionIR, InterfaceIR, ParameterIR, RegisterClassIR, StatementIR, TypeAliasIR } from "../api/index.js";
-import { extractNodeComments, makeSourceSpan } from "./ast-node-utils.js";
-import { CppTypeHint, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "./type-resolution.js";
+import { extractNodeComments, makeSourceSpan, makeDiagnostic } from "./ast-node-utils.js";
+import { CppTypeHint, typeNodeToCppType, extractOwnershipKindFromTypeNode, inferExprCppType } from "./type-resolution.js";
 import { getBitsRange, getRegisterAddress } from "./register-decorators.js";
-import { registerFieldMap, PointerTracker, setActiveExtendsClass, discriminatedUnionVariantNames, requiredIncludes } from "./build-ir-state.js";
+import { registerFieldMap, PointerTracker, setActiveExtendsClass, discriminatedUnionVariantNames, requiredIncludes, getContext } from "./build-ir-state.js";
+import { resolveHALReceiver, setActiveThisHalFields, getActiveThisHalFields, registerClassHalFields, halClassRegistry, halCtorIncludes, type HALInstance } from "./hal/hal-parser.js";
 import { getCurrentIrTypeScope } from "./symbol-types.js";
 import { expressionToIR } from "./expression-to-ir.js";
 import { lowerStatementList } from "./statement-to-ir.js";
@@ -80,6 +81,41 @@ export function classDeclarationToIR(
   }
 
   const isAbstract = node.modifiers?.some(m => m.kind === ts.SyntaxKind.AbstractKeyword) ?? false;
+
+  // ── Class-field HAL instances ────────────────────────────────────────────
+  // A field initialized with `new <HALClass>(...)` (a GPIO member
+  // `private enable = new GPIO(4, GPIO.OUTPUT)`) makes the field itself a
+  // HAL object: method bodies reach hardware through `this.enable.set(...)`.
+  // Resolve each such field's instance up front (independent of member
+  // order — methods may precede the fields they use) and activate the map
+  // for the whole class so `this.<field>` receivers resolve during body
+  // lowering. Without this every this-field HAL call fell through as raw
+  // text (unlowered C++ naming the HAL class).
+  const thisHalFields = new Map<string, HALInstance>();
+  for (const member of node.members) {
+    if (
+      ts.isPropertyDeclaration(member) && member.name && ts.isIdentifier(member.name)
+      && member.initializer && ts.isNewExpression(member.initializer)
+      && ts.isIdentifier(member.initializer.expression)
+      && halClassRegistry.has(member.initializer.expression.text)
+    ) {
+      const inst = resolveHALReceiver(member.initializer);
+      if (inst) {
+        thisHalFields.set(member.name.text, inst);
+        const ctorIncludes = halCtorIncludes.get(inst.className);
+        if (ctorIncludes) {
+          for (const inc of ctorIncludes) requiredIncludes.add(inc);
+        }
+      }
+    }
+  }
+  const previousThisHalFields = getActiveThisHalFields();
+  if (thisHalFields.size > 0) {
+    setActiveThisHalFields(thisHalFields);
+    // Persist under the class name so instance-field receivers outside the
+    // class (probe.probeInput.onInterrupt(...) in another module) resolve.
+    registerClassHalFields(className, thisHalFields);
+  }
 
   // Render the extends-clause type, INCLUDING type arguments, so a subclass of
   // a generic base (`extends Registry<string, number>`) lowers to
@@ -230,16 +266,39 @@ export function classDeclarationToIR(
         continue;
       }
 
-      const fieldType = typeNodeToCppType(member.type, typeAliasNodes);
+      // An absent annotation must not fall back to `auto`: a non-static data
+      // member cannot be `auto` in C++ (and static auto fields break
+      // cross-TU). Infer from the initializer with the same resolver local
+      // declarations use — fractional literals become double, `new X(...)`
+      // becomes X*, and an unresolvable initializer keeps `auto` (static
+      // fields, where auto is legal, still compile).
+      const annotatedFieldType = typeNodeToCppType(member.type, typeAliasNodes);
+      const fieldType = annotatedFieldType !== "auto" || !member.initializer
+        ? annotatedFieldType
+        : inferExprCppType(member.initializer, functionReturnTypes, new Map(), sourceText);
+
+      // Stamp a resolved real-typed field onto a numeric-literal initializer
+      // so the renderer keeps double precision (no float `f` suffix — TS
+      // numbers are f64; `double k = 0.019` must not round through float).
+      const fieldInitializer = member.initializer
+        ? expressionToIR(member.initializer, sourceText, diagnostics, pointerVars)
+        : undefined;
+      if (
+        fieldInitializer && fieldInitializer.kind === "number"
+        && (fieldType === "double" || fieldType === "float")
+      ) {
+        fieldInitializer.cppType = fieldType;
+      }
 
       fields.push({
         name: fieldName,
         cppType: (fieldType === "void" ? "auto" : fieldType) as CppType,
         visibility: fieldVisibility,
-        initializer: member.initializer
-          ? expressionToIR(member.initializer, sourceText, diagnostics, pointerVars)
-          : undefined,
+        initializer: fieldInitializer,
         isStatic: member.modifiers?.some(m => m.kind === ts.SyntaxKind.StaticKeyword) ?? false,
+        // A HAL-object field has no C++ declaration — its uses lower to HAL
+        // ops through the tracked this-field instance.
+        ...(thisHalFields.has(fieldName) ? { isHalInstance: true, halInstance: thisHalFields.get(fieldName)! } : {}),
       });
       continue;
     }
@@ -447,6 +506,9 @@ export function classDeclarationToIR(
   const classTypeParams = node.typeParameters
     ? node.typeParameters.map(tp => tp.name.text)
     : undefined;
+
+  // Restore the enclosing class's field map (nested classes) — or clear it.
+  setActiveThisHalFields(previousThisHalFields);
 
   return {
     name: className,
@@ -690,6 +752,22 @@ export function typeAliasDeclarationToIR(
     if (variantStructs) {
       const variantNames = variantStructs.map(v => v.name);
       discriminatedUnionVariantNames.set(node.name.text, variantNames);
+      // std::variant is C++17 — embedded targets compile C++14. Fail loudly
+      // instead of shipping a header the toolchain rejects.
+      const strategy = getContext().activeStrategy;
+      if (strategy?.getStdLibSupport && strategy.getStdLibSupport().hasVector === false) {
+        getContext().diagnostics?.push(makeDiagnostic(
+          sourceText,
+          node.pos,
+          `type '${node.name.text}' is a discriminated union, which lowers to std::variant (C++17) — this target compiles C++14. Model it as a struct with a kind field instead.`,
+          "error",
+          "variant-unsupported-on-target",
+        ));
+      }
+      // std::variant requires <variant>; register the include BEFORE the
+      // return (this registration was unreachable dead code — demo #9
+      // Finding A's fix never actually ran here).
+      requiredIncludes.add("<variant>");
       return {
         name: node.name.text,
         sourceSpan: makeSourceSpan(node, fileName, sourceText),
@@ -699,12 +777,6 @@ export function typeAliasDeclarationToIR(
         variantStructs,
         ...(aliasTypeParams && aliasTypeParams.length > 0 ? { typeParameters: aliasTypeParams } : {}),
       };
-      // std::variant requires <variant>; register the include so the header
-      // compiles (demo #9 Finding A — was emitting `std::variant<...>` with
-      // no include, giving "'variant' is not a member of 'std'").
-      if (variantNames.length > 0) {
-        requiredIncludes.add("<variant>");
-      }
     }
   }
 

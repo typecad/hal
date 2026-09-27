@@ -7,6 +7,80 @@ import { accessorGetterName, accessorSetterName } from "../utils/cpp-helpers.js"
 import type { EmitterContext } from "./emitter-context.js";
 import { parseCppType, parsedIsPointer, parsedIsVector, parsedIsStringLike, isStaticArray } from "../../api/shared/cpp-type-ir.js";
 
+// ── Getter const-qualification analysis ─────────────────────────────────────
+//
+// A `const` member function may only call `const` siblings on the same
+// object, so stamping every getter `const` breaks the build whenever a
+// getter's body reaches a non-const method (`get mS() { return this.getF32(...) }`
+// emitted `getMS() const` calling the non-const `getF32`). A getter is
+// const-safe iff its body writes no `this->` member (writes THROUGH a
+// pointer member are fine — the pointee is not the receiver) and calls no
+// sibling method or setter and no sibling getter that fails the same test
+// (a fixpoint — getter-to-getter chains).
+//
+// Writes: a direct member write (`this->x`, `this->x[i]`, `this->x.y`)
+// mutates the receiver; `this->x->y` does not (x is a pointer member).
+// Calls: `this->method(...)` — calls through pointer members
+// (`this->registers->setU8(...)`) mutate another object, not the receiver.
+
+/** Assign/update targets that mutate the receiver. */
+const RECEIVER_WRITE = /^this->[A-Za-z_]\w*(?:\[[^\]]*\]|\.[A-Za-z_]\w*)*$/;
+/** A sibling call: `this->name` exactly (no further member access). */
+const SIBLING_CALL = /^this->([A-Za-z_]\w*)$/;
+
+/** Scan one IR node (statement or expression) tree for receiver writes and
+ *  sibling calls. The IR is structural; walk every array/object property. */
+function scanBody(node: unknown, out: { writes: boolean; calls: Set<string> }): void {
+  if (Array.isArray(node)) {
+    for (const item of node) scanBody(item, out);
+    return;
+  }
+  if (!node || typeof node !== "object") return;
+  const ir = node as Record<string, unknown>;
+  if (ir.kind === "assign" || ir.kind === "update") {
+    if (typeof ir.target === "string" && RECEIVER_WRITE.test(ir.target)) out.writes = true;
+  } else if (ir.kind === "call" || ir.kind === "method-call") {
+    const m = typeof ir.callee === "string" ? SIBLING_CALL.exec(ir.callee) : null;
+    if (m) out.calls.add(m[1]);
+  }
+  for (const value of Object.values(ir)) {
+    if (value === ir.kind) continue;
+    scanBody(value, out);
+  }
+}
+
+/** Per class: which getters may carry the `const` qualifier. */
+function computeConstSafeGetters(classDef: any): Set<string> {
+  const bodies = new Map<string, { writes: boolean; calls: Set<string> }>();
+  for (const g of classDef.getters ?? []) {
+    const scan = { writes: false, calls: new Set<string>() };
+    for (const stmt of g.statements ?? []) scanBody(stmt, scan);
+    bodies.set(g.name, scan);
+  }
+  // Methods and setters are emitted without `const`, so calling one from a
+  // const getter is a compile error — seed them as non-const callees.
+  const nonConst = new Set<string>();
+  for (const m of classDef.methods ?? []) nonConst.add(m.name);
+  for (const s of classDef.setters ?? []) nonConst.add(s.name);
+  // Fixpoint over getter→getter chains.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [name, scan] of bodies) {
+      if (nonConst.has(name)) continue;
+      if (scan.writes || [...scan.calls].some(callee => nonConst.has(callee))) {
+        nonConst.add(name);
+        changed = true;
+      }
+    }
+  }
+  const safe = new Set<string>();
+  for (const name of bodies.keys()) {
+    if (!nonConst.has(name)) safe.add(name);
+  }
+  return safe;
+}
+
 export function emitClasses(ctx: EmitterContext): void {
   const { program, strategy, effectiveEmitMode, reservedNames, mappedFunctions, topLevelScope, exprRenderer, statementRenderer, isEntryFile } = ctx;
 
@@ -210,6 +284,17 @@ export function emitClasses(ctx: EmitterContext): void {
     if (classDef.extendsClass) {
       inheritanceParts.push(`public ${classDef.extendsClass}`);
     }
+    // `implements` a METHOD-BEARING interface needs real inheritance: the
+    // interface lowers to an abstract struct, and using the object through
+    // the interface pointer requires the virtual overrides to derive from it.
+    // Field-only interfaces stay structural (aggregate structs) — inheriting
+    // those would double-declare fields the class re-states.
+    for (const ifaceName of classDef.implementsInterfaces ?? []) {
+      const ifaceDef = program.interfaces.find((i: any) => i.name === ifaceName);
+      if (ifaceDef && ifaceDef.methods.length > 0) {
+        inheritanceParts.push(`public ${ifaceName}`);
+      }
+    }
     const inheritanceClause = inheritanceParts.length > 0 ? ` : ${inheritanceParts.join(", ")}` : "";
 
     if (classDef.isAbstract) {
@@ -240,6 +325,7 @@ export function emitClasses(ctx: EmitterContext): void {
     }
 
     const publicFields = classDef.fields.filter(f => f.visibility === "public");
+    const constSafeGetters = computeConstSafeGetters(classDef);
     const privateFields = classDef.fields.filter(f => f.visibility === "private");
     const protectedFields = classDef.fields.filter(f => f.visibility === "protected");
     const publicMethods = classDef.methods.filter(m => m.visibility === "public");
@@ -318,6 +404,7 @@ export function emitClasses(ctx: EmitterContext): void {
       }
 
       for (const field of publicFields) {
+        if (field.isHalInstance) continue; // no C++ declaration — HAL ops carry it
         const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined)}` : "";
         const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType));
         // `static inline` lets an initialized static field live entirely in the
@@ -376,9 +463,10 @@ export function emitClasses(ctx: EmitterContext): void {
         const returnType = normalizeCppTypeForTarget(getter.returnType);
         const getterName = accessorGetterName(getter.name);
         // A `const` cv-qualifier is illegal on a static member function
-        // (g++: "static member function ... cannot have cv-qualifier"). Only
-        // add `const` for instance getters.
-        const constQualifier = getter.isStatic ? "" : " const";
+        // (g++: "static member function ... cannot have cv-qualifier"), and
+        // only const-SAFE getters may carry it — one that writes a member or
+        // calls a non-const sibling would not compile.
+        const constQualifier = getter.isStatic ? "" : constSafeGetters.has(getter.name) ? " const" : "";
         appendSourceLine(ctx, `  ${staticPrefix}${returnType} ${getterName}()${constQualifier} {`);
         const getterScope = createChildEmissionScope(topLevelScope, []);
         addClassFieldsToScope(classDef, getterScope);
@@ -412,6 +500,7 @@ export function emitClasses(ctx: EmitterContext): void {
     if (privateFields.length > 0 || privateMethods.length > 0 || privateGetters.length > 0 || privateSetters.length > 0) {
       appendSourceLine(ctx, "private:");
       for (const field of privateFields) {
+        if (field.isHalInstance) continue; // no C++ declaration — HAL ops carry it
         const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined)}` : "";
         const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType));
         const staticPrefix = field.isStatic ? "static inline " : "";
@@ -453,7 +542,7 @@ export function emitClasses(ctx: EmitterContext): void {
         const staticPrefix = getter.isStatic ? "static " : "";
         const returnType = normalizeCppTypeForTarget(getter.returnType);
         const getterName = accessorGetterName(getter.name);
-        const constQualifier = getter.isStatic ? "" : " const";
+        const constQualifier = getter.isStatic ? "" : constSafeGetters.has(getter.name) ? " const" : "";
         appendSourceLine(ctx, `  ${staticPrefix}${returnType} ${getterName}()${constQualifier} {`);
         const getterScope = createChildEmissionScope(topLevelScope, []);
         addClassFieldsToScope(classDef, getterScope);
@@ -486,6 +575,7 @@ export function emitClasses(ctx: EmitterContext): void {
     if (protectedFields.length > 0 || protectedMethods.length > 0 || protectedGetters.length > 0 || protectedSetters.length > 0) {
       appendSourceLine(ctx, "protected:");
       for (const field of protectedFields) {
+        if (field.isHalInstance) continue; // no C++ declaration — HAL ops carry it
         const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined)}` : "";
         const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType));
         const staticPrefix = field.isStatic ? "static inline " : "";
@@ -527,7 +617,8 @@ export function emitClasses(ctx: EmitterContext): void {
         const staticPrefix = getter.isStatic ? "static " : "";
         const returnType = normalizeCppTypeForTarget(getter.returnType);
         const getterName = accessorGetterName(getter.name);
-        appendSourceLine(ctx, `  ${staticPrefix}${returnType} ${getterName}() const {`);
+        const constQualifier = getter.isStatic ? "" : constSafeGetters.has(getter.name) ? " const" : "";
+        appendSourceLine(ctx, `  ${staticPrefix}${returnType} ${getterName}()${constQualifier} {`);
         const getterScope = createChildEmissionScope(topLevelScope, []);
         addClassFieldsToScope(classDef, getterScope);
         withThisAccessors(classDef, getter.isStatic, () => {

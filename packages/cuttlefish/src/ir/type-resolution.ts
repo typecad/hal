@@ -530,6 +530,21 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
     return "auto";
   }
 
+  // An index-signature type literal ({ [k: string]: number }) is a DICTIONARY
+  // — the C++ form is std::map. Returning "auto" (the old behavior) made the
+  // object-literal path synthesize an EMPTY _name_t struct, and every
+  // `m["key"]` access failed at g++ time (no operator[]).
+  if (ts.isTypeLiteralNode(resolvedNode)) {
+    const indexMember = resolvedNode.members.find(m => ts.isIndexSignatureDeclaration(m));
+    const hasNamedMembers = resolvedNode.members.some(m => !ts.isIndexSignatureDeclaration(m));
+    if (indexMember && !hasNamedMembers) {
+      const keyType = typeNodeToCppType(indexMember.parameters[0]?.type, typeAliases, typeParametersInScope);
+      const valueType = typeNodeToCppType(indexMember.type, typeAliases, typeParametersInScope);
+      const ir: CppTypeIR = { kind: "map", key: parseCppType(keyType), value: parseCppType(valueType) };
+      return renderCppType(ir) as CppTypeHint;
+    }
+  }
+
   return "auto";
 }
 
@@ -674,13 +689,23 @@ export function inferExprCppType(
       if (fnReturnType && fnReturnType !== "auto") {
         return fnReturnType;
       }
+      // The conversion globals lower to atof/static_cast<double> — both real.
+      // Without this the var-decl inference defaulted to int and
+      // `const a = parseFloat("1.5")` emitted `const int a = atof("1.5")`,
+      // silently truncating 1.5 to 1 (compiles, wrong value).
+      if (expr.expression.text === "parseFloat" || expr.expression.text === "Number") {
+        return "double";
+      }
+      if (expr.expression.text === "parseInt") {
+        return "int";
+      }
     }
     if (ts.isPropertyAccessExpression(expr.expression)) {
       if (ts.isIdentifier(expr.expression.expression)) {
         const className = expr.expression.expression.text;
         if (className === "Math") {
           const method = expr.expression.name.text;
-          if (["floor", "ceil", "round", "abs", "sqrt", "sin", "cos", "tan", "atan2", "log", "exp", "pow", "fmod"].includes(method)) {
+          if (["floor", "ceil", "round", "trunc", "abs", "sqrt", "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "log", "log2", "log10", "exp", "pow", "fmod", "hypot", "cbrt", "fround", "sign"].includes(method)) {
             return "double";
           }
           if (method === "min" || method === "max") {
@@ -866,12 +891,39 @@ export function inferExprCppType(
   }
 
   if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression)) {
+    // Same conversion-global handling as the var-decl inference above.
+    if (expr.expression.text === "parseFloat" || expr.expression.text === "Number") {
+      return "double";
+    }
+    if (expr.expression.text === "parseInt") {
+      return "int";
+    }
     return functionReturnTypes.get(expr.expression.text) ?? "auto";
   }
 
   if (ts.isNewExpression(expr)) {
     if (ts.isIdentifier(expr.expression)) {
       const ctorName = expr.expression.text;
+      // `new Array<E>(...)` constructs a value-typed std::vector<E> (the
+      // emit-side lowering), never a pointer — inferring `Array<E>*` produced
+      // garbage declarations (`Array<number>* a = std::vector<double>(8);`).
+      if (ctorName === "Array" && expr.typeArguments && expr.typeArguments.length === 1) {
+        return `std::vector<${typeNodeToCppType(expr.typeArguments[0], undefined)}>` as CppTypeHint;
+      }
+      // `new Error(...)` is a VALUE of the lowered type — the generic pointer
+      // path invented `Error*`, a class that does not exist in the output.
+      if (ctorName === "Error") {
+        return "std::runtime_error" as CppTypeHint;
+      }
+      // `new Map<K,V>()` / `new Set<T>()` — the same value-container rule
+      // (the generic pointer path invents `Map<K,V>*`, a type that does not
+      // exist in the output).
+      if (ctorName === "Map" && expr.typeArguments && expr.typeArguments.length === 2) {
+        return `std::map<${typeNodeToCppType(expr.typeArguments[0], undefined)}, ${typeNodeToCppType(expr.typeArguments[1], undefined)}>` as CppTypeHint;
+      }
+      if (ctorName === "Set" && expr.typeArguments && expr.typeArguments.length === 1) {
+        return `std::set<${typeNodeToCppType(expr.typeArguments[0], undefined)}>` as CppTypeHint;
+      }
       const directType = getDirectCppType(ctorName);
       if (directType) {
         return directType;

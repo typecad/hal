@@ -3,14 +3,35 @@ import { Diagnostic, SourceSpan } from "../../types.js";
 import { StatementIR, ExpressionIR, CppType } from "../../api/index.js";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils.js";
 import { CppTypeHint, resolveDeclarationType, inferExprCppType } from "../type-resolution.js";
-import { PointerTracker, nestedClassAliases, topLevelAliasReceivers } from "../build-ir-state.js";
-import { type CppTypeIR, parseCppType, renderCppType, isPointer, parsedIsPointer, parsedIsVector, parsedElementString } from "../../api/shared/cpp-type-ir.js";
+import { PointerTracker, nestedClassAliases, topLevelAliasReceivers, enterThrowExpression, exitThrowExpression, enterConditionContext, exitConditionContext } from "../build-ir-state.js";
+import { type CppTypeIR, parseCppType, renderCppType, isPointer, parsedIsPointer, parsedIsVector, parsedIsMap, parsedElementString } from "../../api/shared/cpp-type-ir.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { lowerStatementList, expressionStatementToIR } from "../statement-to-ir.js";
 import { assignmentOperatorToString, updateLocalTypeFromAssignment, extractForInKeys } from "./variables.js";
 
 // Monotonic counter for synthetic for...of destructure loop variables.
 let forOfDestructureCounter = 0;
+
+/**
+ * Lower a loop/branch condition. Condition positions keep the C++ `&&`/`||`
+ * pass-through (short-circuit; only truthiness matters there) — the
+ * value-position operand-semantics rewrite in expression-to-ir must not fire
+ * inside them.
+ */
+function lowerConditionExpression(
+  condition: ts.Expression,
+  fileName: string,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  pointerVars: PointerTracker,
+): ExpressionIR {
+  enterConditionContext();
+  try {
+    return expressionToIR(condition, sourceText, diagnostics, pointerVars);
+  } finally {
+    exitConditionContext();
+  }
+}
 
 /**
  * Build per-binding extraction statements for a for...of destructure loop
@@ -62,26 +83,37 @@ function buildDestructureExtractions(
       localVariableTypes.set(bindingName, "auto" as CppTypeHint);
     }
   } else {
-    // Array binding pattern: index-based extraction.
+    // Array binding pattern: index-based extraction. For a std::pair source
+    // (Map iteration: `for (const [k, v] of m)`) the pair has no operator[]
+    // — extract through std::get<N> (renders as a `tuple-access` IR node).
+    // Bindings carry the pair's K/V types: a bare `auto` degrades to int.
+    const isPairSource = /^std::pair</.test(sourceCppType);
+    const pairIR = isPairSource ? parseCppType(sourceCppType) : undefined;
+    const pairArgs = pairIR && pairIR.kind === "named" ? pairIR.args ?? [] : [];
     let index = 0;
     for (const element of pattern.elements) {
       if (ts.isOmittedExpression(element)) { index++; continue; }
       if (!ts.isIdentifier(element.name)) { index++; continue; }
       const bindingName = element.name.text;
-      const init: ExpressionIR = {
-        kind: "element-access",
-        object: { kind: "identifier", value: sourceName },
-        index: { kind: "number", value: index },
-      };
+      const bindingType = (isPairSource && pairArgs[index]
+        ? renderCppType(pairArgs[index])
+        : "auto") as CppType;
+      const init: ExpressionIR = isPairSource
+        ? { kind: "tuple-access", object: { kind: "identifier", value: sourceName }, index }
+        : {
+            kind: "element-access",
+            object: { kind: "identifier", value: sourceName },
+            index: { kind: "number", value: index },
+          };
       extractions.push({
         kind: "var_decl",
         sourceSpan,
         name: bindingName,
         storage: "const",
-        cppType: "auto" as CppType,
+        cppType: bindingType,
         initializer: init,
       });
-      localVariableTypes.set(bindingName, "auto" as CppTypeHint);
+      localVariableTypes.set(bindingName, bindingType as CppTypeHint);
       index++;
     }
   }
@@ -251,7 +283,7 @@ export function lowerControlFlowStatement(
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
-      condition: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
+      condition: lowerConditionExpression(statement.expression, fileName, sourceText, diagnostics, pointerVars),
       body: bodyStatements,
     }];
   }
@@ -302,7 +334,7 @@ export function lowerControlFlowStatement(
     if (ts.isIdentifier(statement.expression) && topLevelAliasReceivers.has(statement.expression.text)) {
       condition = { kind: "boolean", value: true };
     } else {
-      condition = expressionToIR(statement.expression, sourceText, diagnostics, pointerVars);
+      condition = lowerConditionExpression(statement.expression, fileName, sourceText, diagnostics, pointerVars);
     }
 
     return [{
@@ -347,7 +379,7 @@ export function lowerControlFlowStatement(
     // Loop conditions/bodies may evaluate any number of times, so tracked
     // pin levels from before the loop are not valid inside it.
     const condition = statement.condition
-      ? expressionToIR(statement.condition, sourceText, diagnostics, pointerVars)
+      ? lowerConditionExpression(statement.condition, fileName, sourceText, diagnostics, pointerVars)
       : undefined;
 
     let increment: StatementIR | undefined;
@@ -407,10 +439,17 @@ export function lowerControlFlowStatement(
         localVariableTypes,
         sourceText,
       );
+      // A std::map iterates as std::pair<const K, V> — NOT its element in the
+      // vector sense. `for (const [k, v] of m)` used to type the loop var
+      // `const int&` and subscript it (`__forof_0[0]`), which g++ rejects.
+      const mapIR = iterableType ? parseCppType(iterableType) : undefined;
+      const isMapIterable = iterableType !== undefined && parsedIsMap(iterableType);
       const elementType =
         iterableType && parsedIsVector(iterableType)
           ? (parsedElementString(iterableType) as CppType)
-          : ("auto" as CppType);
+          : isMapIterable && mapIR && mapIR.kind === "map"
+            ? (`std::pair<const ${renderCppType(mapIR.key)}, ${renderCppType(mapIR.value)}>` as CppType)
+            : ("auto" as CppType);
       const syntheticName = `__forof_${forOfDestructureCounter++}`;
       const forOfSpan = makeSourceSpan(statement, fileName, sourceText);
       variable = {
@@ -573,7 +612,7 @@ export function lowerControlFlowStatement(
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
-      condition: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
+      condition: lowerConditionExpression(statement.expression, fileName, sourceText, diagnostics, pointerVars),
       body: bodyStatements,
     }];
   }
@@ -660,6 +699,10 @@ export function lowerControlFlowStatement(
     if (statement.catchClause) {
       if (statement.catchClause.variableDeclaration && ts.isIdentifier(statement.catchClause.variableDeclaration.name)) {
         catchParam = statement.catchClause.variableDeclaration.name.text;
+        // Type the catch param so body references (`(e as Error).message`)
+        // resolve: the emit layer binds it as `catch (const std::exception& e)`
+        // (rethrow-and-cast) and `.message` lowers to `.what()`.
+        localVariableTypes.set(catchParam, "std::exception" as CppTypeHint);
       }
       catchBlock = lowerStatementList(
         statement.catchClause.block.statements,
@@ -705,12 +748,22 @@ export function lowerControlFlowStatement(
   // Handle throw statements
   if (ts.isThrowStatement(statement)) {
     const comments = extractNodeComments(statement, sourceText);
+    // Mark the operand as throw-direct: on no-exception targets the whole
+    // statement becomes cuttlefish_halt and `new Error(...)` inside it is
+    // never constructed as a value.
+    enterThrowExpression();
+    let value: ExpressionIR;
+    try {
+      value = expressionToIR(statement.expression, sourceText, diagnostics, pointerVars);
+    } finally {
+      exitThrowExpression();
+    }
     return [{
       kind: "throw",
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
-      value: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
+      value,
     }];
   }
 

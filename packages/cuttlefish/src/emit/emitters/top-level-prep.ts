@@ -312,6 +312,17 @@ function collectIdentifierNames(statements: StatementIR[]): Set<string> {
   }
   function scanExpr(expr: ExpressionIR) {
     if (expr.kind === "identifier") { names.add(expr.value); }
+    // A call/method-call EXPRESSION carries its callee as a string
+    // (`probe->measure`) — the same shape scanStmt handles for
+    // statement-level calls. Without this, a top-level runtime var
+    // referenced only as the receiver of a nested call
+    // (`cond->readMs(registers, f(probe->measure()))`) is never
+    // collected, so it stays a main() local while the function that
+    // references it fails to compile ('probe' was not declared).
+    if ("callee" in expr && typeof (expr as unknown as { callee?: unknown }).callee === "string") {
+      const parts = ((expr as unknown as { callee: string }).callee).split(/[\.\-\>]/);
+      for (const p of parts) { if (/^[a-zA-Z_]\w*$/.test(p)) names.add(p); }
+    }
     if ("left" in expr) { scanExpr(expr.left); }
     if ("right" in expr) { scanExpr(expr.right); }
     if ("value" in expr && expr.value && typeof expr.value === "object") { scanExpr(expr.value); }

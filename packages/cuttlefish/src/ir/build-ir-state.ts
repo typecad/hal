@@ -110,6 +110,16 @@ export class CompilationContext {
    */
   topLevelAliasReceivers = new Map<string, { receiver: string; method: string; args?: string[] }>();
   floatVariables = new Set<string>();
+  /**
+   * >0 while lowering a CONDITION position (if/while/for/do condition, `!`
+   * operand, ternary condition). JS `&&`/`||` return their OPERANDS, but in a
+   * condition position only truthiness matters — the C++ `&&`/`||` pass
+   * through unchanged there (short-circuit intact). In VALUE position the
+   * binary lowering rewrites `a || b` to the ternary `(a) ? (a) : (b)` so the
+   * result is the operand, not a bool. Double-eval of the left operand mirrors
+   * the documented Math.max ternary trade-off.
+   */
+  conditionContextDepth = 0;
   snprintfCounter = 0;
   callbackPlaceholderCounter = 0;
   // BLE characteristic index counter — persists across separate Ble.server()
@@ -164,6 +174,17 @@ export class CompilationContext {
 export const contextStorage = new AsyncLocalStorage<CompilationContext>();
 
 const globalDefaultContext = new CompilationContext();
+
+/** Condition positions keep C++ `&&`/`||` (short-circuit, bool result is fine). */
+export function enterConditionContext(): void {
+  getContext().conditionContextDepth++;
+}
+export function exitConditionContext(): void {
+  getContext().conditionContextDepth--;
+}
+export function inConditionContext(): boolean {
+  return getContext().conditionContextDepth > 0;
+}
 
 export function getContext(): CompilationContext {
   return contextStorage.getStore() || globalDefaultContext;
@@ -263,6 +284,16 @@ export const isrHandlerFunctions = createSetProxy(ctx => ctx.isrHandlerFunctions
 // still reference these by name must migrate to getCurrentIrTypeScope().
 
 export const discriminatedUnionVariantNames = new Map<string, string[]>();
+
+/**
+ * Depth counter for expressions lowered as the direct operand of a `throw`.
+ * `throw new Error(...)` lowers to cuttlefish_halt on no-exception targets
+ * (the Error object is never constructed), so the new-Error VALUE diagnostic
+ * must not fire while inside one.
+ */
+export let throwExpressionDepth = 0;
+export function enterThrowExpression(): void { throwExpressionDepth += 1; }
+export function exitThrowExpression(): void { throwExpressionDepth -= 1; }
 export const restParamFunctions = createMapProxy(ctx => ctx.restParamFunctions);
 export const activeFunctionReturnTypes = createMapProxy(ctx => ctx.activeFunctionReturnTypes);
 

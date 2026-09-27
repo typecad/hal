@@ -239,8 +239,12 @@ export interface ProgramAnalysisResult {
 
 // Regex for std:: math calls
 // Both the lowered form (std::<fn>) and the source form (Math.<fn>) — the
-// analysis can see either depending on when expressions render.
-const MATH_PATTERN = /\b(?:std::|Math\.)(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|acos|atan|abs|max|min)\b/;
+// analysis can see either depending on when expressions render. The list is
+// the FULL set of real-returning std:: functions the Math lowering and the
+// isNaN/isFinite globals emit — a missing name here ships std::<fn> with no
+// math header (isnan/log2/hypot did exactly that; exp and log followed
+// them — the bare names were missing from the alternation).
+const MATH_PATTERN = /\b(?:std::|Math\.)(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|acos|atan|atan2|abs|max|min|fmod|hypot|cbrt|log|log2|log10|log1p|exp|expm1|acosh|asinh|atanh|cosh|sinh|tanh|isnan|isfinite)\b/;
 
 /**
  * Analyze an expression for all features in a single pass.
@@ -255,8 +259,24 @@ function analyzeExpression(
   }
 
   switch (expr.kind) {
+    case "callback":
+    case "lambda": {
+      // Callback bodies hoist to named functions at emit time; analyze their
+      // statements here so vars they declare (a StaticArray built with .push
+      // inside an onReceive handler) feed the same polyfill/type gates as
+      // ordinary function bodies.
+      const cb = expr as unknown as { statements?: StatementIR[]; body?: StatementIR[] };
+      for (const stmt of cb.statements ?? cb.body ?? []) {
+        analyzeStatement(stmt, result as unknown as ProgramAnalysisResult, strategy);
+      }
+      break;    }
     case "raw":
       if (MATH_PATTERN.test(expr.value)) {
+        result.hasStdMathCalls = true;
+      }
+      // The Infinity/NaN identifier lowerings — the macros come from the same
+      // math header the std:: calls need.
+      if (/\b(?:INFINITY|NAN)\b/.test(expr.value)) {
         result.hasStdMathCalls = true;
       }
       for (const [pattern, helperNames] of Object.entries(POLYFILL_HELPER_MAP)) {
@@ -454,6 +474,13 @@ function analyzeExpression(
       if (expr.operator === "**") {
         result.hasStdMathCalls = true;
       }
+      // The renderer lowers `%` with a real-typed operand to std::fmod, but
+      // the operand types are only known at emit time — pull the math header
+      // unconditionally for `%` programs (a `7.5 % 2` used to emit std::fmod
+      // with no <cmath>).
+      if (expr.operator === "%") {
+        result.hasStdMathCalls = true;
+      }
       analyzeExpression(expr.left, result, strategy);
       analyzeExpression(expr.right, result, strategy);
       break;
@@ -621,6 +648,14 @@ function analyzeStatement(
       result.declaredTypes.push(statement.cppType);
       if (parseCppType(statement.cppType).kind === "strPtr") {
         result.usesStrPtr = true;
+      }
+      // A variable whose TYPE is the StaticArray wrapper needs the wrapper's
+      // template definition. The expression scan can't see it — the type name
+      // never appears in a lowered call pattern — so gate the static_array
+      // polyfill on the type here (setup.ts drops the polyfill otherwise and
+      // the TU references __tc_StaticArray without a definition).
+      if (/StaticArray</.test(statement.cppType)) {
+        result.usedPolyfillHelpers.add('__tc_StaticArray');
       }
       if (statement.initializer) {
         analyzeExpression(statement.initializer, result, strategy);
@@ -921,6 +956,17 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     }
     for (const statement of fn.statements) {
       analyzeStatement(statement, result, strategy);
+    }
+  }
+
+  // Analyze registered HAL callbacks (onReceive/onRequest handlers) — their
+  // bodies hoist to named functions at emit time, so without this a var they
+  // declare (a StaticArray built with .push inside the handler) never feeds
+  // the polyfill gates.
+  for (const rc of program.registeredCallbacks ?? []) {
+    const cb = rc.callbackIR as unknown as { statements?: StatementIR[] };
+    for (const stmt of cb.statements ?? []) {
+      analyzeStatement(stmt, result, strategy);
     }
   }
 

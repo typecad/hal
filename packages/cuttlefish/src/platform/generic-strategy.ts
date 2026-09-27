@@ -11,6 +11,7 @@ import type { PlatformGraphicsStrategy, GraphicsCapacity, DisplayHALOp } from ".
 import { DEFAULT_STDLIB_SUPPORT } from "../api/shared/index.js";
 import { parsedIsPointer } from "../api/shared/cpp-type-ir.js";
 import { buildAsyncRuntimePolyfill } from "./async-runtime.js";
+import { hostedCoreShimLines, hostedPolyfillIRs } from "../frameworks/native/hosted-shim.js";
 
 export class GenericStrategy implements PlatformStrategy {
   readonly id = "generic";
@@ -25,7 +26,11 @@ export class GenericStrategy implements PlatformStrategy {
     return {};
   }
   shimLines(_program: ProgramIR, _ctx?: PlatformContext): string[] {
-    return [];
+    // The generic target lowers `??`/`?.`, Date.now and the ms clock to the
+    // same helper names every other hosted strategy uses — the core shim that
+    // defines them must ship too (a `??` on this target used to reference an
+    // undefined cuttlefish_nullish).
+    return [...hostedCoreShimLines(), '#endif // CUTTLEFISH_SHIM_DEFINED'];
   }
   profileDiagnostics(_program: ProgramIR, _ctx?: PlatformContext): Diagnostic[] {
     return [];
@@ -92,6 +97,18 @@ export class GenericStrategy implements PlatformStrategy {
   }
   wrapStringObject(expr: string): string {
     return `std::to_string(${expr})`;
+  }
+  promotesArrayLiteralsToStaticArray(): boolean {
+    // Hosted target: array literals stay std::vector — the __tc_* helper
+    // family and push_back operate on vectors, and no __tc_StaticArray
+    // definition ships here (the wrapper is an embedded-target concept).
+    return false;
+  }
+  promoteDivisionToDouble(): boolean {
+    // JS `/` is real division even for int operands — without this a plain
+    // `7 / 2` emitted verbatim and truncated to 3 (renderBinary gates the
+    // promotion on this flag).
+    return true;
   }
   useSnprintfForStrings(): boolean {
     // Native uses snprintf for string concatenation so that non-arithmetic
@@ -183,7 +200,10 @@ export class GenericStrategy implements PlatformStrategy {
   }
 
   generateNativePolyfills(program: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
-    const helpers: RuntimePolyfillIR[] = [];
+    // The hosted structural lowerings (array-methods.ts / expression-to-ir)
+    // emit __tc_* helper calls on this target, so the shared polyfill table
+    // must ship — filterPolyfillHelpers tree-shakes it to the used helpers.
+    const helpers: RuntimePolyfillIR[] = [...hostedPolyfillIRs()];
     const asyncRuntime = buildAsyncRuntimePolyfill(program, ctx, "generic", this.asyncQueueCapacity(), this);
     if (asyncRuntime) helpers.push(asyncRuntime);
     return helpers;

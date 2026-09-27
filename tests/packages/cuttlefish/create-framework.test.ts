@@ -16,6 +16,7 @@ import {
 import { starterAppRel } from "../../../packages/cuttlefish/src/create/templates";
 import {
   installProjectDependencies,
+  installSpawnCommand,
   __setProjectInstallRunnerForTest,
 } from "../../../packages/cuttlefish/src/create/install-deps";
 
@@ -215,6 +216,36 @@ describe("installProjectDependencies", () => {
   it("throws on launch failure (binary missing)", () => {
     __setProjectInstallRunnerForTest(() => ({ status: null, launchError: "'npm' not found on PATH" }));
     expect(() => installProjectDependencies({ projectDir: makeTempDir() })).toThrowError(/not found on PATH/);
+  });
+
+  it("really installs a scaffolded project (regression: bare spawnSync ENOENTs on Windows)", { timeout: 120_000 }, () => {
+    // The runner hook stays unset so the real spawn path runs. Before the
+    // cmd.exe routing, Windows could not launch npm at all, leaving every
+    // scaffolded fw/ without node_modules. The file: dependency forces
+    // node_modules to materialize offline (npm skips the dir for zero-dep
+    // manifests).
+    const dep = makeTempDir({ "package.json": JSON.stringify({ name: "local-dep", version: "1.0.0" }) });
+    const project = makeTempDir({
+      "package.json": JSON.stringify({
+        name: "install-regression",
+        version: "1.0.0",
+        dependencies: { "local-dep": `file:${dep.replace(/\\/g, "/")}` },
+      }),
+    });
+    expect(installProjectDependencies({ projectDir: project, cwd: makeTempDir() }).pm).toBe("npm");
+    expect(fs.existsSync(path.join(project, "node_modules"))).toBe(true);
+  });
+});
+
+describe("installSpawnCommand", () => {
+  it("routes the package manager through cmd.exe on Windows, passes it through elsewhere", () => {
+    const built = installSpawnCommand({ bin: "npm", args: ["install"], cwd: "C:/somewhere" });
+    if (process.platform === "win32") {
+      expect(built.bin).toBe("cmd.exe");
+      expect(built.args).toEqual(["/d", "/s", "/c", "npm", "install"]);
+    } else {
+      expect(built).toEqual({ bin: "npm", args: ["install"] });
+    }
   });
 });
 

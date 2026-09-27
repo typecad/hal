@@ -2,10 +2,12 @@
 import { HALOpIR } from "../../api/index.js";
 import { HALInstance } from "./hal-parser.js";
 import { getCurrentBoardConstants, halInstances, getContext } from "../build-ir-state.js";
+import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { resolveExpressionText, extractAndRegisterCallbacks } from "./hal-emitter.js";
 import { renderExprAsText } from "../render-expr.js";
 import type { ExpressionIR } from "../../api/index.js";
 import { hasSafetyHook, requireSafetyHook } from "../../safety-hook.js";
+import { makeDiagnostic } from "../ast-node-utils.js";
 
 /**
  * Split a comma-joined argument list back into individual arguments, respecting
@@ -84,6 +86,19 @@ function resolveI2cBufferArg(
   return { kind: "buffer", data };
 }
 
+
+/** True when a runtime buffer argument names a variable whose resolved C++
+ *  type is std::vector — the default lowering of a TS number[] argument.
+ *  The buffer lowerings size such buffers with .size(); C sizeof on a
+ *  vector yields the object's own size (heap copy of garbage). */
+function bufferArgIsVector(bufferText: string): boolean {
+  // bufferText is the RESOLVED user-side expression (the HAL method's own
+  // parameter name is gone by now) — a bare identifier or a this->field.
+  const t = getCurrentIrTypeScope()?.locals.get(bufferText)
+    ?? getCurrentIrTypeScope()?.globals.get(bufferText);
+  return !!t && /^std::vector</.test(t);
+}
+
 /** Resolve a single argument from a semantic call's AST node list. */
 /** Normalize an inline-override text from an instance field: strip the
  *  quotes of a stored string literal and reject unresolved source text
@@ -147,8 +162,55 @@ function resolveNumericOrExpression(
 /** Normalize an optional resolved arg: an omitted optional parameter with no
  *  default resolves to the literal text "undefined" (see resolveExpressionText);
  *  map that to null so op builders can omit the field entirely. */
-function dropUndefined(value: string | null): string | null {
-  return value === "undefined" ? null : value;
+function dropUndefined(value: string | null): string | null {  return value === "undefined" ? null : value;
+}
+
+// ── Responder lowering diagnostics ──────────────────────────────────────────
+// The i2c responder's generated state block is keyed by CONSTANT values (the
+// address names the C symbols: __tc_i2cresp0_a<addr>), so an address that is
+// a runtime expression (`this.address`, a variable) cannot lower — the op
+// fails to form and the call falls through as raw text. Similarly a handler
+// that is a MEMBER reference (`this.handleReceive`) has no C-function-pointer
+// form (nothing binds the receiver). Both used to fail SILENTLY into broken
+// C++; surface them as errors with the restructure that works.
+
+/** Push an error when a responder arg that must be constant is not. */
+function noteResponderConstantArg(
+  args: readonly ts.Expression[],
+  idx: number,
+  what: string,
+): void {
+  const arg = args[idx];
+  if (!arg) return;
+  const sink = getContext().diagnostics;
+  if (!sink) return;
+  const sourceFile = arg.getSourceFile();
+  sink.push(makeDiagnostic(
+    sourceFile?.text ?? "",
+    arg.pos,
+    `i2c responder: the ${what} must be a compile-time constant — got '${arg.getText()}'. The generated responder state is keyed by constant values. Construct the responder at module scope with a literal ${what}.`,
+    "error",
+    "hal-responder-runtime-arg",
+  ));
+}
+
+/** Push an error when a handler arg is a member reference (unbindable). */
+function noteUnbindableHandler(
+  handler: string | null,
+  argNode: () => ts.Expression | undefined,
+): void {
+  if (handler === null || !/\bthis\s*[.-]/.test(handler)) return;
+  const arg = argNode();
+  const sink = getContext().diagnostics;
+  if (!sink) return;
+  const sourceFile = arg?.getSourceFile();
+  sink.push(makeDiagnostic(
+    sourceFile?.text ?? "",
+    arg?.pos ?? 0,
+    `a class method passed as a HAL handler ('${handler}') cannot be bound — a C function pointer carries no receiver. Hoist the logic into a free function or a module-scope callback.`,
+    "error",
+    "hal-member-handler",
+  ));
 }
 
 /** Quote a resolved string value unless it is already a quoted literal or a
@@ -1176,6 +1238,10 @@ export function tryResolveSemanticCall(
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       const intFlags = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      // A member-function handler (`this.handleEdge`) has no C-function-
+      // pointer form — the trampoline slot would be assigned a bound method
+      // and fail at g++ time. Fail loudly with the working restructure.
+      noteUnbindableHandler(handler, () => args[1]);
       if (pin === null || handler === null || intFlags === null) return null;
       return { operation: "interrupt.attach_flags", pin, handler, intFlags };
     }
@@ -1258,7 +1324,7 @@ export function tryResolveSemanticCall(
       if (data.kind === "bytes") {
         return { operation: "i2c.dev_write", bus, address, hz, bytes: data.bytes };
       }
-      return { operation: "i2c.dev_write", bus, address, hz, bytes: [data.data] };
+      return { operation: "i2c.dev_write", bus, address, hz, bytes: [data.data], ...(bufferArgIsVector(data.data) ? { bufferIsVector: true } : {}) };
     }
 
     // I2C responder (hal/i2c-responder.ts) — uniform arg layout: bus,
@@ -1271,6 +1337,8 @@ export function tryResolveSemanticCall(
       const rx = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
       const tx = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
       const handler = resolveSemanticArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+      if (address === null) noteResponderConstantArg(args, 1, "address");
+      noteUnbindableHandler(handler, () => args[4]);
       if (bus === null || address === null || rx === null || tx === null || handler === null) return null;
       return {
         operation: fnName === "i2cRespOnReceive" ? "i2c.resp_on_receive" : "i2c.resp_on_request",
@@ -1284,6 +1352,7 @@ export function tryResolveSemanticCall(
       const address = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       const rx = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
       const tx = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      if (address === null) noteResponderConstantArg(args, 1, "address");
       if (bus === null || address === null || rx === null || tx === null) return null;
       return {
         operation: fnName === "i2cRespAvailable" ? "i2c.resp_available" : "i2c.resp_read",
@@ -1297,11 +1366,12 @@ export function tryResolveSemanticCall(
       const rx = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
       const tx = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
       const data = resolveI2cBufferArg(args, 4, instance, paramNames, callArgTexts, paramDefaults, callArgs);
+      if (address === null) noteResponderConstantArg(args, 1, "address");
       if (bus === null || address === null || rx === null || tx === null || data === null) return null;
       if (data.kind === "bytes") {
         return { operation: "i2c.resp_write", bus, address, rx, tx, bytes: data.bytes };
       }
-      return { operation: "i2c.resp_write", bus, address, rx, tx, bytes: [data.data] };
+      return { operation: "i2c.resp_write", bus, address, rx, tx, bytes: [data.data], ...(bufferArgIsVector(data.data) ? { bufferIsVector: true } : {}) };
     }
 
     case "dacWriteValue": {

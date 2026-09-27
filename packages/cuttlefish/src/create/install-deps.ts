@@ -7,6 +7,8 @@
 import { spawnSync } from "node:child_process";
 import { detectPackageManager, type PackageManager } from "./framework-catalog.js";
 
+const IS_WIN = process.platform === "win32";
+
 export interface ProjectInstallResult {
   pm: PackageManager;
 }
@@ -36,10 +38,24 @@ export function __setProjectInstallRunnerForTest(runner: InstallRunner | undefin
   testRunner = runner;
 }
 
+/**
+ * The spawn invocation for an install command. On Windows every package
+ * manager is a .cmd shim, which spawnSync cannot exec directly (ENOENT), so
+ * the command routes through cmd.exe — the same pattern as
+ * library/install.ts and the typecad-pcb create flow.
+ */
+export function installSpawnCommand(cmd: InstallCommand): { bin: string; args: string[] } {
+  if (IS_WIN) {
+    return { bin: "cmd.exe", args: ["/d", "/s", "/c", cmd.bin, ...cmd.args] };
+  }
+  return { bin: cmd.bin, args: [...cmd.args] };
+}
+
 function runRealInstall(cmd: InstallCommand): InstallRunResult {
   // stdio: "inherit" streams the package manager's own output to the terminal
   // (install progress, deprecation warnings, etc.).
-  const result = spawnSync(cmd.bin, cmd.args, { cwd: cmd.cwd, stdio: "inherit" });
+  const spawnCmd = installSpawnCommand(cmd);
+  const result = spawnSync(spawnCmd.bin, spawnCmd.args, { cwd: cmd.cwd, stdio: "inherit" });
   if (result.error) {
     const errno = (result.error as NodeJS.ErrnoException).code;
     return {

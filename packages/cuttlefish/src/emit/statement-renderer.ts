@@ -325,6 +325,19 @@ export class StatementRenderer {
             }
           }
         }
+        // JS compound bitwise assignment coerces through ToInt32; C++ has no
+        // `double &= int`. Rewrite to a plain assignment with the receiver
+        // cast — matching the binary-operator lowering.
+        if (/^([&|^]|<<|>>)=$/.test(statement.operator)) {
+          const bitwiseTargetType = this.expressionRenderer.inferLvalueCppType(statement.target, knownVariableTypes);
+          if (bitwiseTargetType === "double" || bitwiseTargetType === "float") {
+            const op = statement.operator.slice(0, -1);
+            const renderedBitwiseValue = this.expressionRenderer.render(statement.value, undefined, knownVariableTypes);
+            return forHeader
+              ? `${target} = static_cast<int>(${target}) ${op} ${renderedBitwiseValue}`
+              : `${target} = static_cast<int>(${target}) ${op} ${renderedBitwiseValue};`;
+          }
+        }
         // Render the assigned value type-aware: when the target's resolved
         // C++ type sits on the other side of an enum↔integral boundary from
         // the value (e.g. `this->nxt[r][c] = next` where `nxt` is
@@ -399,6 +412,21 @@ export class StatementRenderer {
       if (statement.kind === "for_of") {
         const varDecl = statement.variable;
         if (varDecl.kind === "var_decl") {
+          // ── Iterating a STRING: a range-for over const char* does not
+          // compile (pointers have no begin/end). Lower to an index loop
+          // over the C string, binding the loop variable to the current
+          // char — all inside the for-header so the caller's body/braces
+          // stay balanced.
+          const iterableType = statement.iterable.kind === "identifier"
+            ? knownVariableTypes?.get(statement.iterable.value)?.cppType
+            : this.expressionRenderer.inferExpressionCppType(statement.iterable, knownVariableTypes);
+          const normIterable = iterableType ? this.strategy.normalizeCppType(iterableType) : undefined;
+          if (normIterable === "const char*" || normIterable === "char*" || normIterable === "std::string") {
+            const iterText = this.expressionRenderer.render(statement.iterable, undefined, knownVariableTypes);
+            const cStr = normIterable === "std::string" ? `(${iterText}).c_str()` : iterText;
+            const safeName = escapeCppKeyword(varDecl.name, this.strategy.reservedNames());
+            return `for (const char* __tc_str_it = ${cStr}, ${safeName} = *__tc_str_it; *__tc_str_it != '\\0'; ++__tc_str_it, ${safeName} = *__tc_str_it)`;
+          }
           // Range-for by reference for non-primitive element types (structs,
           // classes, strings) to avoid the per-iteration copy g++ warns about
           // (-Wrange-loop-construct). Primitives stay by value.
@@ -850,13 +878,15 @@ export class StatementRenderer {
         // cppType already carries that interface/struct name. The struct is declared
         // elsewhere (the interface declaration), so we must NOT emit an inline
         // `struct _name_t {...}` here — that would conflict with the real type.
-        // Only synthesize when no explicit named type was provided.
+        // Only synthesize when no explicit named type was provided. A std
+        // container (an index-signature annotation resolves to std::map) is
+        // also concrete — synthesizing a struct over it broke operator[].
         const declaredCppType = statement.cppType;
         const hasExplicitNamedType =
           !!declaredCppType &&
           declaredCppType !== "auto" &&
           declaredCppType !== placeholderStructName &&
-          parsedIsPlainStructType(declaredCppType);
+          (parsedIsPlainStructType(declaredCppType) || parsedIsStdContainer(declaredCppType));
 
         const fieldTypes = new Map(statement.initializer.fields.map((field) => [
           field.name,
@@ -1013,6 +1043,13 @@ export class StatementRenderer {
     return parameters
       .map((parameter) => {
         const paramOwnershipKind = (parameter as any).ownershipKind as 'owned' | 'shared' | 'mutable' | undefined;
+        // An un-annotated param carries cppType "auto" — and `auto` parameters
+        // are C++20 (the embedded targets compile C++14). The old path also
+        // classified "auto" as a non-primitive, borrowing it as `const auto&`.
+        // Default to the engine's numeric convention (TS `number` → double).
+        if (parameter.cppType === "auto") {
+          parameter = { ...parameter, cppType: "double" };
+        }
         const hasOwnership = paramOwnershipKind === 'shared' || paramOwnershipKind === 'mutable';
         const isNonPrimitiveNonPointer = !isPrimitiveCppType(parameter.cppType)
           && !isIndirectType(parameter.cppType, this.strategy);

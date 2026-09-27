@@ -19,6 +19,9 @@ export const POLYFILL_HELPER_MAP: Record<string, string[]> = {
   '.trim(':         ['__tc_trim'],
   '.endsWith(':     ['__tc_endsWith'],
   '.lastIndexOf(':  ['__tc_lastIndexOf'],
+  // Number.prototype.toString(radix) — the IR lowering emits this helper
+  // call for radix 2/8/16 (radix 10 / no-arg uses the formatting machinery).
+  '__tc_num_radix(': ['__tc_num_radix'],
   '.padStart(':     ['__tc_padStart', '__tc_padStart_default'],
   '.padEnd(':       ['__tc_padEnd', '__tc_padEnd_default'],
   '.repeat(':       ['__tc_repeat'],

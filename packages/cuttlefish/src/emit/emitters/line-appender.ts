@@ -171,14 +171,25 @@ export function appendRenderedStatement(
       // Resolve the discriminant's real type and wrap iff string-like; when
       // the type is unknown, default to NO wrap (always valid C++).
       const discCppType = exprRenderer.inferCppType?.(switchExpr, scopeState.knownVariableTypes);
-      const needsStringWrap = switchExpr.kind === "identifier"
-        ? (() => { const vi = scopeState.knownVariableTypes?.get(switchExpr.value); return vi && vi.cppType === "const char*"; })()
-        : switchExpr.kind === "property-access"
-          ? ctx.strategy.isStringLikeType(discCppType ?? "")
-          : false;
+      const discIsCharPtr = switchExpr.kind === "identifier"
+        ? (() => {
+            const vi = scopeState.knownVariableTypes?.get(switchExpr.value);
+            return !!vi && (vi.cppType === "const char*" || vi.cppType === "char*");
+          })()
+        : false;
+      const needsStringWrap = discIsCharPtr
+        ? false // a char* discriminant compares via strcmp below (wrapping in a temporary std::string binds a dangling copy)
+        : switchExpr.kind === "identifier"
+          ? (() => { const vi = scopeState.knownVariableTypes?.get(switchExpr.value); return !!vi && vi.cppType === "std::string"; })()
+          : switchExpr.kind === "property-access"
+            ? ctx.strategy.isStringLikeType(discCppType ?? "")
+            : false;
       if (needsStringWrap) {
         switchVar = `std::string(${switchVar})`;
       }
+      // String case comparisons: an UNWRAPPED char* discriminant compared
+      // with == tests ADDRESSES, not contents. Route those through strcmp.
+      const stringCaseViaStrcmp = discIsCharPtr;
       let isFirst = true;
       // Demo #30 Finding D — handle TS switch fall-through into a shared body.
       // `case A: case B: default: { body }` parses as three clauses where A
@@ -240,7 +251,11 @@ export function appendRenderedStatement(
             pendingLeadingComments = caseClause.leadingComments ?? [];
           }
           const renderedValue = exprRenderer.render(caseClause.value, undefined, scopeState.knownVariableTypes);
-          pendingConditions.push(isBooleanSwitch ? renderedValue : `${switchVar} == ${renderedValue}`);
+          pendingConditions.push(
+            isBooleanSwitch ? renderedValue
+            : stringCaseViaStrcmp ? `strcmp(${switchVar}, ${renderedValue}) == 0`
+            : `${switchVar} == ${renderedValue}`,
+          );
           if (!isEmpty) {
             flushGroup(caseClause, bodyWithoutBreak);
           }
@@ -367,8 +382,25 @@ export function appendRenderedStatement(
       // std::exception& e)` which missed a thrown `RegionError*`.
       const catchDecl = `catch (...) {`;
       appendSourceLine(ctx, `${indent}${catchDecl}`);
-      const catchScope = cloneEmissionScopeState(scopeState);
-      for (const nested of statement.catchBlock) appendRenderedStatement(ctx, nested, `${indent}  `, catchScope);
+      // When the catch body actually references the param, the bare
+      // `catch (...)` left `e` undeclared (`(e as Error).message` — g++ error).
+      // Bind it with the standard rethrow-and-cast: catch anything, rethrow,
+      // and re-catch as std::exception (new Error(...) lowers there); a final
+      // catch-all swallows non-exception throws, keeping TS's catch-any shape.
+      const usesParam = statement.catchParam !== undefined
+        && new RegExp(`\\b${statement.catchParam}\\b`).test(JSON.stringify(statement.catchBlock));
+      if (statement.catchParam && usesParam) {
+        appendSourceLine(ctx, `${indent}  try {`);
+        appendSourceLine(ctx, `${indent}    throw;`);
+        appendSourceLine(ctx, `${indent}  } catch (const std::exception& ${statement.catchParam}) {`);
+        const catchScope = cloneEmissionScopeState(scopeState);
+        for (const nested of statement.catchBlock) appendRenderedStatement(ctx, nested, `${indent}    `, catchScope);
+        appendSourceLine(ctx, `${indent}  } catch (...) {`);
+        appendSourceLine(ctx, `${indent}  }`);
+      } else {
+        const catchScope = cloneEmissionScopeState(scopeState);
+        for (const nested of statement.catchBlock) appendRenderedStatement(ctx, nested, `${indent}  `, catchScope);
+      }
       appendSourceLine(ctx, `${indent}}`);
     }
     // Render finally block inline immediately after catch (matching TypeScript semantics),

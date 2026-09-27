@@ -19,6 +19,7 @@ export {
   boardYmlTargets,
   boardProbeMethods,
   socBusLabelsFromTree,
+  socFlashKbFromTree,
   zephyrVersionOf,
   gitHeadOf,
 } from './walker.js';

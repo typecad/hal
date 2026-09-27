@@ -503,6 +503,10 @@ export interface I2cDevWriteOp {
   hz: number;
   /** Byte values — numeric literals or runtime expressions */
   bytes: (number | string)[];
+  /** True when bytes is a single runtime identifier naming a std::vector
+   *  (the default lowering of a TS number[] argument) — the length is
+   *  .size(), not C sizeof (which is the vector object's size). */
+  bufferIsVector?: boolean;
 }
 
 /** I2C responder (hal/i2c-responder.ts) — this board answering as an I2C
@@ -553,6 +557,9 @@ export interface I2cRespWriteOp {
   tx: number;
   /** Response bytes — numeric literals or runtime expressions */
   bytes: (number | string)[];
+  /** True when bytes is a single runtime identifier naming a std::vector —
+   *  the length is .size(), not C sizeof. */
+  bufferIsVector?: boolean;
 }
 
 export interface SpiTransceiveOp {

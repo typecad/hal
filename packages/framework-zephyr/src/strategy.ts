@@ -645,7 +645,8 @@ export class ZephyrStrategy implements PlatformStrategy {
     pinNames: readonly string[];
     padAliases?: readonly { exportName: string; padName: string }[];
     peripherals: { i2c: boolean; spi: boolean; uart: boolean };
-  }): { boardTs: string; boardJson: string } {
+    buildTarget?: string;
+  }): { boardTs: string; boardJson: string; gatedExports?: readonly string[] } {
     return generateBoardModuleFromContract(opts);
   }
 
@@ -2410,6 +2411,7 @@ const char* __tc_replace(const char* s, const char* old, const char* repl) { sta
 const char* __tc_charAt(const char* s, int idx) { static char buf[2][2]; static uint8_t slot = 0; slot ^= 1; buf[slot][0] = s[idx]; buf[slot][1] = '\\0'; return buf[slot]; }
 int __tc_charCodeAt(const char* s, int idx) { return static_cast<int>(static_cast<unsigned char>(s[idx])); }
 int __tc_indexOf(const char* s, const char* needle) { const char* p = strstr(s, needle); return p ? static_cast<int>(p - s) : -1; }
+const char* __tc_num_radix(long long v, int radix) { static char buf[72]; if (radix == 16) { snprintf(buf, sizeof(buf), "%llx", v); } else if (radix == 8) { snprintf(buf, sizeof(buf), "%llo", v); } else if (radix == 2) { unsigned long long u = static_cast<unsigned long long>(v); char tmp[72]; int i = 0; if (u == 0ULL) { buf[0] = '0'; buf[1] = '\\0'; return buf; } while (u > 0ULL) { tmp[i++] = static_cast<char>('0' + static_cast<char>(u & 1ULL)); u >>= 1; } for (int j = 0; j < i; j++) { buf[j] = tmp[i - 1 - j]; } buf[i] = '\\0'; } else { snprintf(buf, sizeof(buf), "%lld", v); } return buf; }
 `],
         shimMacros: [],
         dependencies: [],
@@ -2438,6 +2440,12 @@ struct __tc_StaticArray {
     void push(T val) { if (_size < N) data[_size++] = val; }
     T pop() { return (_size > 0) ? data[--_size] : T(); }
     int indexOf(T val) const { for (int i = 0; i < _size; i++) if (data[i] == val) return i; return -1; }
+    __tc_StaticArray& fill(T val) { for (int i = 0; i < _size; i++) data[i] = val; return *this; }
+    __tc_StaticArray& fill(T val, int start, int end) { if (start < 0) start = 0; if (end > _size) end = _size; if (end < start) end = start; for (int i = start; i < end; i++) data[i] = val; return *this; }
+    T shift() { if (_size == 0) return T(); T v = data[0]; for (int i = 1; i < _size; i++) data[i - 1] = data[i]; _size--; return v; }
+    int unshift(T val) { if (_size < N) { for (int i = _size; i > 0; i--) data[i] = data[i - 1]; data[0] = val; _size++; } return _size; }
+    bool includes(T val) const { return indexOf(val) != -1; }
+    int lastIndexOf(T val) const { for (int i = _size - 1; i >= 0; i--) if (data[i] == val) return i; return -1; }
     T& operator[](int i) { return data[i]; }
     const T& operator[](int i) const { return data[i]; }
     T* begin() { return &data[0]; }

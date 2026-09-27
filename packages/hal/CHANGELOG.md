@@ -1,5 +1,12 @@
 # @typecad/hal
 
+## 1.0.0-alpha.20
+
+### Patch Changes
+
+- Updated dependencies [a3a9459]
+  - @typecad/cuttlefish@1.0.0-alpha.20
+
 ## 1.0.0-alpha.19
 
 ### Minor Changes

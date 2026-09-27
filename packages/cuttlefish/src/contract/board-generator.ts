@@ -37,6 +37,10 @@ export interface GenerateBoardOptions {
   connectedPins: string[];
   /** Selected peripheral instance names to export (e.g. ['I2C0']). */
   peripherals: string[];
+  /** Gated hardware classes the soc's facts support (from the framework's
+   *  board module builder — the same gates every catalog board applies).
+   *  Re-exported so the narrowed board carries the full hardware surface. */
+  gatedExports?: readonly string[];
 }
 
 /**
@@ -44,7 +48,7 @@ export interface GenerateBoardOptions {
  * @returns the absolute path to the generated file.
  */
 export function generateBoardFile(opts: GenerateBoardOptions): string {
-  const { projectDir, soc, connectedPins, peripherals } = opts;
+  const { projectDir, soc, connectedPins, peripherals, gatedExports } = opts;
 
   // The ungated surface is derived from the project's own hal copy (same
   // resolution as HAL source parsing).
@@ -72,8 +76,20 @@ export function generateBoardFile(opts: GenerateBoardOptions): string {
     `export { ${BOARD_UNGATED_EXPORTS.join(', ')} } from '@typecad/hal/core';`,
     `export type { ${BOARD_UNGATED_TYPE_EXPORTS.join(', ')} } from '@typecad/hal/core';`,
     '',
-    '// Narrowed pin set — only pins the contract declares connected.',
   ];
+
+  // Gated hardware classes the SoC's facts support (wired bus controllers,
+  // synthesizable storage region, ...) — the same gates the catalog boardgen
+  // applies, resolved by the framework's board module builder from the
+  // installed tree. Without these lines a contract board cannot import its
+  // own peripherals' target classes or the persistent Store.
+  if (gatedExports && gatedExports.length > 0) {
+    lines.push('// Hardware this SoC supports — carried over from the contract board facts.');
+    lines.push(`export { ${gatedExports.join(', ')} } from '@typecad/hal/core';`);
+    lines.push('');
+  }
+
+  lines.push('// Narrowed pin set — only pins the contract declares connected.');
 
   if (connectedPins.length > 0) {
     for (const pin of connectedPins) {

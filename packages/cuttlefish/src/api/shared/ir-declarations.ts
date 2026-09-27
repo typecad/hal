@@ -85,6 +85,14 @@ export interface ClassFieldIR {
   visibility: "public" | "private" | "protected";
   initializer?: ExpressionIR;
   isStatic?: boolean;
+  /** True when the field holds a HAL object (new <HALClass>(...)): it has NO
+   *  C++ declaration — every use lowers to a HAL op through the tracked
+   *  this-field instance (hal-parser's activeThisHalFields). */
+  isHalInstance?: boolean;
+  /** The resolved HAL instance for a HAL-object field — rides the class IR
+   *  (prebuiltClassMap) so instance-field receivers resolve in any module
+   *  build order. Structural, not the HALInstance type (api layer). */
+  halInstance?: { className: string; fieldValues: Map<string, string> };
 }
 
 export interface ClassConstructorIR {

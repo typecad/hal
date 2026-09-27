@@ -202,7 +202,11 @@ export class ExpressionRenderer {
     let rendered: string;
     switch (expr.kind) {
       case "number": {
-        if (expr.cppType === "float" || !Number.isInteger(expr.value)) {
+        // Float-typed literals carry the f suffix; an explicit double stamp
+        // suppresses it (a `double x = 0.019` must not silently round
+        // through float precision). Unstamped fractional literals keep the
+        // historical float-suffixed default.
+        if (expr.cppType === "float" || (expr.cppType !== "double" && !Number.isInteger(expr.value))) {
           const str = `${expr.value}`;
           rendered = str.includes('.') || str.includes('e') || str.includes('E')
             ? `${str}f`
@@ -286,6 +290,11 @@ export class ExpressionRenderer {
       }
       case "element-access":
         rendered = this.renderElementAccess(expr, exprTransformer, knownVariableTypes);
+        break;
+      case "tuple-access":
+        // std::get<N>(pair/tuple) — Map for-of destructuring (`const [k, v] of m`)
+        // extracts bindings from the std::pair the range-for yields.
+        rendered = `std::get<${expr.index}>(${this.render(expr.object, exprTransformer, knownVariableTypes)})`;
         break;
       case "hal-expr": {
         const resolved = routeHALOp(expr.operation, this.strategy);
@@ -418,7 +427,7 @@ export class ExpressionRenderer {
     return renderCppType(bareType(ir));
   }
 
-  private inferExpressionCppType(expr: ExpressionIR, knownVariableTypes?: Map<string, KnownVariableInfo>): string | undefined {
+  public inferExpressionCppType(expr: ExpressionIR, knownVariableTypes?: Map<string, KnownVariableInfo>): string | undefined {
     const effectiveKnownVariableTypes = knownVariableTypes ?? this.knownVariableTypes;
     switch (expr.kind) {
       case "string":
@@ -500,6 +509,12 @@ export class ExpressionRenderer {
         if (expr.elementType && expr.elementType !== "auto") return expr.elementType;
         const objectType = this.inferExpressionCppType(expr.object, knownVariableTypes);
         if (!objectType) return undefined;
+        // Indexing a C string (const char*/char*) or a std::string yields a
+        // single char — callers concat it as a 1-char string and compare it
+        // against char literals.
+        if (objectType === "const char*" || objectType === "char*" || objectType === "std::string") {
+          return "char";
+        }
         // Element type of vector/staticArray/cArray, detected structurally.
         // The bare StaticArray<T,N> spelling (without __tc_ prefix) also flows
         // through here as a named template; elementOf doesn't cover it, so
@@ -654,6 +669,11 @@ export class ExpressionRenderer {
         );
         return `std::string(${bufferName})`;
       }
+      // A char part (s[0] on a C string): std::to_string(char) resolves to the
+      // INT overload ("97"), not the character — build the 1-char string.
+      if (partType === "char") {
+        return `std::string(1, ${rendered})`;
+      }
       return this.strategy.wrapStringObject(rendered);
     });
     return renderedParts.join(" + ");
@@ -694,6 +714,10 @@ export class ExpressionRenderer {
         `snprintf(${bufferName}, sizeof(${bufferName}), "%.15g", ${rendered});`,
       );
       return `std::string(${bufferName})`;
+    }
+    // A char interpolation: std::to_string(char) is the int overload ("97").
+    if (inferredType === "char") {
+      return `std::string(1, ${rendered})`;
     }
     return this.strategy.wrapStringObject(rendered);
   }
@@ -798,6 +822,11 @@ export class ExpressionRenderer {
         }
         if (normalized === "bool") {
           return { format: "%s", arg: `(${rendered} ? "true" : "false")`, estimatedLength: 5 };
+        }
+        // A char in a string context is the CHARACTER (JS string coercion),
+        // not its code point — %d would print "97" for 'a'. %c prints it.
+        if (normalized === "char") {
+          return { format: "%c", arg: rendered, estimatedLength: 1 };
         }
         if (normalized === "float" || normalized === "double") {
           const knownPrecision = expr.kind === "identifier"
@@ -1312,13 +1341,16 @@ export class ExpressionRenderer {
       const wrapped = this.strategy.wrapStringConcat(leftRendered, rightRendered, expr.left.kind === "string");
       if (wrapped !== undefined) return wrapped;
     }
-    // C++ doesn't define % for double — use fmod
+    // C++ doesn't define % for double — use fmod. std:: qualified so the name
+    // resolves from the math header the include scan pulls in: a bare `fmod(`
+    // is invisible to MATH_PATTERN (which requires the std::/Math. prefix)
+    // and shipped with no <cmath>.
     const modLeftType = this.inferExpressionCppType(expr.left, knownVariableTypes);
     const modRightType = this.inferExpressionCppType(expr.right, knownVariableTypes);
     if (expr.operator === "%" && (modLeftType === "double" || modLeftType === "float" || modRightType === "double" || modRightType === "float")) {
       const left = expr.left.kind === "binary" ? `(${leftRendered})` : leftRendered;
       const right = expr.right.kind === "binary" ? `(${rightRendered})` : rightRendered;
-      return `fmod(${left}, ${right})`;
+      return `std::fmod(${left}, ${right})`;
     }
     // Promote integer division to double to match JavaScript semantics
     if (expr.operator === "/" && this.strategy.promoteDivisionToDouble?.()) {
@@ -1329,7 +1361,7 @@ export class ExpressionRenderer {
     if (expr.operator === "**") {
       const left = expr.left.kind === "binary" ? `(${leftRendered})` : leftRendered;
       const right = expr.right.kind === "binary" ? `(${rightRendered})` : rightRendered;
-      return `pow(${left}, ${right})`;
+      return `std::pow(${left}, ${right})`;
     }
     // Wrap enum-class operands in static_cast<int>() for arithmetic operators
     // (+, -, *, /) and bitwise operators (&, |, ^, <<, >>). C++ enum class
@@ -1377,7 +1409,13 @@ export class ExpressionRenderer {
       const isRawCString = (e: ExpressionIR, t: string | undefined): boolean => {
         if (e.kind === "string_concat" || e.kind === "template_string") return true;
         if (e.kind === "string") return true;
-        return this.isStringEnumOperand(e, t);
+        if (this.isStringEnumOperand(e, t)) return true;
+        // A const char*/char* VARIABLE is a C string too: JS === compares
+        // string CONTENTS, and pointer == on char* compares addresses —
+        // two equal strings at different addresses would compare unequal.
+        // std::string is excluded (its operator== is content equality).
+        const nt = t ? this.strategy.normalizeCppType(t) : undefined;
+        return nt === "const char*" || nt === "char*";
       };
       const leftIsCStringValue = isRawCString(expr.left, modLeftType);
       const rightIsCStringValue = isRawCString(expr.right, modRightType);
@@ -1392,12 +1430,22 @@ export class ExpressionRenderer {
         if (e.kind === "string_concat" || e.kind === "template_string" || e.kind === "string") return false;
         return needsCStrForStringLike(this.strategy.normalizeCppType(t ?? ""));
       };
+      const bothCString =
+        (leftIsCStringValue || rightIsCStringValue) &&
+        !isManagedStringVar(expr.left, modLeftType) && !isManagedStringVar(expr.right, modRightType);
       if ((expr.operator === "===" || expr.operator === "==" || expr.operator === "!==" || expr.operator === "!=") &&
-          (leftIsCStringValue || rightIsCStringValue) &&
-          !isManagedStringVar(expr.left, modLeftType) && !isManagedStringVar(expr.right, modRightType)) {
+          bothCString) {
         const wantEqual = expr.operator === "===" || expr.operator === "==";
         finalLeft = `strcmp(${leftRendered}, ${rightRendered})`;
         return `${finalLeft} ${wantEqual ? "==" : "!="} 0`;
+      }
+      // Relational string comparison (a < b): C++ `<` on char* compares
+      // ADDRESSES; JS compares contents lexicographically. When both sides
+      // are C-string values, route through strcmp too.
+      if ((expr.operator === "<" || expr.operator === "<=" || expr.operator === ">" || expr.operator === ">=") &&
+          bothCString) {
+        const op = expr.operator;
+        return `strcmp(${leftRendered}, ${rightRendered}) ${op} 0`;
       }
 
       // After the strcmp path, apply the shared enum-operand cast (with
@@ -1607,7 +1655,16 @@ export class ExpressionRenderer {
   }
 
   private renderMethodCall(expr: Extract<ExpressionIR, { kind: "method-call" }>, exprTransformer?: (expr: string) => string): string {
-    const argsText = expr.args.map(a => this.render(a, exprTransformer)).join(", ");
+    let argsText = expr.args.map(a => this.render(a, exprTransformer)).join(", ");
+    // Rest-parameter functions (`...vals: number[]`) lower to ONE
+    // `const std::vector<T>&` parameter — plain args must be collected into a
+    // braced vector init (`sum(1, 2)` → `sum(std::vector<double>{1, 2})`).
+    // The vector was recorded at the declaration; the call used to pass the
+    // args bare (g++: "invalid initialization of reference ... from int").
+    // A spread call (`sum(...arr)`) already passes the vector itself.
+    if (expr.restElementType && !expr.restHasSpread) {
+      argsText = `std::vector<${expr.restElementType}>{${argsText}}`;
+    }
     let callee = exprTransformer ? exprTransformer(expr.callee) : expr.callee;
     const rExpr = (expr as { receiverExpr?: ExpressionIR }).receiverExpr;
     const mName = (expr as { methodName?: string }).methodName;

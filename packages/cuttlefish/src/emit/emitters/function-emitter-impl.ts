@@ -3,7 +3,7 @@ import { appendSourceLine, appendHeaderLine, appendRenderedStatement } from "./l
 import { createChildEmissionScope } from "../snprintf-helpers.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import type { EmitterContext } from "./emitter-context.js";
-import { parsedIsPlainStructType } from "../../api/shared/cpp-type-ir.js";
+import { parsedIsPlainStructType, parsedIsContainer } from "../../api/shared/cpp-type-ir.js";
 import { entryHasUI } from "../../ui-hook.js";
 import { activeNamespaceNames } from "../../ir/build-ir-state.js";
 import { buildCoopSchedInjection, type CoopWorkUnit } from "../../api/shared/coop-scheduler.js";
@@ -77,11 +77,16 @@ export function emitPostClassDeclarations(ctx: EmitterContext): void {
         return;
       }
       const declaredCppType = statement.cppType;
+      // An index-signature annotation ({ [k: string]: number }) resolves to
+      // std::map — a std CONTAINER, not a plain struct. Synthesizing _name_t
+      // for it produced `struct _m_t {}` with operator[] accesses that cannot
+      // compile. Skip synthesis for containers like for named struct types.
+      const isStdContainerType = parsedIsContainer(declaredCppType ?? "");
       const hasExplicitNamedType =
         !!declaredCppType &&
         declaredCppType !== "auto" &&
         declaredCppType !== placeholderStructName &&
-        parsedIsPlainStructType(declaredCppType);
+        (parsedIsPlainStructType(declaredCppType) || isStdContainerType);
 
       // Still register the field types so downstream rendering (e.g. string-concat
       // wrapping via interfaceFieldTypes) can resolve property accesses on the var.

@@ -1177,3 +1177,66 @@ export function socBusLabelsFromTree(zephyrBase: string, soc: string): {
   buses.uart = finalize('uart');
   return buses;
 }
+
+// ---------------------------------------------------------------------------
+// SoC flash size from the installed tree — the storage-region fact contract
+// boards need for Store/File. The soc's dtsi family declares the external
+// flash size either on the flash0 node definition (nRF/STM32:
+// `flash0: flash@... { reg = <0x0 DT_SIZE_K(1024)>; }`) or in a per-module
+// override (ESP32 SIPs: `&flash0 { reg = <0x0 DT_SIZE_M(8)>; }`). When the
+// family declares several sizes (module variants), the SMALLEST is the
+// conservative choice: a storage region synthesized against it stays inside
+// every variant's flash.
+// ---------------------------------------------------------------------------
+
+/** Parse the size cell of a devicetree `reg = <...>` property, in KB. */
+function parseRegSizeCellKb(cell: string): number | undefined {
+  const macro = /^DT_SIZE_([KM])\((\d+)\)$/.exec(cell.trim());
+  if (macro) {
+    const n = parseInt(macro[2], 10);
+    return macro[1] === 'M' ? n * 1024 : n;
+  }
+  // Raw hex bytes (only sizes ≥ 64 KB look like flash, not a register window).
+  if (/^0x[0-9a-fA-F]{5,}$/.test(cell.trim())) {
+    return Math.floor(parseInt(cell.trim(), 16) / 1024);
+  }
+  return undefined;
+}
+
+/** The smallest flash0 size (KB) the soc's dtsi family declares, or undefined
+ *  when the tree carries no flash size for the soc (nothing synthesized). */
+export function socFlashKbFromTree(zephyrBase: string, soc: string): number | undefined {
+  const dtsRoot = path.join(zephyrBase, 'dts');
+  if (!fs.existsSync(dtsRoot)) return undefined;
+  const socLower = soc.toLowerCase();
+  const stems = new Set<string>();
+  for (let len = socLower.length; len >= 5; len--) stems.add(socLower.slice(0, len));
+  let minKb: number | undefined;
+  const scan = (dir: string, depth: number): void => {
+    if (depth > 4) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) { scan(full, depth + 1); continue; }
+      if (!/\.dtsi?$/.test(entry.name)) continue;
+      if (![...stems].some((s) => entry.name.toLowerCase().includes(s))) continue;
+      let text: string;
+      try { text = fs.readFileSync(full, 'utf8'); } catch { continue; }
+      // The flash0 node definition and its per-module overrides, block-scoped
+      // (one nesting level — the node may carry partition subnodes).
+      for (const block of text.matchAll(/(?:flash0:\s*flash@\w+|&flash0)\s*\{(?:[^{}]|\{[^{}]*\})*\}/g)) {
+        for (const reg of block[0].matchAll(/reg\s*=\s*<([^>]*)>/g)) {
+          const cells = reg[1].split(/\s+/).filter(Boolean);
+          // reg = <base size> — the size is the last cell of the pair.
+          if (cells.length >= 2) {
+            const kb = parseRegSizeCellKb(cells[cells.length - 1]);
+            if (kb !== undefined && kb >= 64) {
+              minKb = minKb === undefined ? kb : Math.min(minKb, kb);
+            }
+          }
+        }
+      }
+    }
+  };
+  scan(dtsRoot, 0);
+  return minKb;
+}

@@ -75,7 +75,7 @@ export type ExpressionIR =
   /** Arrow function or lambda expression: (params) => expression | { statements } */
   | { kind: "lambda"; params: ParameterIR[]; body: StatementIR[]; returnType: CppType; isExpressionBody: boolean }
   /** A general method call with structured argument IR (preserves callbacks/lambdas). */
-  | { kind: "method-call"; callee: string; args: ExpressionIR[]; isStatic?: boolean; isNamespace?: boolean; isPointer?: boolean; restElementType?: string; cppType?: string; receiverExpr?: ExpressionIR; methodName?: string }
+  | { kind: "method-call"; callee: string; args: ExpressionIR[]; isStatic?: boolean; isNamespace?: boolean; isPointer?: boolean; restElementType?: string; restHasSpread?: boolean; cppType?: string; receiverExpr?: ExpressionIR; methodName?: string }
   /** A receiverless call: `Name(args)` (free function or constructor). Method-on-receiver calls lower as "method-call"; this is the receiverless form, e.g. `SafeInt(x)`. */
   | CallExpressionIR
   /** Array element access: `object[index]`. */

@@ -195,7 +195,13 @@ export function lowerI2c(
       const isBuffer = bytes.length === 1 && typeof bytes[0] === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(bytes[0] as string);
       if (isBuffer) {
         const name = bytes[0] as string;
-        // A named user buffer: i2c_write against its storage directly.
+        // A named user buffer: i2c_write against its storage directly. A
+        // std::vector (the default lowering of a TS number[] argument)
+        // sizes with .size() and hands over .data() — C sizeof yields the
+        // vector OBJECT's size, not the element count.
+        if (o.bufferIsVector) {
+          return { code: `${pre} (void)i2c_write(${p}_dev, reinterpret_cast<const uint8_t*>(${name}.data()), ${name}.size(), static_cast<uint16_t>(${o.address}));` };
+        }
         return { code: `${pre} (void)i2c_write(${p}_dev, reinterpret_cast<const uint8_t*>(${name}), sizeof(${name}), static_cast<uint16_t>(${o.address}));` };
       }
       const arr = `static const uint8_t __tc_i2cw[] = { ${bytes.join(', ')} };`;
@@ -227,6 +233,13 @@ export function lowerI2c(
       const isBuffer = bytes.length === 1 && typeof bytes[0] === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(bytes[0] as string);
       if (isBuffer) {
         const name = bytes[0] as string;
+        if (o.bufferIsVector) {
+          // Vector-shaped buffer: .size() is the length (C sizeof would be
+          // the vector OBJECT's own size — a garbage-length heap read).
+          return {
+            code: `${respRegisterGuard(rp, idx)} { ${rp}_txlen = 0U; for (uint32_t __tc_i = 0U; (__tc_i < ${name}.size()) && (__tc_i < ${o.tx}U); ++__tc_i) { ${rp}_tx[__tc_i] = static_cast<uint8_t>(${name}[__tc_i]); } ${rp}_txlen = (${name}.size() < ${o.tx}U) ? static_cast<uint32_t>(${name}.size()) : ${o.tx}U; }`,
+          };
+        }
         // A named user buffer: copy its storage into the response buffer,
         // clamped to the constructed size; the length lands last so an
         // in-flight read never sees a torn buffer.

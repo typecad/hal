@@ -2,7 +2,7 @@
 import { Diagnostic } from "../types.js";
 import { ExpressionIR, StatementIR } from "../api/index.js";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils.js";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions, getContext, getCurrentBoardConstants } from "./build-ir-state.js";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, requiredIncludes, throwExpressionDepth, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions, getContext, getCurrentBoardConstants, inConditionContext, enterConditionContext, exitConditionContext } from "./build-ir-state.js";
 import { getCurrentIrTypeScope, type IrTypeScope } from "./symbol-types.js";
 import { renderExprAsText } from "./render-expr.js";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir.js";
@@ -110,7 +110,10 @@ function inferArrayElementType(tsElements: ts.Expression[]): string {
  * Using literals avoids `<cmath>`/`M_PI` `_USE_MATH_DEFINES` portability
  * issues on Windows/MSVC. Mirrors the TS `Math` constant values.
  */
-const MATH_CONSTANT_LITERALS: Record<string, number> = {
+// Null-prototype: a plain object would make `Math.toString`/`Math.valueOf`
+// resolve to the inherited Object.prototype members and emit their coercion
+// as the constant value. (Same trap class as the array-method lookup tables.)
+const MATH_CONSTANT_LITERALS: Record<string, number> = Object.assign(Object.create(null), {
   PI: 3.141592653589793,
   E: 2.718281828459045,
   LN2: 0.6931471805599453,
@@ -119,7 +122,7 @@ const MATH_CONSTANT_LITERALS: Record<string, number> = {
   LOG10E: 0.4342944819032518,
   SQRT2: 1.4142135623730951,
   SQRT1_2: 0.7071067811865476,
-};
+});
 
 /**
  * Resolve the declared C++ return type of a call expression, for the sole
@@ -716,6 +719,9 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
 
   if (expr.kind === ts.SyntaxKind.RegularExpressionLiteral) {
     const regexText = expr.getText();
+    // std::regex needs its header — the literal previously shipped with no
+    // <regex> include ('regex' is not a member of 'std').
+    requiredIncludes.add("<regex>");
     return { kind: "raw", value: `std::regex(${JSON.stringify(regexText)})` };
   }
 
@@ -1105,11 +1111,128 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     let operator = ts.tokenToString(expr.operatorToken.kind) ?? expr.operatorToken.getText();
     if (operator === "===") operator = "==";
     else if (operator === "!==") operator = "!=";
+    // JS bitwise operators coerce through ToInt32; C++ has no double & int.
+    // A real-typed operand (Math.trunc(x) & 0xff is the canonical port
+    // pattern) is cast to int so the C++ compiles with TS semantics.
+    const bitwise = operator === "&" || operator === "|" || operator === "^" || operator === "<<" || operator === ">>";
+    const inferOperandType = (node: ts.Expression): CppTypeHint | undefined => {
+      try {
+        const scope = getCurrentIrTypeScope();
+        const types = new Map<string, CppTypeHint>();
+        for (const [k, v] of scope?.globals ?? []) types.set(k, v as CppTypeHint);
+        for (const [k, v] of scope?.locals ?? []) types.set(k, v as CppTypeHint);
+        return inferExprCppType(node, (getContext().activeFunctionReturnTypes ?? new Map()) as Map<string, CppTypeHint>, types, sourceText);
+      } catch {
+        return undefined;
+      }
+    };
+    const castIfReal = (node: ts.Expression, ir: ExpressionIR): ExpressionIR => {
+      if (!bitwise) return ir;
+      const t = inferOperandType(node);
+      if (t === "double" || t === "float") {
+        return { kind: "raw", value: `static_cast<int>(${renderExprAsText(ir)})` };
+      }
+      return ir;
+    };
+    // ── char-vs-string-literal comparisons ─────────────────────────────────
+    // `s[0] === "a"`: the left side is a CHAR; the generic paths either emit
+    // strcmp(char, const char*) (compile error) or pointer == (wrong). JS
+    // compares string contents: a char equals a 1-char string, and NEVER
+    // equals a longer one.
+    const isComparison = ["===", "==", "!==", "!=", "<", "<=", ">", ">="].includes(operator);
+    // Scope-typed inference for the comparison special-cases below: locals
+    // AND globals must be visible (parameters live in locals; top-level vars
+    // in globals) or every check silently misses.
+    const scopedTypeOf = (n: ts.Expression): CppTypeHint | undefined => {
+      try {
+        const scope = getCurrentIrTypeScope();
+        const types = new Map<string, CppTypeHint>();
+        for (const [k, v] of scope?.globals ?? []) types.set(k, v as CppTypeHint);
+        for (const [k, v] of scope?.locals ?? []) types.set(k, v as CppTypeHint);
+        return inferExprCppType(n, (getContext().activeFunctionReturnTypes ?? new Map()) as Map<string, CppTypeHint>, types, sourceText);
+      } catch {
+        return undefined;
+      }
+    };
+    // ── Struct (interface-value) equality has no C++ form ──────────────────
+    // Interface-typed values lower to C structs with no operator==; `a === b`
+    // on them is a compile error. JS object === is reference identity — for
+    // CLASS instances (pointers) == IS identity, but a struct is a VALUE.
+    // Fail loudly instead of emitting uncompilable C++.
+    const namedStructType = (n: ts.Expression): string | undefined => {
+      const t = scopedTypeOf(n);
+      if (!t || t === "auto") return undefined;
+      const ir = parseCppType(t);
+      if (ir.kind !== "named") return undefined;
+      const name = ir.name;
+      if (name.startsWith("std::") || name === "String") return undefined;
+      if (topLevelClassNames.has(name) || classTypeNames.has(name)) return undefined; // pointer — == is identity, correct
+      if (activeEnumNames.has(name) || activeStringEnumNames.has(name)) return undefined;
+      return name;
+    };
+    if (isComparison) {
+      const lt = namedStructType(expr.left);
+      const rt = namedStructType(expr.right);
+      if (lt && lt === rt) {
+        diagnostics.push(makeDiagnostic(
+          sourceText,
+          expr.pos,
+          `=== on interface/object values ('${lt}') is not supported — they lower to C structs with no identity. Compare the fields individually, or use a class (reference identity).`,
+          "error",
+          "struct-equality-unsupported",
+        ));
+        return { kind: "raw", value: "false /* struct equality unsupported */" };
+      }
+    }
+    const isStrElement = (n: ts.Expression): boolean => {
+      if (!ts.isElementAccessExpression(n)) return false;
+      const t = scopedTypeOf(n.expression);
+      return t === "std::string" || t === "const char*" || t === "char*";
+    };
+    const asStrLit = (n: ts.Expression): string | undefined =>
+      ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n) ? n.text : undefined;
+    if (isComparison) {
+      const leftIsChar = isStrElement(expr.left);
+      const rightIsChar = isStrElement(expr.right);
+      const leftLit = asStrLit(expr.left);
+      const rightLit = asStrLit(expr.right);
+      const charSide = leftIsChar ? expr.left : rightIsChar ? expr.right : undefined;
+      const litText = leftIsChar ? rightLit : rightIsChar ? leftLit : undefined;
+      if (charSide && litText !== undefined) {
+        const charText = renderExprAsText(expressionToIR(charSide, sourceText, diagnostics, pointerVars));
+        const eq = operator === "===" || operator === "==";
+        const neq = operator === "!==" || operator === "!=";
+        if (litText.length === 1) {
+          const litOp = eq ? "==" : neq ? "!=" : operator;
+          return { kind: "raw", value: `(${charText} ${litOp} '${litText.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}')` };
+        }
+        if (eq) return { kind: "raw", value: "false" };
+        if (neq) return { kind: "raw", value: "true" };
+        // A char IS a 1-char string: lexicographic vs a longer literal —
+        // compare the wrapped string.
+        const litOp = operator;
+        return { kind: "raw", value: `(std::string(1, ${charText}) ${litOp} "${litText}")` };
+      }
+    }
+    // JS `&&`/`||` yield their OPERANDS (`0 || 5` is 5, `1 && 2` is 2), not a
+    // bool. In CONDITION position truthiness is all that matters, so the C++
+    // operators pass through (short-circuit intact). In VALUE position rewrite
+    // to the ternary `(a) ? (a) : (b)` — the ternary keeps short-circuit (the
+    // right operand is only evaluated when the branch takes it); the left
+    // operand is evaluated twice, the same documented trade-off the Math.max
+    // ternary lowering accepts. `a && b` mirrors: `(a) ? (b) : (a)`.
+    if ((operator === "&&" || operator === "||") && !inConditionContext()) {
+      const leftIR = expressionToIR(expr.left, sourceText, diagnostics, pointerVars);
+      const rightIR = expressionToIR(expr.right, sourceText, diagnostics, pointerVars);
+      return operator === "||"
+        ? { kind: "ternary", condition: leftIR, whenTrue: leftIR, whenFalse: rightIR }
+        : { kind: "ternary", condition: leftIR, whenTrue: rightIR, whenFalse: leftIR };
+    }
     return {
       kind: "binary",
-      left: expressionToIR(expr.left, sourceText, diagnostics, pointerVars),
+      left: castIfReal(expr.left, expressionToIR(expr.left, sourceText, diagnostics, pointerVars)),
       operator,
-      right: expressionToIR(expr.right, sourceText, diagnostics, pointerVars),
+      right: castIfReal(expr.right, expressionToIR(expr.right, sourceText, diagnostics, pointerVars)),
     };
   }
 
@@ -1122,10 +1245,15 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   // Recurse into prefix unary so nested calls are translated correctly.
   if (ts.isPrefixUnaryExpression(expr)) {
     const operator = ts.tokenToString(expr.operator) ?? "";
+    // `!x` reads its operand as a condition — nested `&&`/`||` stay C++.
+    const conditionOperand = operator === "!";
+    if (conditionOperand) enterConditionContext();
+    const operandIR = expressionToIR(expr.operand, sourceText, diagnostics, pointerVars);
+    if (conditionOperand) exitConditionContext();
     return {
       kind: "unary",
       operator,
-      operand: expressionToIR(expr.operand, sourceText, diagnostics, pointerVars),
+      operand: operandIR,
     };
   }
 
@@ -1332,20 +1460,33 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       const message = expr.arguments.length > 0
         ? renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars))
         : '"error"';
+      requiredIncludes.add("<stdexcept>");
       return { kind: "raw", value: `std::runtime_error(${message})` };
     }
 
     if (ts.isIdentifier(expr.expression)) {
       const fnName = expr.expression.text;
+      // String→number argument shaping for the conversion globals: an
+      // std::string arg needs .c_str() for atoi/atof; a const char*/literal
+      // (the common embedded shape) must NOT grow one.
+      const cStrIfManaged = (argNode: ts.Expression, argText: string): string => {
+        if (ts.isStringLiteral(argNode) || ts.isNoSubstitutionTemplateLiteral(argNode)) return argText;
+        if (ts.isIdentifier(argNode)) {
+          const t = getCurrentIrTypeScope()?.locals.get(argNode.text) ?? getCurrentIrTypeScope()?.globals.get(argNode.text);
+          if (t === "std::string") return `(${argText}).c_str()`;
+          if (t === "const char*" || t === "char*") return argText;
+        }
+        return `(${argText}).c_str()`;
+      };
       if (fnName === "parseInt" && expr.arguments.length >= 1) {
         const argText = renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars));
-        // atoi/atof take const char*; the arg is typically a std::string.
-        // Use .c_str() so the conversion compiles.
-        return { kind: "raw", value: `atoi((${argText}).c_str())` };
+        requiredIncludes.add("<cstdlib>");
+        return { kind: "raw", value: `atoi(${cStrIfManaged(expr.arguments[0], argText)})` };
       }
       if (fnName === "parseFloat" && expr.arguments.length >= 1) {
         const argText = renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars));
-        return { kind: "raw", value: `atof((${argText}).c_str())` };
+        requiredIncludes.add("<cstdlib>");
+        return { kind: "raw", value: `atof(${cStrIfManaged(expr.arguments[0], argText)})` };
       }
       if (fnName === "isNaN" && expr.arguments.length >= 1) {
         const argText = renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars));
@@ -1356,7 +1497,23 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         return { kind: "raw", value: `std::isfinite(${argText})` };
       }
       if (fnName === "Number" && expr.arguments.length >= 1) {
-        return expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars);
+        const argNode = expr.arguments[0];
+        const argIR = expressionToIR(argNode, sourceText, diagnostics, pointerVars);
+        // Number(x) is a numeric coercion: a string parses (atof), anything
+        // else casts. Returning the arg verbatim let a string IR flow into a
+        // number context unchanged.
+        const isStringArg = ts.isStringLiteral(argNode)
+          || ts.isNoSubstitutionTemplateLiteral(argNode)
+          || (ts.isIdentifier(argNode)
+            && (getCurrentIrTypeScope()?.locals.get(argNode.text) ?? getCurrentIrTypeScope()?.globals.get(argNode.text)) === "std::string");
+        if (isStringArg) {
+          // atof lives in <cstdlib> — same registration the parseInt/parseFloat
+          // lowerings above perform (the string-arg Number() path used to emit
+          // atof with no header).
+          requiredIncludes.add("<cstdlib>");
+          return { kind: "raw", value: `atof(${cStrIfManaged(argNode, renderExprAsText(argIR))})` };
+        }
+        return { kind: "raw", value: `static_cast<double>(${renderExprAsText(argIR)})` };
       }
       if (fnName === "String" && expr.arguments.length >= 1) {
         const argIR = expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars);
@@ -1479,6 +1636,48 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       // final callee text for the generic path.
       const methodName = rawMethodName;
 
+      // --- /regex/.test(s) → std::regex_search(s, re). std::regex has no
+      // .test member — the generic path emitted `std::regex(...).test(s)`.
+      if (
+        methodName === "test"
+        && receiver.kind === ts.SyntaxKind.RegularExpressionLiteral
+      ) {
+        const reText = receiver.getText();
+        const argIR = expr.arguments.length > 0
+          ? expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars)
+          : { kind: "string" as const, value: "" };
+        requiredIncludes.add("<regex>");
+        return { kind: "raw", value: `std::regex_search(${renderExprAsText(argIR)}, std::regex(${JSON.stringify(reText)}))` };
+      }
+
+      // --- Map iteration accessors have no C++ lowering on no-STL targets
+      // (no __tc_map* helpers) — the raw call would fail at g++ time with no
+      // hint. Fail the transpile with one instead. HOSTED targets keep the
+      // helper lowering below: this block used to fire unconditionally, so a
+      // resolved map on the generic/native target diagnosed instead of
+      // lowering (demo-15 regressions).
+      if (
+        (methodName === "keys" || methodName === "values" || methodName === "entries")
+        && ts.isIdentifier(receiver)
+        && !(() => {
+          const strat = getContext().activeStrategy;
+          return !strat?.requiresLoopFunction() && (strat?.getStdLibSupport?.().hasVector ?? true);
+        })()
+      ) {
+        const receiverType = getCurrentIrTypeScope()?.locals.get(receiver.text)
+          ?? getCurrentIrTypeScope()?.globals.get(receiver.text);
+        if (receiverType && parsedIsMap(receiverType)) {
+          diagnostics.push(makeDiagnostic(
+            sourceText,
+            expr.pos,
+            `Map.${methodName}() is not supported — track the keys in an array alongside the map instead.`,
+            "error",
+            "map-iteration-unsupported",
+          ));
+          return { kind: "raw", value: `0 /* Map.${methodName} unsupported */` };
+        }
+      }
+
       // --- .toFixed(digits) on numeric values ---
       if (methodName === "toFixed" && expr.arguments.length >= 1) {
         const receiverIR = expressionToIR(receiver, sourceText, diagnostics, pointerVars);
@@ -1496,6 +1695,41 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         }
         const receiverText = renderExprAsText(receiverIR);
         return { kind: "raw", value: `__tc_toFixed(${receiverText}, ${digits})` };
+      }
+
+      // --- Number.prototype.toString(radix?) on a numeric receiver ---
+      // `v.toString(16)` used to emit verbatim (no member on numeric types).
+      // Radix 16/8 lower to a snprintf-based helper; radix 2 gets the same
+      // helper (it implements binary directly); no-arg / radix 10 route
+      // through the template-string machinery (JS-compatible %.15g for
+      // fractional doubles — a long-long cast would truncate).
+      if (methodName === "toString" && expr.arguments.length <= 1) {
+        // Scope-typed: the receiver may be a parameter/local (`v`) — resolve
+        // through the live scope maps, not empty ones.
+        const recvType = (() => {
+          try {
+            const scope = getCurrentIrTypeScope();
+            const types = new Map<string, CppTypeHint>();
+            for (const [k, v] of scope?.globals ?? []) types.set(k, v as CppTypeHint);
+            for (const [k, v] of scope?.locals ?? []) types.set(k, v as CppTypeHint);
+            return inferExprCppType(receiver, (getContext().activeFunctionReturnTypes ?? new Map()) as Map<string, CppTypeHint>, types, sourceText);
+          } catch {
+            return undefined;
+          }
+        })();
+        const isNumeric = recvType === "double" || recvType === "float" || recvType === "int"
+          || recvType === "long" || recvType === "long long" || recvType === "unsigned int" || recvType === "unsigned long long";
+        if (isNumeric) {
+          const recvIR = expressionToIR(receiver, sourceText, diagnostics, pointerVars);
+          const recvText = renderExprAsText(recvIR);
+          const radixArg = expr.arguments[0];
+          const radix = radixArg && ts.isNumericLiteral(radixArg) ? parseInt(radixArg.text, 10) : 10;
+          if (radix === 10 || expr.arguments.length === 0) {
+            return { kind: "template_string", expression: recvIR };
+          }
+          requiredIncludes.add("<cstdio>");
+          return { kind: "raw", value: `__tc_num_radix(static_cast<long long>(${recvText}), ${radix})` };
+        }
       }
 
       // --- Map/Set iteration methods: .values() / .keys() / .entries() ---
@@ -1610,6 +1844,46 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         const mathMethod = expr.expression.name.text;
         if (mathMethod === "random") {
           calleeText = "__tc_random";
+        } else if (mathMethod === "fround") {
+          // No std::fround exists — the TS semantic (round-to-nearest
+          // binary32) is exactly a float cast.
+          const argIR = expr.arguments && expr.arguments.length > 0
+            ? expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars)
+            : { kind: "number" as const, value: 0 };
+          return { kind: "raw", value: `static_cast<float>(${renderExprAsText(argIR)})` };
+        } else if (mathMethod === "sign") {
+          // No std::sign either. (x - x) yields NaN for NaN and ±0 otherwise,
+          // matching Math.sign's NaN/zero rows without a helper.
+          const argIR = expr.arguments && expr.arguments.length > 0
+            ? expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars)
+            : { kind: "number" as const, value: 0 };
+          const t = renderExprAsText(argIR);
+          return { kind: "raw", value: `((${t}) > 0.0 ? 1.0 : (${t}) < 0.0 ? -1.0 : (${t}) - (${t}))` };
+        } else if (mathMethod === "round") {
+          // JS Math.round rounds half UP (Math.round(-2.5) === -2); C++
+          // std::round rounds half away from zero (-3). floor(x + 0.5) is
+          // the JS rule.
+          const argIR = expr.arguments && expr.arguments.length > 0
+            ? expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars)
+            : { kind: "number" as const, value: 0 };
+          return { kind: "raw", value: `std::floor((${renderExprAsText(argIR)}) + 0.5)` };
+        } else if (mathMethod === "clz32") {
+          // No std::clz32. Count-leading-zeros of the ToUint32 argument;
+          // the builtin is undefined at 0, which the ternary covers.
+          const argIR = expr.arguments && expr.arguments.length > 0
+            ? expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars)
+            : { kind: "number" as const, value: 0 };
+          const t = renderExprAsText(argIR);
+          return { kind: "raw", value: `((${t}) == 0 ? 32 : __builtin_clz(static_cast<unsigned int>(${t})))` };
+        } else if (mathMethod === "imul") {
+          // No std::imul. ToInt32 multiplication: widen, multiply, truncate.
+          const a = expr.arguments && expr.arguments.length > 0
+            ? renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars))
+            : "0";
+          const b = expr.arguments && expr.arguments.length > 1
+            ? renderExprAsText(expressionToIR(expr.arguments[1], sourceText, diagnostics, pointerVars))
+            : "0";
+          return { kind: "raw", value: `static_cast<int>((static_cast<long long>(${a})) * (static_cast<long long>(${b})))` };
         } else if ((mathMethod === "max" || mathMethod === "min") && expr.arguments && expr.arguments.length >= 1) {
           const op = mathMethod === "max" ? ">" : "<";
           const args = expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
@@ -1685,6 +1959,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       calleeText = nestedFunctionAliases.get(rawText) ?? rawText;
     }
     const argIRs: ExpressionIR[] = [];
+    let sawSpreadArg = false;
     for (const arg of expr.arguments) {
       if (ts.isSpreadElement(arg)) {
         // Spreading into a call. Cuttlefish lowers every rest parameter
@@ -1693,6 +1968,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         // directly — NOT `arr.begin(), arr.end()` (which passes two iterators
         // to one vector param and fails g++). For a non-vector spread we pass
         // the rendered expression as-is. See demo #6 fix E.
+        sawSpreadArg = true;
         argIRs.push(expressionToIR(arg.expression, sourceText, diagnostics, pointerVars));
       } else {
         argIRs.push(expressionToIR(arg, sourceText, diagnostics, pointerVars));
@@ -1738,6 +2014,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
             return !!receiverType && parsedIsPointer(receiverType);
           })()),
       restElementType: restParamFunctions.get(calleeText),
+      restHasSpread: sawSpreadArg,
       cppType: resolveExprCppType(expr),
     };
   }
@@ -1801,6 +2078,24 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       const message = expr.arguments && expr.arguments.length > 0
         ? renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars))
         : '"error"';
+      // std::runtime_error needs <stdexcept> and a working exception
+      // runtime — embedded targets compile -fno-exceptions with no STL.
+      // `throw new Error(...)` still works there (the throw lowers to
+      // cuttlefish_halt and the operand is never constructed — see the
+      // throwExpressionDepth guard); only the VALUE form (storing/carrying
+      // an Error) needs the class.
+      const strategy = getContext().activeStrategy;
+      if (strategy && strategy.needsStdExcept && !strategy.needsStdExcept() && throwExpressionDepth === 0) {
+        diagnostics.push(makeDiagnostic(
+          sourceText,
+          expr.pos,
+          "new Error(...) as a value is not supported on this target (no <stdexcept>/exceptions) — use `throw new Error(...)` (which halts) or carry a status code instead.",
+          "error",
+          "error-value-unsupported",
+        ));
+        return { kind: "raw", value: `0 /* new Error unsupported on this target */` };
+      }
+      requiredIncludes.add("<stdexcept>");
       return { kind: "raw", value: `std::runtime_error(${message})` };
     }
 
@@ -1936,6 +2231,16 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         return { kind: "raw", value: halInst.fieldValues.get("_pin")! };
       }
     }
+    // JS globals with no C++ identifier equivalent. INFINITY/NAN come from
+    // the same <cmath>/<math.h> the Math lowering pulls in (the raw value
+    // also trips the analysis' math-include scan). Emitted as raw — not
+    // identifier — so that scan sees the text.
+    if (expr.text === "Infinity") {
+      return { kind: "raw", value: "INFINITY" };
+    }
+    if (expr.text === "NaN") {
+      return { kind: "raw", value: "NAN" };
+    }
     // Apply nested-function-alias mangling so a `return dbl` reference to a
     // nested function declaration resolves to its hoisted mangled name
     // (makeScaler__dbl). Without this, the reference emits the bare name and
@@ -2022,6 +2327,23 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         return { kind: "identifier", value: resolved.slice("__FILTERED_LEN__".length) };
       }
       return { kind: "raw", value: resolved };
+    }
+    // `.message` on a caught exception (the catch param types as
+    // std::exception): std::exception has no `.message` — the JS `Error`
+    // message text is what C++ surfaces through `.what()`. The receiver is
+    // often `(e as Error)` — unwrap casts/parens to find the identifier.
+    if (propName === "message") {
+      let recvNode: ts.Expression = expr.expression;
+      while (ts.isAsExpression(recvNode) || ts.isTypeAssertionExpression(recvNode) || ts.isParenthesizedExpression(recvNode)) {
+        recvNode = recvNode.expression;
+      }
+      if (ts.isIdentifier(recvNode)) {
+        const recvType = getCurrentIrTypeScope()?.locals.get(recvNode.text)
+          ?? getCurrentIrTypeScope()?.globals.get(recvNode.text);
+        if (recvType && /^std::(?:runtime_)?exception\b/.test(recvType)) {
+          return { kind: "raw", value: `${renderExprAsText(object)}.what()` };
+        }
+      }
     }
     // `.size` on a Map/Set (std::map/std::set) — these expose size as a method
     // (`m.size()`), not a member. Map it to a method call so it doesn't fall
@@ -2162,9 +2484,12 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
 
   // Handle ternary/conditional expressions: a ? b : c
   if (ts.isConditionalExpression(expr)) {
+    enterConditionContext();
+    const condIR = expressionToIR(expr.condition, sourceText, diagnostics);
+    exitConditionContext();
     return {
       kind: "ternary",
-      condition: expressionToIR(expr.condition, sourceText, diagnostics),
+      condition: condIR,
       whenTrue: expressionToIR(expr.whenTrue, sourceText, diagnostics),
       whenFalse: expressionToIR(expr.whenFalse, sourceText, diagnostics),
     };

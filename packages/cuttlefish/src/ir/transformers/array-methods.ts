@@ -1,7 +1,7 @@
 ﻿import ts from "typescript";
 import { Diagnostic } from "../../types.js";
 import { StatementIR, ExpressionIR } from "../../api/index.js";
-import { arrayLiteralSizes, mutableArrayVars, activeCArrayVars, getContext, activeEnumNames, activeStringEnumNames } from "../build-ir-state.js";
+import { arrayLiteralSizes, mutableArrayVars, activeCArrayVars, getContext, activeEnumNames, activeStringEnumNames, requiredIncludes } from "../build-ir-state.js";
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
@@ -9,10 +9,12 @@ import { assignmentOperatorToString } from "./variables.js";
 import { STRING_METHODS, STRING_METHOD_NAMES, StringMethodSpec, StringMethodArgForm } from "../../api/shared/string-method-registry.js";
 import { parsedElementString } from "../../api/shared/cpp-type-ir.js";
 import { INTEGRAL_CPP_TYPE_RE } from "../../emit/utils/cpp-helpers.js";
+import { makeDiagnostic } from "../ast-node-utils.js";
 
-// Methods that require StaticArray promotion (not all are mutating — indexOf is read-only
-// but needs StaticArray since C arrays don't have an indexOf method).
-export const ARRAY_METHODS_REQUIRING_STATIC_ARRAY = new Set(["push", "pop", "indexOf"]);
+// Methods that require StaticArray promotion (not all are mutating — indexOf/
+// includes/lastIndexOf are read-only but need StaticArray since neither C
+// arrays nor std::vector have those members; fill/shift/unshift mutate).
+export const ARRAY_METHODS_REQUIRING_STATIC_ARRAY = new Set(["push", "pop", "indexOf", "fill", "includes", "lastIndexOf", "shift", "unshift"]);
 
 export function prescanArrayUsage(statement: ts.Statement): void {
   if (ts.isVariableStatement(statement)) {
@@ -55,6 +57,28 @@ export function prescanExprForArrayMethods(expr: ts.Expression): void {
       const varName = expr.expression.expression.text;
       mutableArrayVars.add(varName);
     }
+  }
+  // Recurse into call arguments and callback bodies — a handler passed to a
+  // HAL registration (`resp.onReceive((len) => { const bytes = [];
+  // bytes.push(...) })`) declares arrays it mutates INSIDE the callback; the
+  // top-level scan sees only the registration call, so without this the
+  // callback's array stays an un-pushable C array.
+  if (ts.isCallExpression(expr)) {
+    for (const arg of expr.arguments) {
+      if (!ts.isSpreadElement(arg))
+        prescanExprForArrayMethods(arg);
+    }
+  }
+  if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr)) {
+    if (ts.isBlock(expr.body)) {
+      for (const s of expr.body.statements)
+        prescanArrayUsage(s);
+    } else {
+      prescanExprForArrayMethods(expr.body);
+    }
+  }
+  if (ts.isParenthesizedExpression(expr)) {
+    prescanExprForArrayMethods(expr.expression);
   }
   // Detect indexed assignment (arr[i] = val and compounds like arr[i] += val).
   // TypeScript const only locks the binding, not the array contents, so
@@ -123,6 +147,8 @@ type ArgTexts = string[];
 // handled (e.g. `.slice()` only matches the zero-arg copy form).
 type ValueMethodLowering = (recv: string, args: ArgTexts, argCount: number) => string | null;
 
+// Null-prototype via setPrototypeOf below (a plain object literal inherits
+// Object.prototype members — see the note at the setPrototypeOf call).
 const VECTOR_VALUE_METHOD_LOWERINGS: Record<string, ValueMethodLowering> = {
   // Mutators that the native runtime exposes as free-function helpers:
   pop: (r) => `__tc_pop(${r})`,
@@ -148,12 +174,27 @@ const VECTOR_VALUE_METHOD_LOWERINGS: Record<string, ValueMethodLowering> = {
   // table had no `join` entry. The call was then emitted verbatim and g++
   // rejected it. `join` is a vector→string transformation; it lives here.
   join: (r, [a]) => `__tc_join(${r}, ${a ?? '""'})`,
+  // Overload-based members: the polyfills define BOTH std::string and
+  // std::vector overloads of __tc_indexOf/__tc_includes, so the helper call
+  // resolves correctly for either receiver type. (indexOf/includes used to be
+  // gate-blocked on both sides — the prescan marks any `.includes` receiver a
+  // mutable array, and the string gate then refused to lower it.)
+  indexOf: (r, [a]) => `__tc_indexOf(${r}, ${a[0]})`,
+  includes: (r, [a]) => `__tc_includes(${r}, ${a[0]})`,
 };
+// Null-prototype: a plain object literal inherits Object.prototype members, so
+// a user call like `x.toString(...)` resolved `VECTOR_CALLBACK_METHOD_HELPERS
+// ["toString"]` to the inherited Function (truthy!) and produced a method-call
+// IR node whose callee was a FUNCTION — analysis then crashed on
+// `callee.includes`. Stripping the prototype keeps every other lookup equal.
+Object.setPrototypeOf(VECTOR_VALUE_METHOD_LOWERINGS, null);
 
 // Callback-arg methods: map method name → helper callee. The receiver and all
 // args (including the callback) become structured method-call args so the
 // callback hoister can find and name them. `.sort()` with NO arg is a value
-// method (`__tc_sort(recv)`), handled separately below.
+// method (`__tc_sort(recv)`), handled separately below. Null-prototype — see
+// the comment on VECTOR_VALUE_METHOD_LOWERINGS (a plain object made
+// `n.toString(...)` resolve to the inherited Object.prototype.toString).
 const VECTOR_CALLBACK_METHOD_HELPERS: Record<string, string> = {
   filter: "__tc_filter",
   map: "__tc_map",
@@ -164,6 +205,7 @@ const VECTOR_CALLBACK_METHOD_HELPERS: Record<string, string> = {
   reduce: "__tc_reduce",     // 2-arg form; 1-arg → __tc_reduce_no_init (below)
   sort: "__tc_sort_fn",      // .sort(fn); bare .sort() → __tc_sort (below)
 };
+Object.setPrototypeOf(VECTOR_CALLBACK_METHOD_HELPERS, null);
 
 /**
  * Render an array/string-method RECEIVER for use as a `__tc_*` helper argument.
@@ -237,16 +279,35 @@ export function tryLowerArrayAndStringMethods(
       const willPromoteToStaticArray = promotesLiterals && arrayLiteralSizes.has(receiverName);
       const isStaticArrayType = typeIsStaticArray || willPromoteToStaticArray;
       if (isStaticArrayType) {
+      // Structured method-call IR — NOT raw text. The strategy-level
+      // applyStringMethodRewrites (a post-emit regex over rendered
+      // expressions) cannot tell an array receiver from a string, so a plain
+      // `a.indexOf(x)`/`a.lastIndexOf(x)`/`a.includes(x)` gets hijacked into
+      // the string helpers (__tc_indexOf(__tc_str_ptr(a), x), strstr(a, 2)).
+      // The parenthesized receiver breaks RECEIVER_PATTERN's match (the old
+      // indexOf case did the same, for this reason).
+      const asWrapperMethodCall = (method: string): ExpressionIR => ({
+        kind: "method-call",
+        callee: `(${receiverName}).${method}`,
+        args: expr.arguments.map(arg => expressionToIR(arg, sourceText, diagnostics, pointerVars)),
+      });
       if (methodName === "pop") {
         return { kind: "raw", value: `${receiverName}.pop()` };
       }
       if (methodName === "push") {
-        const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars))).join(", ");
-        return { kind: "raw", value: `${receiverName}.push(${argsText})` };
+        return asWrapperMethodCall("push");
       }
       if (methodName === "indexOf") {
-        const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars))).join(", ");
-        return { kind: "raw", value: `(${receiverName}).indexOf(${argsText})` };
+        return asWrapperMethodCall("indexOf");
+      }
+      // .fill(v) / .fill(v, start, end) — the wrapper implements both arities
+      // (returns *this so the TS return-the-receiver contract holds).
+      if (methodName === "fill") {
+        return asWrapperMethodCall("fill");
+      }
+      // Wrapper-native members: shift/unshift/includes/lastIndexOf.
+      if (methodName === "shift" || methodName === "unshift" || methodName === "includes" || methodName === "lastIndexOf") {
+        return asWrapperMethodCall(methodName);
       }
       }
     }
@@ -260,6 +321,65 @@ export function tryLowerArrayAndStringMethods(
         callee: `${receiverName}.indexOf`,
         args: expr.arguments.map(arg => expressionToIR(arg, sourceText, diagnostics, pointerVars))
       };
+    }
+  }
+
+  // ---- .fill(v) on a std::vector receiver, NON-hosted target ----
+  // Zephyr's minimal C++ lib has no __tc_fill helper and std::vector has no
+  // fill member, so the hosted lowering below never runs and the call used to
+  // emit verbatim (`bytes.fill(0)` — a compile error). Annotated `T[]`
+  // variables DO lower to std::vector there, so lower fill to std::fill over
+  // the clamped range and pull in <algorithm>.
+  {
+    const strat0 = getContext().activeStrategy;
+    const hosted0 = !strat0?.requiresLoopFunction()
+      && (strat0?.getStdLibSupport?.().hasVector ?? true);
+    if (!hosted0 && ts.isPropertyAccessExpression(expr.expression) && expr.expression.name.text === "fill") {
+      const receiverNode = expr.expression.expression;
+      const receiverText = renderExprAsText(expressionToIR(receiverNode, sourceText, diagnostics, pointerVars));
+      let receiverType: string | undefined;
+      if (ts.isIdentifier(receiverNode)) {
+        receiverType = getCurrentIrTypeScope()?.locals.get(receiverNode.text)
+          ?? getCurrentIrTypeScope()?.globals.get(receiverNode.text);
+      } else if (ts.isPropertyAccessExpression(receiverNode) && receiverNode.expression.kind === ts.SyntaxKind.ThisKeyword && ts.isIdentifier(receiverNode.name)) {
+        receiverType = getCurrentIrTypeScope()?.locals.get(`this->${receiverNode.name.text}`);
+      }
+      const isVectorish = !!receiverType && /^std::vector</.test(receiverType);
+      // A side-effecting receiver (a call) must not be evaluated 2-3 times in
+      // the 3-arg range form — only lower side-effect-free lvalues there. The
+      // 1-arg form names it once, matching the hosted helper.
+      const isSimpleLvalue = /^[\w>.\-\[\]]+$/.test(receiverText) && !receiverText.includes("(");
+      if (isVectorish && expr.arguments.length >= 1 && (expr.arguments.length === 1 || isSimpleLvalue)) {
+        requiredIncludes.add("<algorithm>");
+        const valueText = renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars));
+        if (expr.arguments.length >= 3) {
+          const startText = renderExprAsText(expressionToIR(expr.arguments[1], sourceText, diagnostics, pointerVars));
+          const endText = renderExprAsText(expressionToIR(expr.arguments[2], sourceText, diagnostics, pointerVars));
+          const lenText = `static_cast<int>(${receiverText}.size())`;
+          return {
+            kind: "raw",
+            value: `std::fill(${receiverText}.begin() + ((${startText}) < 0 ? 0 : (${startText})), ${receiverText}.begin() + ((${endText}) > ${lenText} ? ${lenText} : (${endText})), ${valueText})`,
+          };
+        }
+        return { kind: "raw", value: `std::fill(${receiverText}.begin(), ${receiverText}.end(), ${valueText})` };
+      }
+    }
+    // `.join()` has only the hosted `__tc_join` helper. On a no-STL target
+    // (Zephyr's minimal C++ lib) the call falls through as raw text and
+    // fails at g++ time with no hint — fail the transpile with one instead.
+    if (
+      ts.isPropertyAccessExpression(expr.expression)
+      && expr.expression.name.text === "join"
+      && !hosted0
+    ) {
+      diagnostics.push(makeDiagnostic(
+        sourceText,
+        expr.pos,
+        "array.join() has no lowering on this target (no STL string helpers) — fold the elements into the output manually.",
+        "error",
+        "array-join-unsupported",
+      ));
+      return { kind: "raw", value: `0 /* array.join unsupported */` };
     }
   }
 
@@ -322,7 +442,7 @@ export function tryLowerArrayAndStringMethods(
         return ir;
       })();
       const argIRs = expr.arguments.map(arg => expressionToIR(arg, sourceText, diagnostics, pointerVars));
-      return { kind: "method-call", callee: cbHelper, args: [receiverIR, ...argIRs] };
+      return { kind: "method-call", callee: cbHelper, args: [receiverIR, ...argIRs] }
     }
     // Value-arg methods: collapse to a raw helper call (no callbacks to hoist).
     const lowering = VECTOR_VALUE_METHOD_LOWERINGS[methodName];
@@ -381,8 +501,10 @@ export function tryLowerArrayAndStringMethods(
 
 // Methods that exist on BOTH std::string and std::vector (so the receiver
 // type must be consulted to decide). All other STRING_METHOD_NAMES are
-// unambiguously string-only.
-const AMBIGUOUS_STRING_METHODS = new Set(["indexOf", "includes", "startsWith", "endsWith", "slice", "substring"]);
+// unambiguously string-only. `lastIndexOf` is ambiguous too — TS arrays
+// have it, and treating it as string-only hijacked array receivers into
+// `__tc_lastIndexOf` (a helper the embedded targets never define).
+const AMBIGUOUS_STRING_METHODS = new Set(["indexOf", "includes", "lastIndexOf", "startsWith", "endsWith", "slice", "substring"]);
 
 /**
  * Decide whether `receiver.methodName(...)` should lower as a STRING method
@@ -390,23 +512,26 @@ const AMBIGUOUS_STRING_METHODS = new Set(["indexOf", "includes", "startsWith", "
  * for unambiguously-string methods (toLowerCase, charAt, ...), and for the
  * ambiguous overlap methods only when the receiver's resolved C++ type is
  * string-like (`std::string`/`const char*`/`char*`). Known arrays
- * (`mutableArrayVars`/`activeCArrayVars`) are always rejected so an array
- * `indexOf` is never mis-lowered.
+ * (`mutableArrayVars`/`activeCArrayVars`) are rejected UNLESS the receiver's
+ * resolved type is string-like — the prescan marks any `.indexOf`/`.includes`
+ * receiver an array (syntactic, no type info), which used to poison string
+ * variables: `s.toUpperCase()` after an `s.indexOf(...)` stayed verbatim.
  */
 function shouldLowerAsStringMethod(receiverNode: ts.Expression, methodName: string): boolean {
-  // Known array receivers are never string-method receivers.
-  if (ts.isIdentifier(receiverNode)) {
-    if (mutableArrayVars.has(receiverNode.text) || activeCArrayVars.has(receiverNode.text)) {
-      return false;
-    }
-  }
+  // A resolved string-like type wins over the prescan's array presumption.
   if (!AMBIGUOUS_STRING_METHODS.has(methodName)) {
     // Unambiguously a string method (toLowerCase/trim/charAt/charCodeAt/...).
     return true;
   }
-  // Ambiguous: decide by the receiver's resolved C++ type.
   const resolvedType = resolveReceiverCppType(receiverNode);
-  return resolvedType === "std::string" || resolvedType === "const char*" || resolvedType === "char*";
+  const isStringType = resolvedType === "std::string" || resolvedType === "const char*" || resolvedType === "char*";
+  if (ts.isIdentifier(receiverNode)) {
+    if ((mutableArrayVars.has(receiverNode.text) || activeCArrayVars.has(receiverNode.text)) && !isStringType) {
+      return false;
+    }
+  }
+  // Ambiguous: decide by the receiver's resolved C++ type.
+  return isStringType;
 }
 
 /**
@@ -427,6 +552,12 @@ function resolveReceiverCppType(receiverNode: ts.Expression): string | undefined
   if (!scope) return undefined;
   if (ts.isIdentifier(receiverNode)) {
     return scope.locals.get(receiverNode.text) ?? scope.globals.get(receiverNode.text);
+  }
+  // A string literal is a string — `"hello".indexOf("l")` used to fall through
+  // the ambiguous-method gate (type unknown → rejected) and emit verbatim
+  // `std::string("hello").indexOf(...)` / `.substring(...)`, which don't exist.
+  if (ts.isStringLiteral(receiverNode) || ts.isNoSubstitutionTemplateLiteral(receiverNode)) {
+    return "std::string";
   }
   if (ts.isPropertyAccessExpression(receiverNode) && receiverNode.expression.kind === ts.SyntaxKind.ThisKeyword) {
     return scope.locals.get(`this->${receiverNode.name.text}`);

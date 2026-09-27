@@ -85,6 +85,7 @@ describe('contract MCU-only config with a generated Zephyr board', () => {
       soc: 'stm32f411xe',
       connectedPins: ['PA5', 'PA0'],
       peripherals: ['UART0'],
+      gatedExports: ['UART', 'Store', 'File'],
     });
 
     expect(existsSync(boardPath)).toBe(true);
@@ -94,8 +95,43 @@ describe('contract MCU-only config with a generated Zephyr board', () => {
     expect(board).toContain("export const PA0 = Pin.fromPort('PA0');");
     expect(board).not.toContain('PC13');
     expect(board).toContain("export const UART0 = new UART('UART0');");
+    // The gated hardware classes ride along — a contract board without them
+    // cannot even name its own peripherals' classes or the persistent Store.
+    expect(board).toContain("export { UART, Store, File } from '@typecad/hal/core';");
     // HAL imports so `import { Time } from '@typecad/hal'` resolves.
     expect(board).toContain("import { Pin, I2CBus, SPIBus, UART } from '@typecad/hal/core';");
+  });
+
+  it('layers the strategy-resolved gated exports + storage facts onto the contract board', async () => {
+    writeProject({ 'board.contract.json': CONTRACT });
+    const zephyrBase = process.env.ZEPHYR_BASE ?? 'C:/Users/justi/zephyrproject/zephyr';
+    let hasTree = false;
+    try {
+      hasTree = existsSync(join(zephyrBase, 'dts'));
+    } catch {
+      hasTree = false;
+    }
+    if (!hasTree) {
+      console.warn('skipping (no Zephyr tree at', zephyrBase, ')');
+      return;
+    }
+    const { generateBoardModuleFromContract } = await import('../../../packages/framework-zephyr/src/boardgen');
+    const generated = generateBoardModuleFromContract({
+      soc: 'esp32s3',
+      zephyrBase,
+      pinNames: ['GPIO4', 'GPIO5'],
+      peripherals: { i2c: true, spi: false, uart: false },
+    });
+    // A wired i2c bus gates in the target classes; the esp32s3 dtsi family
+    // declares flash sizes, so Store/File gate in too.
+    expect(generated.gatedExports).toContain('I2CTarget');
+    expect(generated.gatedExports).toContain('I2CResponder');
+    expect(generated.gatedExports).toContain('Store');
+    // The synthesized storage region rides board.json — the settings/FS
+    // backend reads zephyr.storage.* from it.
+    const manifest = JSON.parse(generated.boardJson);
+    expect(manifest.constants['zephyr.storage.offset']).toBeDefined();
+    expect(manifest.constants['zephyr.storage.size']).toBeGreaterThan(0);
   });
 
   it('still rejects a config that sets both board and contract', () => {

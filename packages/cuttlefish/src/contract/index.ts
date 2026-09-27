@@ -34,7 +34,8 @@ interface BoardGenStrategy {
     pinNames: readonly string[];
     padAliases?: readonly { exportName: string; padName: string }[];
     peripherals: { i2c: boolean; spi: boolean; uart: boolean };
-  }): { boardTs: string; boardJson: string };
+    buildTarget?: string;
+  }): { boardTs: string; boardJson: string; gatedExports?: readonly string[] };
 }
 
 interface TypeCADManifest {
@@ -132,6 +133,9 @@ export async function generateContractBoard(config: ResolvedTypecadConfig): Prom
       .filter((p) => p.alias)
       .map((p) => ({ exportName: p.alias as string, padName: p.mcuName })),
     peripherals: contract.availablePeripherals,
+    // The physical build target, when named — its catalog record is the
+    // truth west compiles against (storage/flash facts).
+    ...(config.buildTarget ? { buildTarget: config.buildTarget } : {}),
   });
   // (3) The narrowed pad set: the contract's own canonical names — the
   // board module the framework generated exposes the soc's datasheet sweep
@@ -150,11 +154,17 @@ export async function generateContractBoard(config: ResolvedTypecadConfig): Prom
   fs.mkdirSync(cuttlefishDir, { recursive: true });
   fs.writeFileSync(path.join(cuttlefishDir, 'board.json'), generated.boardJson, 'utf-8');
 
-  // (5) Emit the narrowed board.
+  // (5) Emit the narrowed board. The gated hardware classes the strategy's
+  // facts resolved (I2CTarget/I2CResponder on a wired bus, Store/File on a
+  // storage region, ...) ride along — the narrowed writer pins PINS, not
+  // capabilities, and without these lines the contract board silently lacked
+  // every gated class (the i2c:true contract could not even name
+  // I2CResponder).
   return generateBoardFile({
     projectDir,
     soc,
     connectedPins,
     peripherals,
+    gatedExports: generated.gatedExports ?? [],
   });
 }
