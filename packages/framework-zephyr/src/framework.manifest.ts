@@ -592,11 +592,14 @@ export default defineFrameworkManifest({
     normalizeCppType: true,
     mathHeader: '<cmath>',
     needsStdString: false,
-    needsStdVector: false,
+    // Builds run with CONFIG_REQUIRES_FULL_LIBCPP (real libstdc++) — <vector>
+    // exists and the typed `new Array<E>(n)` lowering emits std::vector. The
+    // former false left those emissions without the include.
+    needsStdVector: true,
     needsIostream: false,
     needsStdFunction: false,
     stdlibSupport: {
-      hasVector: false,
+      hasVector: true,
       hasString: false,
       hasIostream: false,
       hasExceptions: false,

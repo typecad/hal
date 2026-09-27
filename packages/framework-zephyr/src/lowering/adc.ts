@@ -121,16 +121,25 @@ export function adcInitLines(
       [...usedPins].some((n) => adcChannelForPin(chip, n) === c.channel && owns(c, adcControllerForPin(chip, n))),
   );
   const lines: string[] = ['// CUTTLEFISH_ADC_BEGIN'];
-  lines.push(`static const struct device* __tc_adc_dev = DEVICE_DT_GET(DT_NODELABEL(${primary}));`);
+  // Device handles are emitted for the controllers the FILTERED channels
+  // actually use. Emitting the primary handle unconditionally references a
+  // DT nodelabel the overlay never enabled when every used route sits on
+  // another controller (ESP32: primary adc0, all harvested DevKitC routes
+  // on adc1) — DEVICE_DT_GET on a disabled node is an undeclared-device
+  // compile error. No channels at all (probe paths, override-only programs)
+  // keeps the historical primary handle.
+  const neededControllers = new Set<string>(channels.map((c) => c.controller ?? primary));
+  // Inline-override devices (escape hatch): handles for the DT labels the
+  // construction opts name — they may not appear in the manifest at all.
+  for (const label of (overrideDevices ?? [])) neededControllers.add(label);
+  if (neededControllers.size === 0) neededControllers.add(primary);
+  if (neededControllers.has(primary)) {
+    lines.push(`static const struct device* __tc_adc_dev = DEVICE_DT_GET(DT_NODELABEL(${primary}));`);
+  }
   // Additional controllers referenced by used channels get their own device
   // handle (sorted for deterministic output). Channel indices collide across
   // controllers, so non-primary setup symbols carry the controller label.
-  const extraControllers = [...new Set(channels.map((c) => c.controller).filter((x): x is string => !!x && x !== primary))].sort();
-  // Inline-override devices (escape hatch): handles for the DT labels the
-  // construction opts name — they may not appear in the manifest at all.
-  for (const label of (overrideDevices ?? [])) {
-    if (label !== primary && !extraControllers.includes(label)) extraControllers.push(label);
-  }
+  const extraControllers = [...neededControllers].filter((label) => label !== primary).sort();
   for (const label of extraControllers) {
     lines.push(`static const struct device* __tc_adc_${label}_dev = DEVICE_DT_GET(DT_NODELABEL(${label}));`);
   }

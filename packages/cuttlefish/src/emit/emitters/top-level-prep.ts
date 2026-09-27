@@ -297,7 +297,16 @@ function removeShadowingVarDecls(
 function collectIdentifierNames(statements: StatementIR[]): Set<string> {
   const names = new Set<string>();
   function scanStmt(stmt: StatementIR) {
-    if (stmt.kind === "var_decl") { names.add(stmt.name); }
+    if (stmt.kind === "var_decl") {
+      names.add(stmt.name);
+      // The initializer is part of the reference graph too: a runtime var
+      // referenced ONLY inside another var_decl's initializer
+      // (`const ch = PRINTABLE.charAt(b)`) stayed unpromoted while the
+      // function referencing it failed to compile.
+      if ("initializer" in stmt && stmt.initializer) {
+        scanExpr(stmt.initializer as ExpressionIR);
+      }
+    }
     if (stmt.kind === "assign") { names.add(stmt.target); }
     if ("body" in stmt && Array.isArray(stmt.body)) { for (const s of stmt.body) scanStmt(s); }
     if ("thenBranch" in stmt && Array.isArray(stmt.thenBranch)) { for (const s of stmt.thenBranch) scanStmt(s); }
@@ -322,6 +331,21 @@ function collectIdentifierNames(statements: StatementIR[]): Set<string> {
     if ("callee" in expr && typeof (expr as unknown as { callee?: unknown }).callee === "string") {
       const parts = ((expr as unknown as { callee: string }).callee).split(/[\.\-\>]/);
       for (const p of parts) { if (/^[a-zA-Z_]\w*$/.test(p)) names.add(p); }
+    }
+    // A `raw` IR node (helper lowerings like `__tc_charAt(PRINTABLE, i)`,
+    // `__tc_num_radix(v, 16)`) is OPAQUE text — the identifiers inside it
+    // are invisible to the structured walk. Without this, a top-level
+    // runtime var referenced ONLY through a lowered helper call (a string
+    // concat const used via `.charAt()` inside an async task) is never
+    // promoted to file scope, while the task class referencing it fails to
+    // compile. Token-splitting over-collects (helper names land in the set
+    // too), but the set is only probed with `has(varName)` —
+    // over-collection can only over-promote, never miss a reference.
+    if (expr.kind === "raw" && typeof (expr as unknown as { value?: unknown }).value === "string") {
+      const rawText = (expr as unknown as { value: string }).value;
+      for (const tok of rawText.split(/[^A-Za-z0-9_$]+/)) {
+        if (/^[A-Za-z_$][\w$]*$/.test(tok)) { names.add(tok); }
+      }
     }
     if ("left" in expr) { scanExpr(expr.left); }
     if ("right" in expr) { scanExpr(expr.right); }

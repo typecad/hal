@@ -1,13 +1,13 @@
 ﻿import ts from "typescript";
 import { Diagnostic } from "../../types.js";
 import { StatementIR, ExpressionIR } from "../../api/index.js";
-import { arrayLiteralSizes, mutableArrayVars, activeCArrayVars, getContext, activeEnumNames, activeStringEnumNames, requiredIncludes } from "../build-ir-state.js";
+import { arrayLiteralSizes, mutableArrayVars, arrayPushCounts, unboundedArrayVars, moduleArrayLiteralVars, functionScopeMutatedArrays, activeCArrayVars, getContext, activeEnumNames, activeStringEnumNames, requiredIncludes } from "../build-ir-state.js";
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
 import { assignmentOperatorToString } from "./variables.js";
 import { STRING_METHODS, STRING_METHOD_NAMES, StringMethodSpec, StringMethodArgForm } from "../../api/shared/string-method-registry.js";
-import { parsedElementString } from "../../api/shared/cpp-type-ir.js";
+import { parsedElementString, parsedIsVector, parsedIsStaticArray } from "../../api/shared/cpp-type-ir.js";
 import { INTEGRAL_CPP_TYPE_RE } from "../../emit/utils/cpp-helpers.js";
 import { makeDiagnostic } from "../ast-node-utils.js";
 
@@ -16,69 +16,92 @@ import { makeDiagnostic } from "../ast-node-utils.js";
 // arrays nor std::vector have those members; fill/shift/unshift mutate).
 export const ARRAY_METHODS_REQUIRING_STATIC_ARRAY = new Set(["push", "pop", "indexOf", "fill", "includes", "lastIndexOf", "shift", "unshift"]);
 
-export function prescanArrayUsage(statement: ts.Statement): void {
+export function prescanArrayUsage(statement: ts.Statement, moduleScope: boolean = false): void {
+  prescanArrayUsageIn(statement, false, moduleScope);
+}
+
+// `inLoop` threads loop-nesting through the recursion: a push site inside a
+// for/while/do body runs once per iteration, so its count cannot size a
+// StaticArray capacity (the var goes to unboundedArrayVars instead).
+// `moduleScope` marks a module-level statement list: every array literal it
+// declares is a cross-call accumulator (see moduleArrayLiteralVars).
+function prescanArrayUsageIn(statement: ts.Statement, inLoop: boolean, moduleScope: boolean): void {
+  const inFn = !moduleScope;
   if (ts.isVariableStatement(statement)) {
     for (const decl of statement.declarationList.declarations) {
       if (ts.isIdentifier(decl.name) && decl.initializer) {
         if (ts.isArrayLiteralExpression(decl.initializer)) {
           arrayLiteralSizes.set(decl.name.text, decl.initializer.elements.length);
+          if (moduleScope) moduleArrayLiteralVars.add(decl.name.text);
         }
-        prescanExprForArrayMethods(decl.initializer);
+        prescanExprForArrayMethods(decl.initializer, inLoop, inFn);
       }
     }
   } else if (ts.isExpressionStatement(statement)) {
-    prescanExprForArrayMethods(statement.expression);
+    prescanExprForArrayMethods(statement.expression, inLoop, inFn);
   } else if (ts.isReturnStatement(statement) && statement.expression) {
-    prescanExprForArrayMethods(statement.expression);
+    prescanExprForArrayMethods(statement.expression, inLoop, inFn);
   } else if (ts.isIfStatement(statement)) {
-    prescanArrayUsageBlock(statement.thenStatement);
-    if (statement.elseStatement) prescanArrayUsageBlock(statement.elseStatement);
+    prescanArrayUsageBlock(statement.thenStatement, inLoop, moduleScope);
+    if (statement.elseStatement) prescanArrayUsageBlock(statement.elseStatement, inLoop, moduleScope);
   } else if (ts.isForStatement(statement) || ts.isWhileStatement(statement) || ts.isDoStatement(statement)) {
-    prescanArrayUsageBlock(statement.statement);
+    prescanArrayUsageBlock(statement.statement, true, moduleScope);
   } else if (ts.isForOfStatement(statement) || ts.isForInStatement(statement)) {
-    prescanArrayUsageBlock(statement.statement);
+    prescanArrayUsageBlock(statement.statement, true, moduleScope);
   } else if (ts.isBlock(statement)) {
-    for (const s of statement.statements) prescanArrayUsage(s);
+    for (const s of statement.statements) prescanArrayUsageIn(s, inLoop, moduleScope);
   }
 }
 
-function prescanArrayUsageBlock(stmt: ts.Statement): void {
+function prescanArrayUsageBlock(stmt: ts.Statement, inLoop: boolean, moduleScope: boolean): void {
   if (ts.isBlock(stmt)) {
-    for (const s of stmt.statements) prescanArrayUsage(s);
+    for (const s of stmt.statements) prescanArrayUsageIn(s, inLoop, moduleScope);
   } else {
-    prescanArrayUsage(stmt);
+    prescanArrayUsageIn(stmt, inLoop, moduleScope);
   }
 }
 
-export function prescanExprForArrayMethods(expr: ts.Expression): void {
+export function prescanExprForArrayMethods(expr: ts.Expression, inLoop: boolean = false, inFunctionScope: boolean = false): void {
   if (ts.isCallExpression(expr) && ts.isPropertyAccessExpression(expr.expression)) {
     const methodName = expr.expression.name.text;
     if (ARRAY_METHODS_REQUIRING_STATIC_ARRAY.has(methodName) && ts.isIdentifier(expr.expression.expression)) {
       const varName = expr.expression.expression.text;
       mutableArrayVars.add(varName);
+      if (inFunctionScope) functionScopeMutatedArrays.add(varName);
+      // Growing methods contribute to capacity sizing — but only when the
+      // site is outside every loop (a loop site runs per-iteration; the
+      // count is not a total). inLoop sites mark the var unbounded instead.
+      if (methodName === "push" || methodName === "unshift") {
+        if (inLoop) {
+          unboundedArrayVars.add(varName);
+        } else {
+          arrayPushCounts.set(varName, (arrayPushCounts.get(varName) ?? 0) + 1);
+        }
+      }
     }
   }
   // Recurse into call arguments and callback bodies — a handler passed to a
   // HAL registration (`resp.onReceive((len) => { const bytes = [];
   // bytes.push(...) })`) declares arrays it mutates INSIDE the callback; the
   // top-level scan sees only the registration call, so without this the
-  // callback's array stays an un-pushable C array.
+  // callback's array stays an un-pushable C array. A callback body is
+  // re-entrant (invoked per event), so pushes inside one are unbounded.
   if (ts.isCallExpression(expr)) {
     for (const arg of expr.arguments) {
       if (!ts.isSpreadElement(arg))
-        prescanExprForArrayMethods(arg);
+        prescanExprForArrayMethods(arg, inLoop, inFunctionScope);
     }
   }
   if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr)) {
     if (ts.isBlock(expr.body)) {
       for (const s of expr.body.statements)
-        prescanArrayUsage(s);
+        prescanArrayUsageIn(s, true, false);
     } else {
-      prescanExprForArrayMethods(expr.body);
+      prescanExprForArrayMethods(expr.body, inLoop, true);
     }
   }
   if (ts.isParenthesizedExpression(expr)) {
-    prescanExprForArrayMethods(expr.expression);
+    prescanExprForArrayMethods(expr.expression, inLoop, inFunctionScope);
   }
   // Detect indexed assignment (arr[i] = val and compounds like arr[i] += val).
   // TypeScript const only locks the binding, not the array contents, so
@@ -89,6 +112,7 @@ export function prescanExprForArrayMethods(expr: ts.Expression): void {
       && ts.isIdentifier(expr.left.expression)
       && assignmentOperatorToString(expr.operatorToken.kind) !== undefined) {
     mutableArrayVars.add(expr.left.expression.text);
+    if (inFunctionScope) functionScopeMutatedArrays.add(expr.left.expression.text);
   }
   // Detect element increment / decrement (arr[i]++ / arr[i]-- / ++arr[i] / --arr[i]).
   if ((ts.isPostfixUnaryExpression(expr) || ts.isPrefixUnaryExpression(expr))
@@ -96,6 +120,7 @@ export function prescanExprForArrayMethods(expr: ts.Expression): void {
       && ts.isIdentifier(expr.operand.expression)
       && (expr.operator === ts.SyntaxKind.PlusPlusToken || expr.operator === ts.SyntaxKind.MinusMinusToken)) {
     mutableArrayVars.add(expr.operand.expression.text);
+    if (inFunctionScope) functionScopeMutatedArrays.add(expr.operand.expression.text);
   }
 }
 
@@ -276,7 +301,21 @@ export function tryLowerArrayAndStringMethods(
       // std::vector type is genuine and the vector lowering below applies.
       const typeIsStaticArray = !!resolvedType && (resolvedType.startsWith("StaticArray<") || resolvedType.startsWith("__tc_StaticArray<"));
       const promotesLiterals = getContext().activeStrategy?.promotesArrayLiteralsToStaticArray?.() ?? true;
-      const willPromoteToStaticArray = promotesLiterals && arrayLiteralSizes.has(receiverName);
+      // The prediction must mirror the promotion's actual rules (variables.ts).
+      // A module-level literal promotes only when its mutations were visible
+      // at the module statement list's prescan — i.e. module-level call sites.
+      // A mutation from inside a function body prescans AFTER the module list
+      // processes, so that declaration stays std::vector; predicting
+      // StaticArray for it emitted `.push` on a vector (g++: "no member named
+      // 'push'"). A literal whose push sites are loop-nested routes to vector
+      // as well.
+      const vectorCapable0 = getContext().activeStrategy?.getStdLibSupport?.().hasVector ?? true;
+      const moduleLiteralUnpromoted = moduleArrayLiteralVars.has(receiverName)
+        && functionScopeMutatedArrays.has(receiverName);
+      const willPromoteToStaticArray = promotesLiterals
+        && arrayLiteralSizes.has(receiverName)
+        && !moduleLiteralUnpromoted
+        && !(unboundedArrayVars.has(receiverName) && vectorCapable0);
       const isStaticArrayType = typeIsStaticArray || willPromoteToStaticArray;
       if (isStaticArrayType) {
       // Structured method-call IR — NOT raw text. The strategy-level
@@ -332,7 +371,11 @@ export function tryLowerArrayAndStringMethods(
   // the clamped range and pull in <algorithm>.
   {
     const strat0 = getContext().activeStrategy;
+    // Same hosted composite as the gate below — hasVector alone is not the
+    // signal (Zephyr reports it truthfully with full libstdc++ yet takes
+    // these non-hosted lowerings).
     const hosted0 = !strat0?.requiresLoopFunction()
+      && strat0?.promotesArrayLiteralsToStaticArray?.() === false
       && (strat0?.getStdLibSupport?.().hasVector ?? true);
     if (!hosted0 && ts.isPropertyAccessExpression(expr.expression) && expr.expression.name.text === "fill") {
       const receiverNode = expr.expression.expression;
@@ -364,22 +407,66 @@ export function tryLowerArrayAndStringMethods(
         return { kind: "raw", value: `std::fill(${receiverText}.begin(), ${receiverText}.end(), ${valueText})` };
       }
     }
-    // `.join()` has only the hosted `__tc_join` helper. On a no-STL target
-    // (Zephyr's minimal C++ lib) the call falls through as raw text and
-    // fails at g++ time with no hint — fail the transpile with one instead.
+    // Array methods whose ONLY lowerings are the hosted __tc_* helpers.
+    // On a StaticArray target (Zephyr/Arduino: T[] → __tc_StaticArray, no
+    // STL containers in the runtime model) there is no lowering at all —
+    // the call used to fall through as raw text and fail at g++ time
+    // ("no member named 'join'") with no hint. Fail the transpile with a
+    // targeted diagnostic instead, receiver-gated so a user class with a
+    // same-named method is not flagged.
+    const STATIC_ARRAY_TARGET_METHODS = new Set([
+      "join", "filter", "map", "reduce", "find", "findIndex",
+      "every", "some", "sort", "slice", "concat", "splice", "reverse",
+    ]);
     if (
       ts.isPropertyAccessExpression(expr.expression)
-      && expr.expression.name.text === "join"
       && !hosted0
+      && (STATIC_ARRAY_TARGET_METHODS.has(expr.expression.name.text) || expr.expression.name.text === "split")
     ) {
-      diagnostics.push(makeDiagnostic(
-        sourceText,
-        expr.pos,
-        "array.join() has no lowering on this target (no STL string helpers) — fold the elements into the output manually.",
-        "error",
-        "array-join-unsupported",
-      ));
-      return { kind: "raw", value: `0 /* array.join unsupported */` };
+      const methodName = expr.expression.name.text;
+      const recvNode = expr.expression.expression;
+      let receiverMatches = false;
+      if (ts.isArrayLiteralExpression(recvNode)) {
+        receiverMatches = expr.expression.name.text !== "split";
+      } else if (methodName === "split"
+        && (ts.isStringLiteral(recvNode) || ts.isNoSubstitutionTemplateLiteral(recvNode))) {
+        receiverMatches = true;
+      } else if (ts.isIdentifier(recvNode)) {
+        const vt = getCurrentIrTypeScope()?.locals.get(recvNode.text)
+          ?? getCurrentIrTypeScope()?.globals.get(recvNode.text);
+        if (vt) {
+          const trimmed = vt.trim();
+          // A std::vector receiver on a vector-capable target is NOT an
+          // error: the vector-receiver lowering below handles push/includes/
+          // indexOf natively (annotated `T[]` declarations lower to
+          // std::vector on Zephyr too — only array LITERALS become
+          // __tc_StaticArray there). Only flag when the target genuinely
+          // cannot grow the container.
+          const vectorHandled = parsedIsVector(trimmed)
+            && (getContext().activeStrategy?.getStdLibSupport?.().hasVector ?? true)
+            && (methodName === "push" || methodName === "includes" || methodName === "indexOf");
+          const arrayish = !vectorHandled && (parsedIsVector(trimmed) || parsedIsStaticArray(trimmed)
+            || trimmed.endsWith("[]") || mutableArrayVars.has(recvNode.text)
+            || activeCArrayVars.has(recvNode.text));
+          const stringish = trimmed === "const char*" || trimmed === "char*" || trimmed === "std::string";
+          receiverMatches = methodName === "split" ? stringish : arrayish;
+        }
+      }
+      if (receiverMatches) {
+        const message = methodName === "split"
+          ? "string.split() has no lowering on this target (the result would need dynamically-sized string storage) — tokenize with an indexOf/substring loop instead."
+          : methodName === "join"
+            ? `array.${methodName}() has no lowering on this target (the folded result exceeds the fixed-size string model) — emit the elements in a loop instead.`
+            : `array.${methodName}() has no lowering on this target (no STL containers in the fixed-size array model) — replace it with an explicit loop over the elements.`;
+        diagnostics.push(makeDiagnostic(
+          sourceText,
+          expr.pos,
+          message,
+          "error",
+          `array-${methodName}-unsupported`,
+        ));
+        return { kind: "raw", value: `0 /* array.${methodName} unsupported */` };
+      }
     }
   }
 
@@ -397,13 +484,65 @@ export function tryLowerArrayAndStringMethods(
   // lower arrays to StaticArray, caught by the mutableArrayVars branch above,
   // and have no __tc_* polyfills). Two signals compose: the target has no
   // repeatedly-called loop() (requiresLoopFunction() false — the historical
-  // proxy for "hosted"), AND it actually carries std::vector (getStdLibSupport
-  // ().hasVector). The second signal matters because a main()-entry RTOS
-  // target (Zephyr) also reports requiresLoopFunction()=false but lowers
-  // arrays to __tc_StaticArray — without the hasVector conjunct it would
-  // wrongly take the std::vector/.push_back path.
+  // proxy for "hosted"), AND it actually lowers mutable arrays to std::vector
+  // (promotesArrayLiteralsToStaticArray() false — hasVector alone is NOT the
+  // right conjunct: Zephyr now truthfully reports hasVector (full libstdc++)
+  // yet still lowers array literals to __tc_StaticArray; on that target a
+  // user-class method named `push` must NOT be rewritten to .push_back).
   const strat = getContext().activeStrategy;
+  // ── std::vector receivers on EVERY vector-capable target ────────────────
+  // Annotated `T[]` declarations lower to std::vector on Zephyr as well (the
+  // StaticArray promotion only rewrites array LITERALS; module-level mutated
+  // arrays also miss the promotion for timing reasons — the function bodies
+  // that prescan the pushes lower after the declaration). The hosted-only
+  // gate below used to leave `.push`/`.includes`/`.indexOf` on those vectors
+  // verbatim → g++ "no member named 'push'". Gate on the RECEIVER's resolved
+  // C++ type instead of the target class: a std::vector receiver gets
+  // push_back / the __tc_* vector helpers wherever vectors exist. The helpers
+  // ship in the framework's vector polyfills (Zephyr: vector_methods).
+  const vectorCapable = strat?.getStdLibSupport?.().hasVector ?? true;
+  if (vectorCapable && ts.isPropertyAccessExpression(expr.expression)) {
+    const methodName = expr.expression.name.text;
+    const receiverNode = expr.expression.expression;
+    let receiverType: string | undefined;
+    if (ts.isIdentifier(receiverNode)) {
+      receiverType = getCurrentIrTypeScope()?.locals.get(receiverNode.text)
+        ?? getCurrentIrTypeScope()?.globals.get(receiverNode.text);
+      // Hoisted function bodies lower BEFORE the module statements that
+      // declare their receivers, so a module array's type is not yet in the
+      // scope maps here. A module-level literal mutated from this function
+      // stays std::vector (see the willPromoteToStaticArray reasoning above)
+      // — treat that shape as authoritative when the scope lookup misses.
+      if (receiverType === undefined
+        && moduleArrayLiteralVars.has(receiverNode.text)
+        && functionScopeMutatedArrays.has(receiverNode.text)) {
+        receiverType = "std::vector<auto>";
+      }
+    } else if (ts.isPropertyAccessExpression(receiverNode)
+      && receiverNode.expression.kind === ts.SyntaxKind.ThisKeyword
+      && ts.isIdentifier(receiverNode.name)) {
+      receiverType = getCurrentIrTypeScope()?.locals.get(`this->${receiverNode.name.text}`);
+    }
+    const isVectorReceiver = receiverType !== undefined
+      && (parsedIsVector(receiverType.trim()) || receiverType === "std::vector<auto>");
+    if (isVectorReceiver
+      && (methodName === "push" || methodName === "includes" || methodName === "indexOf")) {
+      const receiverText = renderExprAsText(expressionToIR(receiverNode, sourceText, diagnostics, pointerVars));
+      if (methodName === "push") {
+        const argsText = expr.arguments.map(arg => renderPushArgForElement(arg, receiverNode, sourceText, diagnostics, pointerVars)).join(", ");
+        return { kind: "raw", value: `${receiverText}.push_back(${argsText})` };
+      }
+      const argText = expr.arguments.length > 0
+        ? renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars))
+        : "";
+      if (methodName === "includes") {
+        return { kind: "raw", value: `__tc_includes(${receiverText}, ${argText})` };
+      }
+      return { kind: "raw", value: `__tc_indexOf(${receiverText}, ${argText})` };
+    }
+  }
   const isHostedTarget = !strat?.requiresLoopFunction()
+    && (strat?.promotesArrayLiteralsToStaticArray?.() === false)
     && (strat?.getStdLibSupport?.().hasVector ?? true);
   if (isHostedTarget && ts.isPropertyAccessExpression(expr.expression)) {
     const methodName = expr.expression.name.text;
@@ -454,39 +593,71 @@ export function tryLowerArrayAndStringMethods(
         return { kind: "raw", value: lowered };
       }
     }
+  }
 
-    // ---- String-method lowering (structural) ------------------------------
-    // Demo #27 Findings D/E — string methods (`s.toLowerCase()`,
-    // `s.substring(0,2)`, `s.charAt(i)`, ...) were previously lowered by a
-    // post-emit text rewrite (`applyStringMethodRewrites`) whose
-    // `RECEIVER_PATTERN` only matched bare identifiers and `.member` chains —
-    // NOT `X[i]` element access or `X->member` pointer chains. So
-    // `ALPHABET[i].toLowerCase()` was left verbatim (g++: "no member
-    // 'toLowerCase'"), and even on a bare local the emitted `__tc_toLowerCase`
-    // helper was never registered (the text scan missed it). Array mutators
-    // were migrated off the same regex family in demo #22 into this
-    // structural path; string methods are routed through the identical path
-    // here, so the receiver is rendered via `expressionToIR` (handling
-    // bare id / `this.field` / `obj.field` / `X[i]` / chains uniformly) and
-    // the helper lands in a `raw` IR node that `program-analysis.ts` scans to
-    // register the polyfill.
-    //
-    // Gate: only fire for a KNOWN string method whose receiver is NOT a known
-    // array (the array paths above already handled array `indexOf`/`slice`/
-    // etc.). For methods that exist on BOTH strings and arrays
-    // (`indexOf`/`includes`/`startsWith`/`endsWith`/`slice`/`substring`), gate
-    // on the receiver's resolved C++ type being string-like, so an array
-    // `indexOf` is never mis-lowered to the string helper.
-    const isStringMethod = STRING_METHOD_NAMES.has(methodName);
-    if (isStringMethod) {
+  // ── String-method lowering (structural, EVERY target) ────────────────
+  // Demo #27 Findings D/E — string methods (`s.toLowerCase()`,
+  // `s.substring(0,2)`, `s.charAt(i)`, ...) were previously lowered by a
+  // post-emit text rewrite (`applyStringMethodRewrites`) whose
+  // `RECEIVER_PATTERN` only matched bare identifiers and `.member` chains —
+  // NOT `X[i]` element access or `X->member` pointer chains. So
+  // `ALPHABET[i].toLowerCase()` was left verbatim (g++: "no member
+  // 'toLowerCase'"), and even on a bare local the emitted `__tc_toLowerCase`
+  // helper was never registered (the text scan missed it). Array mutators
+  // were migrated off the same regex family in demo #22 into this
+  // structural path; string methods are routed through the identical path
+  // here, so the receiver is rendered via `expressionToIR` (handling
+  // bare id / `this.field` / `obj.field` / `X[i]` / chains uniformly) and
+  // the helper lands in a `raw` IR node that `program-analysis.ts` scans to
+  // register the polyfill.
+  //
+  // NOT gated on isHostedTarget: the string helpers exist on every target
+  // (hosted: std::string signatures; Zephyr/Arduino: const char*), and the
+  // strategy-side regex fallback MANGLES non-identifier receivers on the
+  // embedded targets — `c.nm.padEnd(7)` on a class-pointer member rewrote
+  // to `c->__tc_padEnd_default(nm, 7)` (the regex captured `nm` as the
+  // receiver and left the `c->` prefix), and `X[i].toLowerCase()` /
+  // `fn(...).toUpperCase()` stayed verbatim. Structural rendering handles
+  // every receiver shape on every target.
+  //
+  // Gate: only fire for a KNOWN string method whose receiver is NOT a known
+  // array (the array paths above already handled array `indexOf`/`slice`/
+  // etc.). For methods that exist on BOTH strings and arrays
+  // (`indexOf`/`includes`/`startsWith`/`endsWith`/`slice`/`substring`), gate
+  // on the receiver's resolved C++ type being string-like, so an array
+  // `indexOf` is never mis-lowered to the string helper.
+  if (ts.isPropertyAccessExpression(expr.expression)) {
+    const methodName = expr.expression.name.text;
+    if (STRING_METHOD_NAMES.has(methodName)) {
       const receiverNode = expr.expression.expression;
       // Use renderArrayMethodReceiver so an INLINE array-literal receiver of an
       // ambiguous string/array method (`.join`, `.concat`, `.slice`, ...) is
       // type-qualified into `std::vector<ElemType>{...}` — the `__tc_*` helpers
       // are templates and a bare brace-init-list cannot drive deduction. A
       // genuine string receiver passes through unchanged. Demo #29 Finding D.
-      const receiverText = renderArrayMethodReceiver(receiverNode, sourceText, diagnostics, pointerVars);
+      let receiverText = renderArrayMethodReceiver(receiverNode, sourceText, diagnostics, pointerVars);
       if (shouldLowerAsStringMethod(receiverNode, methodName)) {
+        // const char* string targets: a receiver whose EMITTED C++ type is
+        // std::string must convert to const char* for the target's helper
+        // signatures. The discriminator is the strategy-normalized resolved
+        // type: a `string` binding's own declaration normalizes to
+        // const char* (so NO conversion — `(PRINTABLE).c_str()` on a char*
+        // is itself a compile error), and a container ELEMENT type also
+        // normalizes through the container rewrite (std::vector<string>
+        // emits as std::vector<const char*> there, so elements need no
+        // conversion either). What remains genuinely std::string on those
+        // targets converts. Hosted targets keep std::string everywhere
+        // (normalizeCppType is the identity) and never hit the wrap.
+        const resolved = resolveReceiverCppType(receiverNode);
+        const stratS = getContext().activeStrategy;
+        const emittedStringType = resolved === undefined
+          ? undefined
+          : (stratS?.normalizeCppType?.(resolved) ?? resolved);
+        if (emittedStringType === "std::string"
+          && stratS?.normalizeCppType?.("std::string") === "const char*"
+          && !receiverText.endsWith(".c_str()")) {
+          receiverText = `(${receiverText}).c_str()`;
+        }
         const argsText = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars)));
         const lowered = lowerStringMethod(methodName, receiverText, argsText, expr.arguments.length);
         if (lowered !== null) {
@@ -660,8 +831,15 @@ function lowerStringMethod(
   args: string[],
   argCount: number,
 ): string | null {
-  // Native special case: startsWith → rfind prefix test (no helper).
+  // startsWith: on a managed-std::string target, the rfind prefix test; on a
+  // const char* string target (Zephyr/Arduino) `rfind` doesn't exist —
+  // strncmp/strlen is the equivalent (and mirrors the strategy-side
+  // applyStringMethodRewrites special).
   if (methodName === "startsWith" && argCount >= 1) {
+    const stratS = getContext().activeStrategy;
+    if (stratS?.normalizeCppType?.("std::string") === "const char*") {
+      return `(strncmp(${receiver}, ${args[0]}, strlen(${args[0]})) == 0)`;
+    }
     return `(${receiver}.rfind(${args[0]}, 0) == 0)`;
   }
   // Map the observed arg count to the argForm that handles it. Methods with a

@@ -171,12 +171,20 @@ describe('multi-controller ADC (channel indices collide across controllers)', ()
   });
 
   it('init lines emit a device handle per used controller and collision-safe setup symbols', () => {
+    // Only adc1 is used (pin 11): the unused PRIMARY controller's handle must
+    // NOT be emitted — DEVICE_DT_GET on a nodelabel the overlay never enabled
+    // (every DevKitC route sits on adc1 while adc0 is the descriptor primary)
+    // is an undeclared-device compile error.
     const lines = adcInitLines(ESP32S3_TWO_UNITS, new Set([11])).join('\n');
-    expect(lines).toContain('static const struct device* __tc_adc_dev = DEVICE_DT_GET(DT_NODELABEL(adc0));');
     expect(lines).toContain('static const struct device* __tc_adc_adc1_dev = DEVICE_DT_GET(DT_NODELABEL(adc1));');
+    expect(lines).not.toContain('__tc_adc_dev = DEVICE_DT_GET(DT_NODELABEL(adc0));');
     // adc1 channel 0 must not reuse adc0 channel 0's __tc_adc0_setup symbol.
     expect(lines).toContain('__tc_adc_adc1_0_setup');
     expect(lines).not.toContain('__tc_adc0_setup');
+    // Channels on BOTH controllers: both handles appear.
+    const both = adcInitLines(ESP32S3_TWO_UNITS, new Set([1, 11])).join('\n');
+    expect(both).toContain('static const struct device* __tc_adc_dev = DEVICE_DT_GET(DT_NODELABEL(adc0));');
+    expect(both).toContain('static const struct device* __tc_adc_adc1_dev = DEVICE_DT_GET(DT_NODELABEL(adc1));');
   });
 
   it('single-controller output is unchanged: no extra handle, no labeled symbols', () => {

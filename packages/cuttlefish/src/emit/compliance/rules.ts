@@ -145,6 +145,11 @@ export const RULES: readonly RuleEntry[] = [
         justification: "Zephyr <zephyr/net/http/client.h> declares http_method and http_final_call as unscoped enums (platform-mandated API); the HTTP shim passes them to Zephyr's own http_client_req / http_response_cb_t and cannot redeclare them scoped.",
         kind: "other",
       },
+      {
+        detect: /\benum\s+(?:wifi_security_type|wifi_frequency_bands)\b/,
+        justification: "Zephyr <zephyr/net/wifi_mgmt.h> declares wifi_security_type and wifi_frequency_bands as unscoped enums (platform-mandated API); the WiFi shim's join/connect signatures take them directly and cannot redeclare them scoped.",
+        kind: "other",
+      },
     ],
   },
 
@@ -158,6 +163,11 @@ export const RULES: readonly RuleEntry[] = [
         detect: /\bnew\s+\(|new\s+\(std::nothrow\)|new\s+\(ps_malloc|new\s+(?:Cuttlefish|GFX|Sdl)/,
         justification: "UI runtime allocates canvas buffers and draw-order arrays on the heap via new/new(std::nothrow); no stack alternative exists for dynamic-size buffers on embedded targets.",
         kind: "raw-array",
+      },
+      {
+        detect: /new\s+[A-Z]\w*\(/,
+        justification: "User-class instance construction (`new SampleWindow(n)`) is the repo-wide lowering of TS class locals to heap pointers — including the members async task bodies hoist. The lowering owns this shape; per-site nothrow is a future refinement, not a shim deviation.",
+        kind: "other",
       },
       {
         detect: /\bdelete\s+\w/,

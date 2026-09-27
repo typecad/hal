@@ -94,6 +94,6 @@ describe('Sensor thin class — construction facts reach the lowering', () => {
       const tenths: number = s.get(CHAN.AMBIENT_TEMP) * 10;
       const line: string = \`t10=\${tenths / 10}\`;
     `, COMMON);
-    expect(result.cpp).toMatch(/%\d*\.?\d*g[^"]*"\s*,\s*tenths/);
+    expect(result.cpp).toMatch(/%\d*\.?\d*g[^"]*"\s*,\s*static_cast<double>\(tenths\)/);
   });
 });

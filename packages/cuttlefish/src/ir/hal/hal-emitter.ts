@@ -1,7 +1,8 @@
 ﻿import ts from "typescript";
 import { ExpressionIR, HALOpIR } from "../../api/index.js";
-import { requiredIncludes, registeredCallbacks, isrHandlerFunctions, activeStringVars, TYPED_ARRAY_ELEMENT_MAP, getContext, floatVariables, halInstances, getCurrentBoardConstants, markHalOpResolved } from "../build-ir-state.js";
+import { requiredIncludes, registeredCallbacks, isrHandlerFunctions, activeStringVars, TYPED_ARRAY_ELEMENT_MAP, getContext, floatVariables, halInstances, getCurrentBoardConstants, markHalOpResolved, topLevelClasses } from "../build-ir-state.js";
 import { getCurrentIrTypeScope } from "../symbol-types.js";
+import { parsedElementString, parseCppType, renderCppType } from "../../api/shared/cpp-type-ir.js";
 import { renderExprAsText } from "../render-expr.js";
 import { escapeCppKeyword, escapeCppStringLiteral } from "../../utils/strings.js";
 import { HALInstance, halClassRegistry, halGlobalFunctions, HALMethodEntry } from "./hal-parser.js";
@@ -763,6 +764,46 @@ export function registerFloatVariable(name: string): void {
   floatVariables.add(name);
 }
 
+/** True when `name` records as a floating type in the active IR scope
+ *  (function locals, falling back to globals) — every TS number lowers to
+ *  double, so `const ratio = 2.5` records as double here even though it
+ *  never enters floatVariables (that set only tracks HAL-op-derived vars).
+ *  Template parts referencing such names must take %g, not the %d default —
+ *  %d on a double argument is a -Wformat mismatch and garbage output. */
+function isFloatTypedName(name: string): boolean {
+  const scope = getCurrentIrTypeScope();
+  if (!scope) return false;
+  const t = scope.locals.get(name) ?? scope.globals.get(name);
+  return t === "double" || t === "float" || t === "long double";
+}
+
+/** True when `name` records as an enum-looking type in the active IR scope —
+ *  an enum class argument needs %d (a %g on it is a format mismatch). */
+function isEnumTypedName(name: string): boolean {
+  const scope = getCurrentIrTypeScope();
+  if (!scope) return false;
+  const t = scope.locals.get(name) ?? scope.globals.get(name);
+  if (t === undefined) return false;
+  if (isFloatTypedName(name)) return false;
+  return /^[A-Za-z_][\w]*(::[\w]+)?$/.test(t) && !/(?:^|\s)(?:unsigned\s+)?(?:char|short|int|long|float|double|auto|bool|size_t|u?int(?:8|16|32|64)_t)\b/.test(t) && !t.endsWith("*");
+}
+
+/** True when `name` records as an integral C++ type in the active IR scope —
+ *  an int-typed local needs %d (its varargs bit pattern is not a double). */
+function isIntegralTypedName(name: string): boolean {
+  const scope = getCurrentIrTypeScope();
+  if (!scope) return false;
+  const t = scope.locals.get(name) ?? scope.globals.get(name);
+  if (t === undefined) return false;
+  return /^(?:unsigned\s+)?(?:char|short|int|long(?:\s+long)?)$/.test(t.trim()) || /^u?int(?:8|16|32|64)_t$/.test(t.trim()) || t.trim() === "size_t";
+}
+
+/** True when rendered expression text is a lowered string-method helper call
+ *  (`__tc_toFixed(…)` etc.) — string-valued for snprintf purposes. */
+function isStringHelperText(text: string): boolean {
+  return /^__tc_(?:toFixed|toUpperCase|toLowerCase|trim|replace|charAt|substring\d?|slice\d?|padStart(?:_default)?|padEnd(?:_default)?|repeat|num_radix)\(/.test(text.trim());
+}
+
 /** Build snprintf prelude lines from a string_concat expression.
  *  Returns { lines, bufferName } or null if the expression can't be formatted. */
 
@@ -772,7 +813,7 @@ function binaryTouchesFloatVar(expr: { kind: string; left?: unknown; right?: unk
   for (const side of [expr.left, expr.right]) {
     if (!side || typeof side !== "object") continue;
     const s = side as { kind: string; value?: unknown; left?: unknown; right?: unknown };
-    if (s.kind === "identifier" && typeof s.value === "string" && floatVariables.has(s.value)) return true;
+    if (s.kind === "identifier" && typeof s.value === "string" && (floatVariables.has(s.value) || isFloatTypedName(s.value))) return true;
     if (s.kind === "binary" && binaryTouchesFloatVar(s as never)) return true;
   }
   return false;
@@ -820,10 +861,11 @@ export function buildSnprintfFromConcat(
       // Check for float variable reference: template_string wrapping an identifier.
       // A var initialized from a double-returning HAL op (sensor.get) records
       // as a float var; one declared `: number` from such an initializer also
-      // lands in the IR scope's float types.
+      // lands in the IR scope's float types; and ANY numeric local/global the
+      // scope recorded as double (TS numbers all lower to double) qualifies.
       const isFloatVar = part.kind === "template_string"
         && part.expression.kind === "identifier"
-        && floatVariables.has((part.expression as any).value);
+        && (floatVariables.has((part.expression as any).value) || isFloatTypedName((part.expression as any).value));
 
       // Inline double-returning HAL call (template_string wrapping a call):
       // the lowerings' deterministic shape for a double return is
@@ -905,6 +947,124 @@ export function buildSnprintfFromConcat(
           formatString += "%g";
           args.push(text);
           estimatedLength += 12;
+        } else if (
+          part.kind === "template_string"
+          && part.expression.kind === "identifier"
+          && !isEnumTypedName((part.expression as any).value)
+          && !isIntegralTypedName((part.expression as any).value)
+        ) {
+          // A bare variable of UNRECORDED type: TS numbers lower to double,
+          // and %g renders both integer-valued and fractional doubles in JS
+          // form ("5", "2.5") — the %d default was a -Wformat mismatch and
+          // garbage output for every such local. Enum-typed and INTEGRAL
+          // recorded names keep %d (checked above).
+          formatString += "%g";
+          args.push(text);
+          estimatedLength += 16;
+        } else if (isStringHelperText(text)) {
+          // Raw text of a lowered string method (`__tc_toFixed(x, 2)`,
+          // `__tc_toUpperCase(s)`, …) — these helpers return const char*
+          // (std::string on hosted): %s, never the %d default.
+          formatString += "%s";
+          args.push(text);
+          estimatedLength += 32;
+        } else if (
+          part.kind === "template_string"
+          && part.expression.kind === "element-access"
+        ) {
+          // Element access (`args[0]`, `s[i]`): resolve the base's scope type
+          // and classify its ELEMENT — a string element is %s (the %d default
+          // printed the pointer as an integer), a number element %g.
+          const ea = part.expression as Extract<ExpressionIR, { kind: "element-access" }>;
+          const baseName = ea.object.kind === "identifier" ? (ea.object as { value: string }).value : undefined;
+          const baseType = baseName
+            ? getCurrentIrTypeScope()?.locals.get(baseName) ?? getCurrentIrTypeScope()?.globals.get(baseName)
+            : undefined;
+          const elemType = baseType ? parsedElementString(baseType) : undefined;
+          if (elemType && (elemType === "const char*" || elemType === "char*" || elemType === "std::string")) {
+            formatString += "%s";
+            args.push(text);
+            estimatedLength += 32;
+          } else {
+            formatString += "%g";
+            args.push(text);
+            estimatedLength += 16;
+          }
+        } else if (
+          part.kind === "template_string"
+          && part.expression.kind === "method-call"
+          && /[.>]\w+\([^()]*\)\s*$/.test(text)
+        ) {
+          // A user-class method call in a template (`w.describe()`) — resolve
+          // the method's return type from the top-level classes' IR (bare
+          // method name; setup.ts uses the same bare-name convention). A
+          // const char* return fell through to the %d default and printed a
+          // POINTER VALUE on device.
+          const mMatch = text.match(/[.>](\w+)\(/);
+          const methodName = mMatch?.[1];
+          let methodReturn: string | undefined;
+          if (methodName) {
+            for (const cls of topLevelClasses.values()) {
+              const m = cls.methods.find(mm => mm.name === methodName);
+              if (m) { methodReturn = m.returnType; break; }
+              const g = cls.getters.find(gg => gg.name === methodName);
+              if (g) { methodReturn = g.returnType; break; }
+            }
+          }
+          if (methodReturn === "const char*" || methodReturn === "char*" || methodReturn === "std::string") {
+            formatString += "%s";
+            args.push(text);
+            estimatedLength += 128;
+          } else if (methodReturn === "float" || methodReturn === "double") {
+            formatString += "%g";
+            args.push(text);
+            estimatedLength += 16;
+          } else if (methodReturn === "bool") {
+            formatString += "%s";
+            args.push(`(${text} ? "true" : "false")`);
+            estimatedLength += 5;
+          } else {
+            formatString += "%d";
+            args.push(text);
+            estimatedLength += 12;
+          }
+        } else if (/[.>](?:at|get)\(/.test(text)) {
+          // A std::map value read (`m.get(k)` lowers to `m.at(k)` / `m[k]`),
+          // including a ternary over one (`m.has(k) ? m.get(k) : 0`): resolve
+          // the map's VALUE type — string values format %s, everything else
+          // is a JS number → %g. An at/get whose base does not resolve to a
+          // map keeps the historical %d default.
+          const mapBase = text.match(/(\w+)[.>](?:at|get)\(/);
+          const mapType = mapBase
+            ? getCurrentIrTypeScope()?.locals.get(mapBase[1]) ?? getCurrentIrTypeScope()?.globals.get(mapBase[1])
+            : undefined;
+          const mapIr = mapType !== undefined ? parseCppType(mapType) : undefined;
+          const valueType = mapIr?.kind === "map" ? renderCppType(mapIr.value) : undefined;
+          if (valueType === "const char*" || valueType === "char*" || valueType === "std::string") {
+            formatString += "%s";
+            args.push(text);
+            estimatedLength += 32;
+          } else if (valueType !== undefined) {
+            formatString += "%g";
+            args.push(text);
+            estimatedLength += 16;
+          } else {
+            formatString += "%d";
+            args.push(text);
+            estimatedLength += 12;
+          }
+        } else if (/^static_cast<long long>\(/.test(text.trim())) {
+          // `.length`/`.size` lowerings cast to long long — the specifier
+          // must match (%lld), or g++ -Wformat= flags every such part.
+          formatString += "%lld";
+          args.push(text);
+          estimatedLength += 20;
+        } else if (/^(?:strlen|strcmp)\(/.test(text.trim())) {
+          // strlen/strcmp parts (string-length comparisons folded into the
+          // concat) — size_t, formatted as long long.
+          formatString += "%lld";
+          args.push(`static_cast<long long>(${text})`);
+          estimatedLength += 20;
         } else {
           formatString += "%d";
           args.push(text);

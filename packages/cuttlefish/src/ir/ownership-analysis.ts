@@ -1009,6 +1009,68 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
   };
   for (const body of allStatementBodies) collectAssignedNames(body);
 
+  // ── Whole-program CONTENT-mutation receivers ────────────────────────────
+  // A top-level `const` collection mutated from inside a function or class
+  // method (module-level `const registry` mutated by a helper) compiles in TS
+  // but fails g++ (`const std::map` + operator[], `const __tc_StaticArray` +
+  // .push). The scope-local walk inside analyzeScope cannot see those — the
+  // declaration lives in a different body — so this set records every
+  // content-mutation receiver (mutating method calls, element/member
+  // assignments and updates) across ALL bodies, and the TOP-LEVEL scope's
+  // demotion/promotion checks consult it. Function-local scopes deliberately
+  // do not (demo #16 gap #2: same-named bindings in sibling functions must
+  // not interact). Over-detection only costs ROM placement, never
+  // correctness, so bare-name matching is acceptable here.
+  // StaticArray method calls render with a parenthesized receiver
+  // (`(registry).push(x)`), so receivers are paren-normalized before use.
+  const contentMutatedNames = new Set<string>();
+  const bareReceiver = (raw: string): string => {
+    let s = raw.trim();
+    while (s.startsWith('(') && s.endsWith(')')) {
+      s = s.slice(1, -1).trim();
+    }
+    return s;
+  };
+  const collectContentMutations = (stmts: StatementIR[]): void => {
+    for (const stmt of stmts) {
+      if (stmt.kind === 'assign' || stmt.kind === 'update') {
+        const t = stmt.target;
+        const bracket = t.indexOf('[');
+        if (bracket > 0) {
+          contentMutatedNames.add(bareReceiver(t.slice(0, bracket)));
+        }
+        const dot = t.indexOf('.');
+        const arrow = t.indexOf('->');
+        const sepIdx = dot >= 0 ? dot : arrow;
+        if (sepIdx > 0) {
+          contentMutatedNames.add(bareReceiver(t.slice(0, sepIdx)));
+        }
+      }
+      if (stmt.kind === 'call' && typeof (stmt as any).callee === 'string') {
+        const rawCallee: string = (stmt as any).callee;
+        const unwrapped = rawCallee.startsWith('__RAW_STMT__')
+          ? rawCallee.slice('__RAW_STMT__'.length)
+          : rawCallee;
+        const parenIdx = unwrapped.indexOf('(');
+        const callee = parenIdx > 0 ? unwrapped.slice(0, parenIdx) : unwrapped;
+        const dot = callee.lastIndexOf('.');
+        if (dot > 0) {
+          const method = callee.slice(dot + 1);
+          // MUTATING_METHODS + the JS collection mutators. Map.set usually
+          // lowers to a bracket assignment (caught above via the assign
+          // target), but a statement-position call may keep its call shape;
+          // add/delete are the JS spellings of insert/erase.
+          if (MUTATING_METHODS.has(method) || method === 'set' || method === 'add' || method === 'delete') {
+            contentMutatedNames.add(bareReceiver(callee.slice(0, dot)));
+          }
+        }
+      }
+      const nested = getNestedStatements(stmt);
+      if (nested) collectContentMutations(nested);
+    }
+  };
+  for (const body of allStatementBodies) collectContentMutations(body);
+
   // Walk one lexical scope (a top-level or function body) in a single pass,
   // registering declarations and detecting mutations against the SAME
   // scope-local maps. This is critical: the previous implementation ran two
@@ -1017,7 +1079,7 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
   // (demo #16 gap #2 — a read-only `const` Map was wrongly demoted because a
   // same-named binding in a sibling function was mutated). Scope-local maps
   // make declaration and mutation resolve within their own function.
-  const analyzeScope = (stmts: StatementIR[]): void => {
+  const analyzeScope = (stmts: StatementIR[], isTopLevel: boolean): void => {
     const letVars = new Map<string, LetEntry>();
     const constVars = new Map<string, ConstEntry>();
 
@@ -1135,7 +1197,9 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
           const callee = parenIdx > 0 ? unwrapped.slice(0, parenIdx) : unwrapped;
           const dot = callee.lastIndexOf('.');
           if (dot > 0) {
-            const receiver = callee.slice(0, dot);
+            // StaticArray member calls render with a parenthesized receiver
+            // (`(registry).push(x)`); normalize so the scope maps resolve.
+            const receiver = bareReceiver(callee.slice(0, dot));
             const method = callee.slice(dot + 1);
             if (MUTATING_METHODS.has(method)) {
               const entry = letVars.get(receiver);
@@ -1199,6 +1263,29 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
 
     walk(stmts);
 
+    // Top-level `const` collections mutated from another body (a helper
+    // function or class method) — the scope-local walk above cannot see the
+    // mutation because the declaration lives here, not there. The
+    // whole-program contentMutatedNames set closes that gap; demote so the
+    // emitted `const std::map`/`const __tc_StaticArray` does not reject the
+    // mutation at g++ time.
+    if (isTopLevel) {
+      for (const constEntry of constVars.values()) {
+        if (constEntry.stmt.storage === 'const' && contentMutatedNames.has(constEntry.stmt.name)) {
+          constEntry.stmt.storage = 'let';
+          diagnostics.push({
+            severity: 'info',
+            message: `'${constEntry.stmt.name}' is declared 'const' but its contents are mutated elsewhere in the program (from inside a function or method) — demoted to non-const in C++ so the mutation compiles.`,
+            line: constEntry.span.startLine,
+            column: constEntry.span.startColumn,
+            filePath: constEntry.span.filePath,
+            code: 'ownership-const-content-mutated',
+            source: 'ownership-analysis',
+          });
+        }
+      }
+    }
+
     // Promote `let` bindings that are never reassigned (in this scope or any
     // other) to `const` in the emitted C++. The transpiler's whole-program
     // reassignment analysis proves the binding is never written after init —
@@ -1209,6 +1296,9 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
     // emit path already handles both directions.
     for (const entry of letVars.values()) {
       if (entry.everAssigned || globallyAssignedNames.has(entry.name)) continue;
+      // A top-level collection mutated through its contents from another
+      // body (see the demotion block above) must not be promoted either.
+      if (isTopLevel && contentMutatedNames.has(entry.name)) continue;
       // Safety wrapper declarations mutate exclusively through method calls
       // (.set/.add/...), and chained mutating calls render as callee text the
       // reassignment walk cannot fully parse — non-mutation cannot be proven
@@ -1251,7 +1341,9 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
     }
   };
 
-  for (const body of allStatementBodies) analyzeScope(body);
+  for (const body of allStatementBodies) {
+    analyzeScope(body, body === program.topLevelStatements);
+  }
 }
 
 /**

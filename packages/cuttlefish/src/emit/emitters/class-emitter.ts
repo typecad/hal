@@ -279,6 +279,13 @@ export function emitClasses(ctx: EmitterContext): void {
   // Emit each class
   for (const classDef of program.classes) {
     emitCommentLines(classDef.leadingComments, "", (line) => appendSourceLine(ctx, line));
+    // C++14: a mutable (or non-integral-const) static data member may not be
+    // initialized in-class — the initializer goes on an out-of-class
+    // definition emitted right after `};`. (`static inline` is C++17; under
+    // --autosar=C++14 g++ rejected it: "inline variables are only available
+    // with '-std=c++17'".) Uninitialized statics still need the out-of-class
+    // definition when odr-used (`Class::counter++`).
+    const staticFieldDefs: string[] = [];
 
     const inheritanceParts: string[] = [];
     if (classDef.extendsClass) {
@@ -311,7 +318,10 @@ export function emitClasses(ctx: EmitterContext): void {
       if (classDef.typeParameters && classDef.typeParameters.length > 0) {
         appendSourceLine(ctx, `template<typename ${(classDef.typeParameters as string[]).join(", typename ")}>`);
       }
-      appendSourceLine(ctx, `class ${classDef.name}${inheritanceClause} final {`);
+      // `final` must precede the base-clause (`class X final : public Y`).
+      // After it (`class X : public Y final`) g++ rejects the derived form
+      // ("virt-specifiers ... not allowed outside a class definition").
+      appendSourceLine(ctx, `class ${classDef.name} final${inheritanceClause} {`);
     } else {
       if (classDef.typeParameters && classDef.typeParameters.length > 0) {
         appendSourceLine(ctx, `template<typename ${(classDef.typeParameters as string[]).join(", typename ")}>`);
@@ -319,9 +329,10 @@ export function emitClasses(ctx: EmitterContext): void {
       // A3-1-1: stamp `final` on leaf classes (nothing inherits from them).
       // baseClassesNeeded holds every class name that appears as an
       // extendsClass somewhere in the program. Disabled when autosar is off.
+      // `final` precedes the base-clause (see the sealed branch above).
       const isLeaf = !baseClassesNeeded.has(classDef.name);
       const finalKw = ctx.compliance.isEnabled() && isLeaf ? " final" : "";
-      appendSourceLine(ctx, `class ${classDef.name}${inheritanceClause}${finalKw} {`);
+      appendSourceLine(ctx, `class ${classDef.name}${finalKw}${inheritanceClause} {`);
     }
 
     const publicFields = classDef.fields.filter(f => f.visibility === "public");
@@ -407,11 +418,15 @@ export function emitClasses(ctx: EmitterContext): void {
         if (field.isHalInstance) continue; // no C++ declaration — HAL ops carry it
         const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined)}` : "";
         const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType));
-        // `static inline` lets an initialized static field live entirely in the
-        // header (C++17) — required because this transpiler emits class bodies
-        // inline rather than splitting decl/defn across .h/.cpp.
-        const staticPrefix = field.isStatic ? "static inline " : "";
-        appendSourceLine(ctx, `  ${staticPrefix}${renderTypedName(fieldType, field.name)}${initSuffix};`);
+        // Static data member: C++14 allows no in-class initializer for a
+        // mutable (or non-integral-const) static — the initializer moves to
+        // the out-of-class definition (staticFieldDefs, emitted after `};`).
+        if (field.isStatic) {
+          staticFieldDefs.push(`${fieldType} ${classDef.name}::${field.name}${initSuffix};`);
+          appendSourceLine(ctx, `  static ${renderTypedName(fieldType, field.name)};`);
+          continue;
+        }
+        appendSourceLine(ctx, `  ${renderTypedName(fieldType, field.name)}${initSuffix};`);
       }
       if (publicFields.length > 0) appendSourceLine(ctx, "");
 
@@ -503,8 +518,12 @@ export function emitClasses(ctx: EmitterContext): void {
         if (field.isHalInstance) continue; // no C++ declaration — HAL ops carry it
         const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined)}` : "";
         const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType));
-        const staticPrefix = field.isStatic ? "static inline " : "";
-        appendSourceLine(ctx, `  ${staticPrefix}${renderTypedName(fieldType, field.name)}${initSuffix};`);
+        if (field.isStatic) {
+          staticFieldDefs.push(`${fieldType} ${classDef.name}::${field.name}${initSuffix};`);
+          appendSourceLine(ctx, `  static ${renderTypedName(fieldType, field.name)};`);
+          continue;
+        }
+        appendSourceLine(ctx, `  ${renderTypedName(fieldType, field.name)}${initSuffix};`);
       }
       if (privateFields.length > 0) appendSourceLine(ctx, "");
       for (const method of privateMethods) {
@@ -578,8 +597,12 @@ export function emitClasses(ctx: EmitterContext): void {
         if (field.isHalInstance) continue; // no C++ declaration — HAL ops carry it
         const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined)}` : "";
         const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType));
-        const staticPrefix = field.isStatic ? "static inline " : "";
-        appendSourceLine(ctx, `  ${staticPrefix}${renderTypedName(fieldType, field.name)}${initSuffix};`);
+        if (field.isStatic) {
+          staticFieldDefs.push(`${fieldType} ${classDef.name}::${field.name}${initSuffix};`);
+          appendSourceLine(ctx, `  static ${renderTypedName(fieldType, field.name)};`);
+          continue;
+        }
+        appendSourceLine(ctx, `  ${renderTypedName(fieldType, field.name)}${initSuffix};`);
       }
       if (protectedFields.length > 0) appendSourceLine(ctx, "");
       for (const method of protectedMethods) {
@@ -647,6 +670,11 @@ export function emitClasses(ctx: EmitterContext): void {
     }
 
     appendSourceLine(ctx, "};");
+    // Out-of-class definitions for the class's static data members (C++14 —
+    // see staticFieldDefs above).
+    for (const def of staticFieldDefs) {
+      appendSourceLine(ctx, def);
+    }
     emitCommentLines(classDef.trailingComments, "", (line) => appendSourceLine(ctx, line));
     appendSourceLine(ctx, "");
     ctx.currentClassPointerFields = undefined;

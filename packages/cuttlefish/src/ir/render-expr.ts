@@ -71,6 +71,16 @@ export function renderExprAsText(expr: ExpressionIR): string {
       const fieldValues = expr.fields.map((f) => `${renderExprAsText(f.value)}`).join(", ");
       return `{ ${fieldValues} }`;
     case "binary":
+      // JS `/` is real division even for int operands. Text rendered on the
+      // IR side (string-method helper args, e.g. `__tc_toFixed(sum / n, 2)`)
+      // previously baked integer division into the raw text — the emit-side
+      // promotion (expression-renderer renderBinary) never saw it, so the
+      // mean truncated. Mirror the same strategy-gated promotion here.
+      if (expr.operator === "/" && getContext()?.activeStrategy?.promoteDivisionToDouble?.()) {
+        const l = renderExprAsText(expr.left);
+        const r = renderExprAsText(expr.right);
+        return `static_cast<double>(${l}) / static_cast<double>(${r})`;
+      }
       return `${renderExprAsText(expr.left)} ${expr.operator} ${renderExprAsText(expr.right)}`;
     case "unary":
       return `${expr.operator}${renderExprAsText(expr.operand)}`;

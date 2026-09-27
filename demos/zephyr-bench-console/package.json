@@ -1,0 +1,15 @@
+{
+  "name": "zephyr-bench-console",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bench console — a UART command shell over an ADC sampler and a breathing PWM LED (Zephyr)",
+  "type": "module",
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload --monitor"
+  },
+  "dependencies": {
+    "@typecad/hal": "*"
+  }
+}

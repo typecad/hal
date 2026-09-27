@@ -113,6 +113,11 @@ export function emitNamespaces(ctx: EmitterContext): void {
     // Namespace classes
     for (const classDef of ns.classes) {
       emitCommentLines(classDef.leadingComments, "  ", (line) => appendSourceLine(ctx, line));
+      // C++14 static data members: in-class declaration only; the initializer
+      // lives on an out-of-class definition emitted after the class `};`
+      // (inside the namespace, so it defines Ns::Class::name). Mirrors
+      // class-emitter's staticFieldDefs.
+      const staticFieldDefs: string[] = [];
       if (classDef.isAbstract) {
         appendSourceLine(ctx, `  // Abstract class - contains pure virtual methods`);
       }
@@ -153,13 +158,16 @@ export function emitNamespaces(ctx: EmitterContext): void {
         for (const field of publicFields) {
           const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined)}` : "";
           const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType));
-          // Mirror the method-render prefix (line ~159) and the top-level
-          // class-emitter: a static field renders as `static inline` so a
-          // static method's `Cls::field` access resolves. Without this, a
-          // static field on a namespace-nested class silently dropped to an
-          // instance field (namespace stress test Finding 2).
-          const staticPrefix = field.isStatic ? "static inline " : "";
-          appendSourceLine(ctx, `    ${staticPrefix}${renderTypedName(fieldType, field.name)}${initSuffix};`);
+          // A static field stays a static member (a static method's
+          // `Cls::field` access must resolve — namespace stress test Finding
+          // 2), but C++14 allows no in-class initializer: the initializer
+          // moves to the out-of-class definition (staticFieldDefs).
+          if (field.isStatic) {
+            staticFieldDefs.push(`  ${fieldType} ${classDef.name}::${field.name}${initSuffix};`);
+            appendSourceLine(ctx, `    static ${renderTypedName(fieldType, field.name)};`);
+            continue;
+          }
+          appendSourceLine(ctx, `    ${renderTypedName(fieldType, field.name)}${initSuffix};`);
         }
         if (publicFields.length > 0) appendSourceLine(ctx, "");
         for (const method of publicMethods) {
@@ -186,13 +194,16 @@ export function emitNamespaces(ctx: EmitterContext): void {
         for (const field of privateFields) {
           const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined)}` : "";
           const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType));
-          // Mirror the method-render prefix (line ~159) and the top-level
-          // class-emitter: a static field renders as `static inline` so a
-          // static method's `Cls::field` access resolves. Without this, a
-          // static field on a namespace-nested class silently dropped to an
-          // instance field (namespace stress test Finding 2).
-          const staticPrefix = field.isStatic ? "static inline " : "";
-          appendSourceLine(ctx, `    ${staticPrefix}${renderTypedName(fieldType, field.name)}${initSuffix};`);
+          // A static field stays a static member (a static method's
+          // `Cls::field` access must resolve — namespace stress test Finding
+          // 2), but C++14 allows no in-class initializer: the initializer
+          // moves to the out-of-class definition (staticFieldDefs).
+          if (field.isStatic) {
+            staticFieldDefs.push(`  ${fieldType} ${classDef.name}::${field.name}${initSuffix};`);
+            appendSourceLine(ctx, `    static ${renderTypedName(fieldType, field.name)};`);
+            continue;
+          }
+          appendSourceLine(ctx, `    ${renderTypedName(fieldType, field.name)}${initSuffix};`);
         }
         for (const method of privateMethods) {
           const methodParams = renderParameters(method.parameters);
@@ -210,13 +221,16 @@ export function emitNamespaces(ctx: EmitterContext): void {
         for (const field of protectedFields) {
           const initSuffix = field.initializer ? ` = ${renderExpression(field.initializer, undefined)}` : "";
           const fieldType = strategy.overrideClassFieldType(field.name, normalizeCppTypeForTarget(field.cppType));
-          // Mirror the method-render prefix (line ~159) and the top-level
-          // class-emitter: a static field renders as `static inline` so a
-          // static method's `Cls::field` access resolves. Without this, a
-          // static field on a namespace-nested class silently dropped to an
-          // instance field (namespace stress test Finding 2).
-          const staticPrefix = field.isStatic ? "static inline " : "";
-          appendSourceLine(ctx, `    ${staticPrefix}${renderTypedName(fieldType, field.name)}${initSuffix};`);
+          // A static field stays a static member (a static method's
+          // `Cls::field` access must resolve — namespace stress test Finding
+          // 2), but C++14 allows no in-class initializer: the initializer
+          // moves to the out-of-class definition (staticFieldDefs).
+          if (field.isStatic) {
+            staticFieldDefs.push(`  ${fieldType} ${classDef.name}::${field.name}${initSuffix};`);
+            appendSourceLine(ctx, `    static ${renderTypedName(fieldType, field.name)};`);
+            continue;
+          }
+          appendSourceLine(ctx, `    ${renderTypedName(fieldType, field.name)}${initSuffix};`);
         }
         for (const method of protectedMethods) {
           const methodParams = renderParameters(method.parameters);
@@ -230,6 +244,9 @@ export function emitNamespaces(ctx: EmitterContext): void {
       }
 
       appendSourceLine(ctx, "  };");
+      for (const def of staticFieldDefs) {
+        appendSourceLine(ctx, def);
+      }
       emitCommentLines(classDef.trailingComments, "  ", (line) => appendSourceLine(ctx, line));
       appendSourceLine(ctx, "");
     }

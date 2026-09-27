@@ -15,7 +15,7 @@ import { escapeCppKeyword, escapeCppStringLiteral } from "../utils/strings.js";
 import { accessorGetterName } from "./utils/cpp-helpers.js";
 import { INTEGRAL_CPP_TYPE_RE } from "./utils/cpp-helpers.js";
 import { renderPeripheralProperty } from "../mapping/peripheral-names.js";
-import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsStringLike, parsedElementString, parsedIsVector, needsCStrForStringLike } from "../api/shared/cpp-type-ir.js";
+import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsStringLike, parsedElementString, parsedIsVector, needsCStrForStringLike, elementOf } from "../api/shared/cpp-type-ir.js";
 import { cppTypeForHalOp } from "./utils/hal-op-cpp-type.js";
 
 /**
@@ -173,6 +173,23 @@ export class ExpressionRenderer {
   }
 
   /**
+   * Mint a snprintf accumulation buffer for a statement-level string rebind
+   * (the `s += part` lowering). Distinct from buildSnprintfFromParts' buffers:
+   * the accumulated POINTER outlives the statement (a loop's later
+   * iterations, a read after the loop, an async task's next run() slice), so
+   * the buffer is `static` — the same fix the return path applies via
+   * renderWithPrelude. Unique per call site, so two sites never alias.
+   */
+  mintStaticStringBuffer(format: string, args: string[], capacity: number): string {
+    const bufferName = `__cuttlefish_str_${++this._snprintfCounter.value}`;
+    this._preludeLines.push(
+      `static char ${bufferName}[${capacity}];`,
+      `snprintf(${bufferName}, sizeof(${bufferName}), "${format}"${args.length > 0 ? `, ${args.join(", ")}` : ""});`,
+    );
+    return bufferName;
+  }
+
+  /**
    * Renders an expression IR node to a C++ string.
    * 
    * @param expr The expression to render
@@ -205,12 +222,17 @@ export class ExpressionRenderer {
         // Float-typed literals carry the f suffix; an explicit double stamp
         // suppresses it (a `double x = 0.019` must not silently round
         // through float precision). Unstamped fractional literals keep the
-        // historical float-suffixed default.
-        if (expr.cppType === "float" || (expr.cppType !== "double" && !Number.isInteger(expr.value))) {
-          const str = `${expr.value}`;
-          rendered = str.includes('.') || str.includes('e') || str.includes('E')
-            ? `${str}f`
-            : `${str}.0f`;
+        // historical float-suffixed default — UNLESS the literal carries more
+        // significant digits than float precision holds (Math.PI's
+        // 3.141592653589793f silently rounded through float and tripped
+        // -Wdouble-promotion); those stay double.
+        const numStr = `${expr.value}`;
+        const floatSafe = numStr.replace(/[^0-9]/g, "").replace(/^0+/, "").length <= 7;
+        if (expr.cppType === "float"
+          || (expr.cppType !== "double" && !Number.isInteger(expr.value) && floatSafe)) {
+          rendered = numStr.includes('.') || numStr.includes('e') || numStr.includes('E')
+            ? `${numStr}f`
+            : `${numStr}.0f`;
           break;
         }
         rendered = `${expr.value}`;
@@ -467,6 +489,13 @@ export class ExpressionRenderer {
         // is a real std::string variable keeps the std::string widening.
         const bothStringLiterals = expr.whenTrue.kind === "string" && expr.whenFalse.kind === "string";
         if (bothStringLiterals) return "const char*";
+        // A std::map value read in either branch (`m.get(k)` lowers to raw
+        // `m.at(k)`) widens the ternary to double — JS Map values are Numbers.
+        // Without this, `(m.has(k) ? m.get(k) : 0)` inferred int from the
+        // literal branch and snprintf'd a double through %d.
+        const isMapValueRead = (e: ExpressionIR): boolean =>
+          e.kind === "raw" && /[.>](?:at|get)\([^()]*\)\s*$/.test(e.value.trim());
+        if (isMapValueRead(expr.whenTrue) || isMapValueRead(expr.whenFalse)) return "double";
         const whenTrue = this.inferExpressionCppType(expr.whenTrue, knownVariableTypes);
         const whenFalse = this.inferExpressionCppType(expr.whenFalse, knownVariableTypes);
         if (whenTrue && whenFalse && whenTrue === whenFalse) return whenTrue;
@@ -531,7 +560,7 @@ export class ExpressionRenderer {
       case "array":
         return `std::vector<${expr.elementType}>`;
       case "method-call": {
-        const helper = expr.callee.match(/^__tc_(?:toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|repeat|jsonStringify)\b/);
+        const helper = expr.callee.match(/^__tc_(?:toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|padStart_default|padEnd_default|repeat|jsonStringify|toFixed)\b/);
         if (helper) return "std::string";
         if (/^__tc_(?:startsWith|endsWith|includes)\b/.test(expr.callee)) return "bool";
         if (/^__tc_(?:charCodeAt|indexOf|lastIndexOf)\b/.test(expr.callee)) return "int";
@@ -563,7 +592,7 @@ export class ExpressionRenderer {
         return this.knownFunctionReturnTypes?.get(expr.callee);
       }
       case "raw": {
-        if (/^std::string\(/.test(expr.value) || /^__tc_(?:toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|repeat|jsonStringify)\b/.test(expr.value)) {
+        if (/^std::string\(/.test(expr.value) || /^__tc_(?:toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|padStart_default|padEnd_default|repeat|jsonStringify|toFixed)\b/.test(expr.value)) {
           return "std::string";
         }
         if (/^__tc_(?:startsWith|endsWith|includes)\b/.test(expr.value)) return "bool";
@@ -868,12 +897,18 @@ export class ExpressionRenderer {
     }
     switch (expr.kind) {
       case "number": {
-        if (expr.cppType === "float" || !Number.isInteger(expr.value)) {
-          const str = `${expr.value}`;
-          const rendered = str.includes('.') || str.includes('e') || str.includes('E')
-            ? `${str}f`
-            : `${str}.0f`;
+        const numStr = `${expr.value}`;
+        // Float-suffix only when float-precision-safe (see the number render
+        // case above — >7 significant digits stay double).
+        const floatSafe = numStr.replace(/[^0-9]/g, "").replace(/^0+/, "").length <= 7;
+        if (expr.cppType === "float" || (!Number.isInteger(expr.value) && floatSafe)) {
+          const rendered = numStr.includes('.') || numStr.includes('e') || numStr.includes('E')
+            ? `${numStr}f`
+            : `${numStr}.0f`;
           return { format: "%.15g", arg: rendered, estimatedLength: 16 };
+        }
+        if (!Number.isInteger(expr.value)) {
+          return { format: "%.15g", arg: numStr, estimatedLength: 16 };
         }
         return { format: "%d", arg: `${expr.value}`, estimatedLength: 12 };
       }
@@ -971,7 +1006,7 @@ export class ExpressionRenderer {
         // member access on a non-class type (avr-g++: "request for member
         // 'c_str' in '__tc_trim(...)', which is of non-class type 'const
         // char*'"). Demo #35 Finding A.
-        if (/^__tc_(toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|repeat|jsonStringify)\b/.test(rendered)) {
+        if (/^__tc_(toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|padStart_default|padEnd_default|repeat|jsonStringify|toFixed)\b/.test(rendered)) {
           const needsCStr = this.strategy.needsStdString();
           return { format: "%s", arg: needsCStr ? `${rendered}.c_str()` : rendered, estimatedLength: 32 };
         }
@@ -1011,6 +1046,55 @@ export class ExpressionRenderer {
         // Fallback for expressions that render as string-like pointers
         if (this.stringVarNames?.has(rendered)) {
           return { format: "%s", arg: rendered, estimatedLength: 32 };
+        }
+        // A user-class method call (`obj->name(...)`, `obj.name(...)`)
+        // resolves its return type from the bare-name registry (setup.ts
+        // seeds class method and getter returns). `w.describe()` returning
+        // const char* fell through to the %d default — -Wformat= pointer-as-
+        // int garbage on device. (Guarded by has() so a bare free-function
+        // call of the same name is unaffected — those match earlier branches.)
+        const methodMatch = rendered.match(/[.>](\w+)\(\s*\)\s*$/);
+        if (methodMatch && this.knownFunctionReturnTypes?.has(methodMatch[1])) {
+          const ret = this.knownFunctionReturnTypes.get(methodMatch[1])!;
+          if (this.isStringLikeCppType(ret)) {
+            const normalized = this.strategy.normalizeCppType(ret);
+            return { format: "%s", arg: normalized === "__tc_str_ptr" ? `${rendered}.c_str()` : rendered, estimatedLength: 128 };
+          }
+          if (ret === "float" || ret === "double") {
+            return { format: "%.15g", arg: rendered, estimatedLength: 16 };
+          }
+          if (ret === "bool") {
+            return { format: "%s", arg: `(${rendered} ? "true" : "false")`, estimatedLength: 5 };
+          }
+        }
+        // A std::map value read (`m.get(k)` lowers to `m.at(k)` / `m[k]`)
+        // holds a JS number → %g, never the %d default. (`count`/`has` are
+        // integer/bool and keep the default.)
+        if (/[.>](?:at|get)\([^()]*\)\s*$/.test(rendered)) {
+          return { format: "%.15g", arg: rendered, estimatedLength: 16 };
+        }
+        // Element access that arrived as raw text (`args[0]`, `s[i]` — a
+        // template-literal part) resolves its base's ELEMENT type from the
+        // known variable types: a string element is %s (the %d default
+        // printed the pointer as an integer), a number element %g.
+        if (expr.kind === "raw") {
+          const elemMatch = rendered.match(/^([A-Za-z_]\w*)\s*\[/);
+          if (elemMatch) {
+            const baseType = effectiveKnownVariableTypes?.get(elemMatch[1])?.cppType
+              ?? this.knownVariableTypes?.get(elemMatch[1])?.cppType;
+            if (baseType) {
+              const elemIr = elementOf(parseCppType(baseType));
+              if (elemIr) {
+                const elemType = renderCppType(elemIr);
+                if (this.isStringLikeCppType(elemType)) {
+                  return { format: "%s", arg: rendered, estimatedLength: 128 };
+                }
+                if (elemType === "float" || elemType === "double") {
+                  return { format: "%.15g", arg: rendered, estimatedLength: 16 };
+                }
+              }
+            }
+          }
         }
         // Default to %d for other complex expressions (mostly numeric)
         return { format: "%d", arg: rendered, estimatedLength: 12 };

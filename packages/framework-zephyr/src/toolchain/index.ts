@@ -826,7 +826,7 @@ export const Toolchain = {
       // only i2c reference a sensor-only program carries).
       usesI2c: uses('i2c_') || uses('__tc_i2c') || sensorParts.length > 0,
       usesSensor: uses('sensor_') || sensorParts.length > 0,
-      usesFloatFormat: /%[-0-9.]*[eEfFgG]/.test(src),
+      usesFloatFormat: /%[-0-9.*]*[eEfFgG]/.test(src) || src.includes('__tc_toFixed('),
       sensorParts,
       spiTargets: spiTargetParts,
       usesSpi: uses('spi_') || uses('__tc_spi') || spiTargetParts.length > 0,
@@ -840,7 +840,10 @@ export const Toolchain = {
       usesStrip: uses('led_strip'),
       strips: scanStrips(src),
       usesClock: uses('__tc_rtc'),
-      usesCan: uses('can_'),
+      // __tc_can, not 'can_' — the WiFi scan shim's own identifiers
+      // (scan_count, scan_results) contain 'can_' and would enable the
+      // can@ controller for every WiFi program.
+      usesCan: uses('__tc_can'),
       canLoopback: uses('CAN_MODE_LOOPBACK'),
       usesI2s: uses('i2s_'),
       clockShimCounter: chip.hwtimer && chip.hwtimer.controllers.length > 0
@@ -1041,7 +1044,7 @@ export const Toolchain = {
         // constructed sensor is also a bus user (see scanSensorParts).
         usesI2c: uses('i2c_') || uses('__tc_i2c') || sensorParts.length > 0,
         usesSensor: uses('sensor_') || sensorParts.length > 0,
-        usesFloatFormat: /%[-0-9.]*[eEfFgG]/.test(src),
+        usesFloatFormat: /%[-0-9.*]*[eEfFgG]/.test(src) || src.includes('__tc_toFixed('),
         sensorParts,
         spiTargets: spiTargetParts,
         usesSpi: uses('spi_') || uses('__tc_spi') || spiTargetParts.length > 0,
@@ -1061,7 +1064,10 @@ export const Toolchain = {
       matrix: scanMatrix(src),
       usesPower: uses('sys_poweroff'),
       usesClock: uses('__tc_rtc'),
-      usesCan: uses('can_'),
+      // __tc_can, not 'can_' — the WiFi scan shim's own identifiers
+      // (scan_count, scan_results) contain 'can_' and would enable the
+      // can@ controller for every WiFi program.
+      usesCan: uses('__tc_can'),
       canLoopback: uses('CAN_MODE_LOOPBACK'),
       usesI2s: uses('i2s_'),
       clockShimCounter: chip.hwtimer && chip.hwtimer.controllers.length > 0

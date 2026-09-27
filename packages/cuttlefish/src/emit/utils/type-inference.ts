@@ -565,32 +565,62 @@ export function statementRequiresRuntime(statement: StatementIR): boolean {
  * @returns Map of variable names to their pointer types
  */
 export function collectPointerVarTypes(
-  statements: StatementIR[], 
+  statements: StatementIR[],
   classNameMap?: Map<string, string>
 ): Map<string, string> {
   const pointerVarTypes = new Map<string, string>();
-  
-  for (const statement of statements) {
-    if (statement.kind === "var_decl" && statement.initializer) {
-      const declaredType = statement.cppType;
-      if (parsedIsPointer(declaredType)) {
-        pointerVarTypes.set(statement.name, declaredType);
-        continue;
+
+  const recordNewInitializer = (name: string, init: ExpressionIR | undefined): void => {
+    if (!init) return;
+    // `new X(...)` lowers to a raw text node (`new X(args)`).
+    if (init.kind === "raw" && init.value.startsWith("new ")) {
+      const match = init.value.match(/^new\s+(\w+)/);
+      if (match) {
+        const simpleName = match[1];
+        // Use fully qualified name if available (for namespaced classes)
+        const fullName = classNameMap?.get(simpleName) ?? simpleName;
+        pointerVarTypes.set(name, `${fullName}*`);
       }
-      const init = statement.initializer;
-      // Check for raw expression containing 'new'
-      if (init.kind === "raw" && init.value.startsWith("new ")) {
-        // Extract class name from 'new ClassName(...)'
-        const match = init.value.match(/^new\s+(\w+)/);
-        if (match) {
-          const simpleName = match[1];
-          // Use fully qualified name if available (for namespaced classes)
-          const fullName = classNameMap?.get(simpleName) ?? simpleName;
-          pointerVarTypes.set(statement.name, `${fullName}*`);
+    }
+  };
+
+  const walk = (stmts: StatementIR[]): void => {
+    for (const statement of stmts) {
+      if (statement.kind === "var_decl" && statement.initializer) {
+        const declaredType = statement.cppType;
+        if (parsedIsPointer(declaredType)) {
+          pointerVarTypes.set(statement.name, declaredType);
+        } else {
+          recordNewInitializer(statement.name, statement.initializer);
+        }
+      }
+      // A promoted runtime var (referenced from a function, hoisted to file
+      // scope by top-level-prep) has its var_decl REPLACED by an assign —
+      // `stats = new SampleStats(64)` — so the var_decl arm never sees it.
+      // Without this, member access on it inside a class method or function
+      // renders `stats.count()` (dot on a pointer) and fails g++.
+      if (statement.kind === "assign" && /^[A-Za-z_$][\w$]*$/.test(statement.target)) {
+        recordNewInitializer(statement.target, statement.value);
+      }
+      // Nested bodies (if/while/for/for-of/case arms) declare and assign too.
+      const nestedBodies = [
+        (statement as { body?: unknown }).body,
+        (statement as { thenBranch?: unknown }).thenBranch,
+        (statement as { elseBranch?: unknown }).elseBranch,
+      ];
+      for (const nested of nestedBodies) {
+        if (Array.isArray(nested)) walk(nested as StatementIR[]);
+      }
+      const cases = (statement as { cases?: unknown }).cases;
+      if (Array.isArray(cases)) {
+        for (const c of cases as { body?: unknown }[]) {
+          if (Array.isArray(c.body)) walk(c.body as StatementIR[]);
         }
       }
     }
-  }
-  
+  };
+
+  walk(statements);
+  if (process.env.CF_PTR_DEBUG) console.error('[CF_PTR_DEBUG]', JSON.stringify([...pointerVarTypes.entries()]));
   return pointerVarTypes;
 }

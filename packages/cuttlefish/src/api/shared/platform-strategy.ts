@@ -408,6 +408,15 @@ export interface PlatformBuildStrategy {
 
   /** Standard library support for the given architecture. */
   getStdLibSupport(architecture?: string): StdLibSupport;
+
+  /**
+   * Whether the target's C++ standard covers std::variant (C++17). Distinct
+   * from stdlibSupport.hasVector: a target can carry full libstdc++ headers
+   * yet pin C++14 (Zephyr's CONFIG_STD_CPP14), where <variant> exists but
+   * does not compile. Optional — undefined means "supported" (hosted/managed
+   * targets default to a modern standard).
+   */
+  supportsStdVariant?(): boolean;
 }
 
 // ---------------------------------------------------------------------------

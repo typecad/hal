@@ -55,6 +55,31 @@ export class CompilationContext {
   activeStringVars = new Set<string>();
   mutableArrayVars = new Set<string>();
   arrayLiteralSizes = new Map<string, number>();
+  // Static push/unshift site count per array var (for StaticArray capacity
+  // sizing) — file-scoped like mutableArrayVars. A var pushed from inside a
+  // loop body or callback is ALSO in unboundedArrayVars: its push count is a
+  // per-iteration count, not a total, so the capacity cannot be sized from
+  // it (the promotion must fall back to std::vector where the target has it).
+  arrayPushCounts = new Map<string, number>();
+  unboundedArrayVars = new Set<string>();
+  // Array-literal vars declared at MODULE scope. A module array is a
+  // cross-call accumulator (any function may run any number of times), so
+  // its growth is never statically bounded — it lowers to std::vector where
+  // the target has one, never to a sized __tc_StaticArray. File-scoped.
+  moduleArrayLiteralVars = new Set<string>();
+  // Array vars that receive a mutating array-method call (.push/.fill/...)
+  // from INSIDE a function body (as opposed to module top level). For a
+  // module-level array literal this is the signal that its declaration will
+  // NOT promote to StaticArray: function bodies prescan after the module
+  // statement list processes, so the declaration never sees the mutation
+  // and stays std::vector. File-scoped.
+  functionScopeMutatedArrays = new Set<string>();
+  // Loop variables bound by a for-of over a std::map (`for (const e of m)`).
+  // Each iteration element is a std::pair — `e[0]`/`e[1]` lower to
+  // `.first`/`.second`. Function-scoped (cleared per function like the other
+  // active* sets) — the for-of lowering registers the name before the body
+  // lowers, and the element-access lowering consults the set.
+  mapEntryVarNames = new Set<string>();
   filteredArrayLengthVars = new Map<string, string>();
   activeNamespaceNames = new Set<string>();
   topLevelClassNames = new Set<string>();
@@ -259,6 +284,11 @@ export const activeArrayLiteralVars = createSetProxy(ctx => ctx.activeArrayLiter
 export const activeStringVars = createSetProxy(ctx => ctx.activeStringVars);
 export const mutableArrayVars = createSetProxy(ctx => ctx.mutableArrayVars);
 export const arrayLiteralSizes = createMapProxy(ctx => ctx.arrayLiteralSizes);
+export const arrayPushCounts = createMapProxy(ctx => ctx.arrayPushCounts);
+export const unboundedArrayVars = createSetProxy(ctx => ctx.unboundedArrayVars);
+export const moduleArrayLiteralVars = createSetProxy(ctx => ctx.moduleArrayLiteralVars);
+export const functionScopeMutatedArrays = createSetProxy(ctx => ctx.functionScopeMutatedArrays);
+export const mapEntryVarNames = createSetProxy(ctx => ctx.mapEntryVarNames);
 export const filteredArrayLengthVars = createMapProxy(ctx => ctx.filteredArrayLengthVars);
 export const activeNamespaceNames = createSetProxy(ctx => ctx.activeNamespaceNames);
 export const topLevelClassNames = createSetProxy(ctx => ctx.topLevelClassNames);
@@ -484,6 +514,12 @@ export function resetFunctionScopeState(): void {
   mutableArrayVars.clear();
   arrayLiteralSizes.clear();
   filteredArrayLengthVars.clear();
+  // mapEntryVarNames is function-scoped: a same-named loop var in another
+  // function must not inherit pair semantics. (arrayPushCounts and
+  // unboundedArrayVars are deliberately NOT cleared — they are file-level
+  // sizing facts, and cross-function staleness only ever over-sizes or routes
+  // to std::vector, both safe.)
+  mapEntryVarNames.clear();
   // Clear the function-scoped portion of the current IrTypeScope (locals) and
   // re-seed it from classFields so `this->field` lookups keep resolving in the
   // next method. Mirrors the old behavior where resetFunctionScopeState copied

@@ -752,10 +752,14 @@ export function typeAliasDeclarationToIR(
     if (variantStructs) {
       const variantNames = variantStructs.map(v => v.name);
       discriminatedUnionVariantNames.set(node.name.text, variantNames);
-      // std::variant is C++17 — embedded targets compile C++14. Fail loudly
-      // instead of shipping a header the toolchain rejects.
+      // std::variant is C++17 — targets that pin C++14 (Zephyr's
+      // CONFIG_STD_CPP14) reject it even with full libstdc++ headers. Fail
+      // loudly instead of shipping a header the toolchain rejects. The
+      // signal is the strategy's standard-level declaration, NOT
+      // stdlibSupport.hasVector (a target can carry <vector> and still pin
+      // C++14).
       const strategy = getContext().activeStrategy;
-      if (strategy?.getStdLibSupport && strategy.getStdLibSupport().hasVector === false) {
+      if (strategy?.supportsStdVariant && strategy.supportsStdVariant() === false) {
         getContext().diagnostics?.push(makeDiagnostic(
           sourceText,
           node.pos,

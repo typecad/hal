@@ -5,6 +5,7 @@ import { writeText, readText } from "../../utils/fs.js";
 import { makeGeneratedMap, writeSourceMap } from "../../mapping/source-map.js";
 import { dedupe, resolveTranspiledModuleInclude } from "../utils/index.js";
 import { appendHeaderLine } from "./line-appender.js";
+import { escapeCppKeyword } from "../../utils/strings.js";
 import type { EmitterContext } from "./emitter-context.js";
 import { runSelfCheck } from "../compliance/rule-engine.js";
 import { renderRegistryJson } from "../compliance/deviation-writer.js";
@@ -121,6 +122,34 @@ export function emitPreamble(ctx: EmitterContext): void {
     appendSourceLineLocal(ctx, "};");
     appendSourceLineLocal(ctx, "");
   }
+}
+
+/**
+ * Early `extern` declarations for PROMOTED runtime vars (step-8
+ * emitPostClassDeclarations forward-declares them with `T name = {};`).
+ * Task-class bodies (step 6.6) and user-class inline methods (step 7, split
+ * mode → the header) reference these names, and in TS source order the
+ * declaration may legitimately come AFTER the class that uses it — TS allows
+ * it because methods run post-module-init. C++ does not: the reference must
+ * see a declaration first. Emit `extern T name;` into BOTH the source lines
+ * (covering the task classes) and the header lines (covering the user
+ * classes' inline bodies, which the entry .cpp includes first). Extern +
+ * later definition with initializer is valid C++; a duplicate extern is too.
+ */
+export function emitPromotedVarExterns(ctx: EmitterContext): void {
+  if (ctx.promotedVarDecls.size === 0) return;
+  const { strategy } = ctx;
+  const platformReservedNames = strategy.reservedNames();
+  const autosarOn = ctx.compliance.isEnabled() && ctx.compliance.isBanned("A3-9-1");
+  for (const [varName, info] of ctx.promotedVarDecls) {
+    const externType = autosarOn && info.cppType === "int"
+      ? strategy.defaultNumericType(ctx.compliance)
+      : strategy.normalizeCppType(info.cppType);
+    const line = `extern ${externType} ${escapeCppKeyword(varName, platformReservedNames)};`;
+    appendSourceLineLocal(ctx, line);
+    appendHeaderLine(ctx, line);
+  }
+  appendSourceLineLocal(ctx, "");
 }
 
 /**

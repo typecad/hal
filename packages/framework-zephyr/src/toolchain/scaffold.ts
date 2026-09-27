@@ -135,7 +135,9 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     matrix: scanMatrix(src),
     usesPower: uses('sys_poweroff'),
     usesClock: uses('__tc_rtc'),
-    usesCan: uses('can_'),
+    // __tc_can, not 'can_' — the WiFi scan shim's own identifiers contain
+    // 'can_' and would enable the can@ controller for every WiFi program.
+    usesCan: uses('__tc_can'),
     canLoopback: uses('CAN_MODE_LOOPBACK'),
     usesI2s: uses('i2s_'),
     // No chip facts at scaffold time — the prepare overlay omits the shim;
@@ -154,7 +156,7 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     // DT-bound sensor parts: the __tc_sensor_* state references and the
     // sensor_sample_fetch/sensor_channel_get calls both carry the token.
     usesSensor: uses('sensor_') || uses('__tc_sensor'),
-    usesFloatFormat: /%[-0-9.]*[eEfFgG]/.test(src),
+    usesFloatFormat: /%[-0-9.*]*[eEfFgG]/.test(src) || src.includes('__tc_toFixed('),
     usesSpi: uses('spi_') || uses('__tc_spi'),
     usesUart: uses('uart_') || uses('__tc_uart'),
     // USB CDC serial: every usb.* lowering calls into the __tc_usb<N>_* shim

@@ -2,7 +2,7 @@
 import { Diagnostic } from "../types.js";
 import { ExpressionIR, StatementIR } from "../api/index.js";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils.js";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, requiredIncludes, throwExpressionDepth, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions, getContext, getCurrentBoardConstants, inConditionContext, enterConditionContext, exitConditionContext } from "./build-ir-state.js";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, requiredIncludes, throwExpressionDepth, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions, getContext, getCurrentBoardConstants, inConditionContext, enterConditionContext, exitConditionContext, mapEntryVarNames } from "./build-ir-state.js";
 import { getCurrentIrTypeScope, type IrTypeScope } from "./symbol-types.js";
 import { renderExprAsText } from "./render-expr.js";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir.js";
@@ -523,7 +523,16 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       if (activeCArrayVars.has(receiverNode.text) || isRawCArrayType) {
         return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
       }
-      if (varType === "std::string") {
+      // Normalize through the active strategy before the string-shape
+      // comparisons: the IR scope records the PRE-normalization type
+      // (`std::string` for a `string` binding), while a strategy like Zephyr
+      // emits strings as `const char*` (normalizeCppType maps one to the
+      // other). Without this, `s.length` on a string PARAMETER emitted
+      // `s.length()` against an emitted `const char* s` — a hard g++ error
+      // ("request for member 'length' in ... non-class type 'const char*'").
+      const strategyNorm = (t: string | undefined): string | undefined =>
+        t === undefined ? undefined : (getContext().activeStrategy?.normalizeCppType?.(t) ?? t);
+      if (strategyNorm(varType) === "std::string") {
         // Demo #30 Finding B — cast `std::string::length()` to `long long` so
         // it matches the array/vector `.size()` lowering (also `long long`)
         // AND the snprintf `%lld` format specifier. `std::string::length()`
@@ -557,12 +566,12 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         }
         return `static_cast<long long>(${safeText}.size())`;
       }
-      if (varType === "const char*" || varType === "char*") {
-        return `strlen(${safeText})`;
+      if (strategyNorm(varType) === "const char*" || strategyNorm(varType) === "char*") {
+        return `static_cast<long long>(strlen(${safeText}))`;
       }
       // Unresolved C-string variables (resolved const char*/char*/__tc_str_ptr) → strlen()
       if (activeStringVars.has(receiverNode.text)) {
-        return `strlen(${safeText})`;
+        return `static_cast<long long>(strlen(${safeText}))`;
       }
     }
     // Handle this->field.length — route by the field's resolved C++ type. Every
@@ -573,14 +582,20 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     // invalid C++ that g++ rejects (or, worse, silently miscompiles). Demo #22
     // adjacency probe surfaced this pre-existing bug.
     if (ts.isPropertyAccessExpression(receiverNode) && receiverNode.expression.kind === ts.SyntaxKind.ThisKeyword) {
-      const fieldType = getCurrentIrTypeScope()?.locals.get(`this->${receiverNode.name.text}`);
-      if (fieldType === "std::string") return `static_cast<long long>(${safeText}.length())`;
-      if (fieldType === "const char*" || fieldType === "char*") return `strlen(${safeText})`;
+      const fieldTypeRaw = getCurrentIrTypeScope()?.locals.get(`this->${receiverNode.name.text}`);
+      // Same strategy normalization as the bare-identifier path above: a
+      // `std::string`-typed field on a const char* string target must lower
+      // to strlen, not the .length() member.
+      const normType = fieldTypeRaw !== undefined
+        ? (getContext().activeStrategy?.normalizeCppType?.(fieldTypeRaw) ?? fieldTypeRaw)
+        : undefined;
+      if (normType === "std::string") return `static_cast<long long>(${safeText}.length())`;
+      if (normType === "const char*" || normType === "char*") return `strlen(${safeText})`;
       // Container-like field (.size() applies). Covers std::vector, std::map,
       // std::set, and both __tc_StaticArray<T,N> and the bare StaticArray<T,N>
       // spelling (the latter parses as a named template, so check explicitly).
-      if (fieldType) {
-        const ir = parseCppType(fieldType);
+      if (normType) {
+        const ir = parseCppType(normType);
         const isBareStaticArray = ir.kind === "named" && ir.name === "StaticArray";
         if (isContainer(ir) || isBareStaticArray) {
           return `static_cast<long long>(${safeText}.size())`;
@@ -1661,7 +1676,12 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         && ts.isIdentifier(receiver)
         && !(() => {
           const strat = getContext().activeStrategy;
-          return !strat?.requiresLoopFunction() && (strat?.getStdLibSupport?.().hasVector ?? true);
+          // The "hosted" composite — same conjuncts as array-methods.ts:
+          // hasVector alone is NOT the signal (Zephyr truthfully reports it
+          // with full libstdc++ yet lowers mutable arrays to StaticArray).
+          return !strat?.requiresLoopFunction()
+            && strat?.promotesArrayLiteralsToStaticArray?.() === false
+            && (strat?.getStdLibSupport?.().hasVector ?? true);
         })()
       ) {
         const receiverType = getCurrentIrTypeScope()?.locals.get(receiver.text)
@@ -2146,7 +2166,14 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     // pick a C++ element type, so fall through to the unsupported-ctor path
     // (gated by feature-registry) rather than guess.
     if (baseCtorName === "Array" && expr.typeArguments && expr.typeArguments.length === 1) {
-      const elemCpp = typeNodeToCppType(expr.typeArguments[0], undefined);
+      // The element type flows through the strategy's normalizeCppType: on a
+      // const char* string target `string` elements must be const char* to
+      // match the emitted variable's (normalized) type — a
+      // std::vector<std::string>(n) initializer against a
+      // std::vector<const char*> variable is a hard g++ "no match for
+      // operator=" error.
+      const elemCpp = getContext().activeStrategy?.normalizeCppType?.(typeNodeToCppType(expr.typeArguments[0], undefined))
+        ?? typeNodeToCppType(expr.typeArguments[0], undefined);
       const args = expr.arguments ?? [];
       if (args.length === 0) {
         return { kind: "raw", value: `std::vector<${elemCpp}>()` };
@@ -2476,6 +2503,13 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       }
       if (typeof objectType === "string" && parsedIsTuple(objectType)) {
         return { kind: "tuple-access", object, index: index.value };
+      }
+      // A for-of loop variable over a std::map holds a std::pair — indexing
+      // lowers to .first/.second (a pair has no operator[]). Registered by
+      // the for-of lowering before the body lowers; see mapEntryVarNames.
+      if (ts.isIdentifier(expr.expression) && mapEntryVarNames.has(expr.expression.text)
+        && (index.value === 0 || index.value === 1)) {
+        return { kind: "property-access", object, property: index.value === 0 ? "first" : "second" };
       }
       return { kind: "element-access", object, index, elementType };
     }

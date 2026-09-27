@@ -21,6 +21,10 @@ import {
   activeStringVars,
   mutableArrayVars,
   arrayLiteralSizes,
+  arrayPushCounts,
+  unboundedArrayVars,
+  moduleArrayLiteralVars,
+  functionScopeMutatedArrays,
   filteredArrayLengthVars,
   halInstances,
   nestedClassAliases,
@@ -33,6 +37,12 @@ import { getCurrentIrTypeScope, setScopeLocalType } from "../symbol-types.js";
 import { renderExprAsText } from "../render-expr.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { buildInlineForLoop } from "./array-methods.js";
+
+// Headroom added to a StaticArray whose .push() sites are loop-nested (only
+// on targets without std::vector — with vectors the array routes there
+// instead). Large enough for a typical bounded parse/collect loop; the
+// diagnostic names the exact capacity so a tighter program can size to it.
+const UNBOUNDED_ARRAY_DEFAULT_CAPACITY = 16;
 import {
   isKnownHALClass,
   getCtorIncludes,
@@ -1177,6 +1187,20 @@ export function variableStatementToIR(
     );
 
     let varCppType: string = declarationType.resolvedType === "void" ? "auto" : declarationType.resolvedType;
+    // A local initialized from a lowered string-method helper
+    // (`const s = v.toFixed(0)` → raw `__tc_toFixed(v, 0)`) holds a string:
+    // type it std::string so `.length` lowers to strlen (the strategy
+    // normalizes the declaration to const char* where applicable) instead
+    // of resolving `auto` through the raw-C-array sizeof branch —
+    // `sizeof(pointer)/sizeof(char)` was both a -Wsizeof-pointer-div warning
+    // and a wrong length value.
+    if (varCppType === "auto" && loweredDeclaration.initializer
+      && loweredDeclaration.initializer.kind === "raw") {
+      const initText = (loweredDeclaration.initializer as { value: string }).value.trim();
+      if (/^__tc_(?:toFixed|toUpperCase|toLowerCase|trim|replace|charAt|substring\d?|slice\d?|padStart(?:_default)?|padEnd(?:_default)?|repeat|num_radix)\(/.test(initText)) {
+        varCppType = "std::string";
+      }
+    }
 
     // A string enum lowers to a C++ namespace (not a type), so a variable
     // whose declared TS type is a string enum must use `const char*` as its
@@ -1289,7 +1313,16 @@ export function variableStatementToIR(
           || actualInitializer.elements.some(
             (e): e is ts.Expression => !ts.isSpreadElement(e) && ts.isObjectLiteralExpression(e),
           );
-        const shouldPromote = mutableArrayVars.has(varName) || isStructElement;
+        // A MODULE-level literal mutated from inside a function/method body
+        // must NOT promote: the function runs per-call (unbounded growth), and
+        // the call sites already lower through the std::vector path (see the
+        // willPromoteToStaticArray mirror in array-methods.ts). bench-console
+        // split exactly here — a class-method element-assign promoted the
+        // declaration to __tc_StaticArray while bump()'s .push lowered to
+        // push_back on it.
+        const moduleFnMutated = moduleArrayLiteralVars.has(varName)
+          && functionScopeMutatedArrays.has(varName);
+        const shouldPromote = (mutableArrayVars.has(varName) && !moduleFnMutated) || isStructElement;
 
         if (shouldPromote) {
           // When the element type is a shadow struct (anonymous object), emit
@@ -1318,7 +1351,53 @@ export function variableStatementToIR(
               });
             }
           }
-          const capacity = elements.length + 2;
+          // Capacity sizing (demo #35 scope: `const vals: number[] = []` then
+          // a loop of .push() lowered to __tc_StaticArray<T, 2> — capacity
+          // hard-bound to the empty literal — and push() silently DROPS every
+          // element past N. Worst-class bug: no diagnostic, wrong data.)
+          // Size from the literal plus the statically-counted non-loop push
+          // sites. A push site inside a loop body or callback runs
+          // per-iteration, so no static capacity is sound: fall back to
+          // std::vector when the target has one, else size a documented
+          // default and say so in a diagnostic (honest truncation, never
+          // silent).
+          const pushSites = arrayPushCounts.get(varName) ?? 0;
+          const unbounded = unboundedArrayVars.has(varName);
+          const strat = getContext().activeStrategy;
+          const hasVector = strat?.getStdLibSupport?.().hasVector ?? true;
+          if (unbounded && hasVector) {
+            const vectorIr: CppTypeIR = { kind: "vector", element: parseCppType(elemType) };
+            lowered.push({
+              kind: "var_decl",
+              sourceSpan: loweredDeclaration.sourceSpan,
+              leadingComments: loweredDeclaration.leadingComments,
+              trailingComments: [],
+              name: varName,
+              storage: "let",
+              cppType: renderCppType(vectorIr) as any,
+              initializer: undefined,
+            });
+            for (let ei = 0; ei < elements.length; ei++) {
+              lowered.push({
+                kind: "call",
+                sourceSpan: loweredDeclaration.sourceSpan,
+                callee: `${varName}.push`,
+                args: [expressionToIR(elements[ei], sourceText, diagnostics)],
+              });
+            }
+            commentsAssigned = true;
+            continue;
+          }
+          if (unbounded) {
+            diagnostics.push(makeDiagnostic(
+              sourceText,
+              declaration.pos,
+              `'${varName}' is grown by .push() inside a loop, but this target has no std::vector — it lowers to a fixed-capacity __tc_StaticArray sized ${elements.length + pushSites + UNBOUNDED_ARRAY_DEFAULT_CAPACITY}. Pushes past that capacity are dropped; hoist the array to a module-level typed declaration or size the loop to the capacity.`,
+              "warning",
+              "array-capacity-bounded",
+            ));
+          }
+          const capacity = elements.length + pushSites + 2 + (unbounded ? UNBOUNDED_ARRAY_DEFAULT_CAPACITY : 0);
           const staticArrayIr: CppTypeIR = {
             kind: "staticArray",
             element: parseCppType(elemType),

@@ -18,6 +18,8 @@ export const POLYFILL_HELPER_MAP: Record<string, string[]> = {
   '.toLowerCase(':  ['__tc_toLowerCase'],
   '.trim(':         ['__tc_trim'],
   '.endsWith(':     ['__tc_endsWith'],
+  // Number.prototype.toFixed — the IR lowering emits this helper call.
+  '.toFixed(':      ['__tc_toFixed'],
   '.lastIndexOf(':  ['__tc_lastIndexOf'],
   // Number.prototype.toString(radix) — the IR lowering emits this helper
   // call for radix 2/8/16 (radix 10 / no-arg uses the formatting machinery).

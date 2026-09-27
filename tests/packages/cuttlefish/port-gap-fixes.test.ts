@@ -376,7 +376,9 @@ describe("StaticArray wrapper methods round 2", () => {
       while (true) {}
     `, { strategy: zephyr(), target: 'zephyr' });
     expect(out.cpp).not.toContain("strstr(a");
-    expect(out.cpp).not.toContain("__tc_lastIndexOf");
+    // The string helper now EXISTS in the Zephyr polyfill (defined for real
+    // string receivers) — the guard is that this ARRAY call doesn't use it.
+    expect(out.cpp).not.toMatch(/__tc_lastIndexOf\(\s*a/);
     expect(out.cpp).not.toContain("__tc_str_ptr");
     expect(out.cpp).toMatch(/\(a\)\.includes\(2\)/);
     expect(out.cpp).toMatch(/\(a\)\.shift\(\)/);

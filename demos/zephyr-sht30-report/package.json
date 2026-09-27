@@ -1,0 +1,15 @@
+{
+  "name": "zephyr-sht30-report",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SHT30 temperature/humidity reporter — samples the sensor over I2C and POSTs JSON to an HTTPS endpoint over WiFi (Zephyr)",
+  "type": "module",
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload --monitor"
+  },
+  "dependencies": {
+    "@typecad/hal": "*"
+  }
+}

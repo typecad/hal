@@ -3,7 +3,7 @@ import { Diagnostic, SourceSpan } from "../../types.js";
 import { StatementIR, ExpressionIR, CppType } from "../../api/index.js";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils.js";
 import { CppTypeHint, resolveDeclarationType, inferExprCppType } from "../type-resolution.js";
-import { PointerTracker, nestedClassAliases, topLevelAliasReceivers, enterThrowExpression, exitThrowExpression, enterConditionContext, exitConditionContext } from "../build-ir-state.js";
+import { PointerTracker, nestedClassAliases, topLevelAliasReceivers, mapEntryVarNames, enterThrowExpression, exitThrowExpression, enterConditionContext, exitConditionContext } from "../build-ir-state.js";
 import { type CppTypeIR, parseCppType, renderCppType, isPointer, parsedIsPointer, parsedIsVector, parsedIsMap, parsedElementString } from "../../api/shared/cpp-type-ir.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { lowerStatementList, expressionStatementToIR } from "../statement-to-ir.js";
@@ -494,11 +494,31 @@ export function lowerControlFlowStatement(
         localVariableTypes,
         sourceText,
       );
-      if (iterableType && parsedIsVector(iterableType)) {
+      // Vector OR StaticArray (the embedded-target array model) — both carry
+      // their element type in the first template slot, so the loop variable
+      // gets a real pointer type (`Command*`) instead of `auto`. Without the
+      // StaticArray arm, `for (const c of COMMANDS)` over a promoted
+      // __tc_StaticArray left `c` auto and member access rendered `c.field`
+      // (dot on a class pointer) — a hard g++ error.
+      if (iterableType && (parsedIsVector(iterableType) || /__tc_StaticArray</.test(iterableType))) {
         const elementType = parsedElementString(iterableType);
         if (elementType && elementType !== "auto" && elementType !== "void") {
           variable.cppType = elementType as CppType;
           localVariableTypes.set(variable.name, elementType as CppTypeHint);
+        }
+      }
+      // A std::map iterates as std::pair<const K, V> — the same shape the
+      // destructuring arm types `__forof_N` with. `for (const e of m)` used
+      // to leave `e` auto and emit `e[0]`/`e[1]` — a std::pair has no
+      // operator[]. Register the loop var so element-access lowering emits
+      // `.first`/`.second`, and record the pair type for member resolution.
+      if (iterableType && parsedIsMap(iterableType)) {
+        const mapIr = parseCppType(iterableType);
+        if (mapIr.kind === "map") {
+          const pairType = `std::pair<const ${renderCppType(mapIr.key)}, ${renderCppType(mapIr.value)}>` as CppType;
+          variable.cppType = pairType;
+          localVariableTypes.set(variable.name, pairType as CppTypeHint);
+          mapEntryVarNames.add(variable.name);
         }
       }
     }

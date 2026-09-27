@@ -8,7 +8,8 @@ import { EnumIR, ClassIR, FunctionIR, ImportIR, InterfaceIR, NamespaceIR, Progra
 import { isStringEnum } from "../api/shared/index.js";
 import type { ParameterIR } from "../api/shared/ir-core.js";
 import { makeDiagnostic } from "./ast-node-utils.js";
-import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution.js";
+import { buildFunctionReturnTypeMap, CppTypeHint, typeNodeToCppType } from "./type-resolution.js";
+import { getCurrentIrTypeScope } from "./symbol-types.js";
 import { tryResolveBoardDefFile, findGeneratedBoard, readGeneratedBoardConstants, BoardConstants } from "./board-resolver.js";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage.js";
 import { runProgramValidations } from "./validation-orchestrator.js";
@@ -225,6 +226,47 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
     }
   }
 
+  // Phase 0c: Pre-scan top-level VARIABLE declarations and seed the globals
+  // type map. In TS source order a class method may reference a module-level
+  // variable declared LATER in the file (legal TS — methods run post-init);
+  // lowering processes statements in order, so without this pre-pass the
+  // method's IR build sees no type for the global and bakes member access
+  // with the wrong separator (`stats.count()` on a SampleStats*, `c.name` on
+  // a for-of loop var over a late-declared array). The real declaration
+  // lowering later overwrites the entry with its final type (variables.ts
+  // writes globals.set unconditionally), so a coarse pre-scan type is safe.
+  for (const statement of source.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const decl of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(decl.name) || decl.type === undefined && decl.initializer === undefined) continue;
+      let hinted: CppTypeHint | undefined;
+      if (decl.type) {
+        hinted = typeNodeToCppType(decl.type, undefined);
+      } else if (decl.initializer) {
+        const init = decl.initializer;
+        if (ts.isNewExpression(init) && ts.isIdentifier(init.expression)) {
+          if (init.expression.text === "Array"
+            && init.typeArguments && init.typeArguments.length === 1) {
+            hinted = `std::vector<${typeNodeToCppType(init.typeArguments[0], undefined)}>` as CppTypeHint;
+          } else if (init.expression.text !== "Array") {
+            hinted = `${init.expression.text}*` as CppTypeHint;
+          }
+        } else if (ts.isStringLiteral(init) || ts.isNoSubstitutionTemplateLiteral(init) || ts.isTemplateExpression(init)) {
+          hinted = "std::string";
+        } else if (ts.isNumericLiteral(init)) {
+          hinted = "double";
+        } else if (init.kind === ts.SyntaxKind.TrueKeyword || init.kind === ts.SyntaxKind.FalseKeyword) {
+          hinted = "bool";
+        } else if (ts.isArrayLiteralExpression(init)) {
+          hinted = "std::vector<double>" as CppTypeHint;
+        }
+      }
+      if (hinted && hinted !== "auto") {
+        getCurrentIrTypeScope()?.globals.set(decl.name.text, hinted);
+      }
+    }
+  }
+
   const functionReturnTypes = buildFunctionReturnTypeMap(source);
   // Expose return types on the compilation context so UI callbacks / timers
   // can resolve helper types without every call site threading the map.
@@ -285,9 +327,11 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
     }
   }
 
-  // Pre-scan for mutable arrays (push/pop/indexOf) at top level
+  // Pre-scan for mutable arrays (push/pop/indexOf) at top level. moduleScope
+  // — these are the file's top-level statements, so their array literals are
+  // module-level (cross-call accumulators; see moduleArrayLiteralVars).
   for (const statement of source.statements) {
-    prescanArrayUsage(statement);
+    prescanArrayUsage(statement, true);
   }
 
   // Resolve board-definition constants BEFORE IR building so the HAL resolver

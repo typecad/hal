@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Async state machine generation utilities.
  * Handles conversion of async functions to cooperative state machines.
  * Extracted from cpp-emitter.ts
@@ -8,33 +8,20 @@ import type { StatementIR, ExpressionIR } from "../../api/index.js";
 import type { HALOpIR, PlatformStrategy } from "../../api/shared/index.js";
 import { escapeCppStringLiteral } from "../../utils/strings.js";
 import { routeHALOp } from "../route-hal-op.js";
+import { cppTypeForHalOp } from "./hal-op-cpp-type.js";
 
 /**
  * Converts a string to PascalCase.
  * Used for generating class names from function names.
- * 
+ *
  * @param str The input string (e.g., "my_function" or "myFunction")
- * @returns PascalCase string (e.g., "MyFunction")
+ * @returns PascalCase string (e.g., "MyFunction" or "MyFunction")
  */
 function toPascalCaseLocal(str: string): string {
   return str
     .split(/[_\s]+/)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join("");
-}
-
-/**
- * Segment of an async function body split at await points.
- */
-interface Segment {
-  /** Statements before the awaited call */
-  preStatements: StatementIR[];
-  /** The awaited callee (if this segment ends with an await) */
-  awaitedCallee?: string;
-  /** Arguments to the awaited call */
-  awaitedArgs: ExpressionIR[];
-  /** Source span of the awaited call (for diagnostics). */
-  awaitedSpan?: StatementIR["sourceSpan"];
 }
 
 /**
@@ -65,6 +52,13 @@ const PLAIN_AWAIT_CALLEES = new Set<string>([
   "sleep",
 ]);
 
+/** Marker callees the awaited-call classifier recognizes. */
+type AwaitMarker =
+  | { kind: "plain" }
+  | { kind: "edge"; pin: string; edge: "rising" | "falling"; timeout: number | null }
+  | { kind: "tap"; nodeIndex: number }
+  | { kind: "net"; info: NetWaitInfo };
+
 /** Options for generateAsyncTaskClass. */
 export interface AsyncTaskClassOptions {
   /** Owning class name for async METHODS: the task binds `this` to an owner
@@ -75,17 +69,59 @@ export interface AsyncTaskClassOptions {
    *  call would be silently dropped). The emitter surfaces it as a
    *  diagnostic instead of emitting wrong code. */
   onUnsupportedAwait?: (callee: string, span: StatementIR["sourceSpan"] | undefined) => void;
+  /** Invoked for async-body constructs the state machine cannot represent
+   *  (switch/try/labeled statements, value-position awaits, redeclared
+   *  locals). The emitter surfaces these as diagnostics instead of emitting
+   *  wrong code. */
+  onUnsupportedStatement?: (code: string, message: string, span: StatementIR["sourceSpan"] | undefined) => void;
+  /** Invoked once per hoisted local (original name and the `_v_` member),
+   *  carrying its C++ type — the embedding emitter feeds these into the
+   *  statement renderer's known-variable-type map so snprintf specifier
+   *  picking inside the task body sees function locals (top-level scope
+   *  alone would classify `localValue / 1000` as an int and corrupt the
+   *  output). */
+  registerLocalType?: (name: string, cppType: string) => void;
+}
+
+/** A function local hoisted to a task member. */
+interface HoistedLocal {
+  /** Original name. */
+  name: string;
+  /** Member name (`_v_<name>` — prefixed to never collide with the machine's
+   *  own members or the class's methods). */
+  member: string;
+  /** The declaration's C++ type. */
+  cppType: string;
 }
 
 /**
  * Generates a cooperative state-machine class for an async function.
  *
- * Handles two patterns:
- *   1. Cyclic: single `while(true)` body containing `await delay()` calls.
- *   2. Linear: sequential statements with `await delay()` calls.
+ * The body is transformed with LOCAL CONTINUATIONS (the protothread /
+ * Duff's-device shape): the original control flow — loops, ifs, breaks,
+ * continues — is emitted as real C++ inside `case STATE_0`, and every
+ * awaited call is split in place into
  *
- * Each `await delay(ms)` call becomes a timed wait state that polls `millis()`.
- * 
+ *     <arm>          // start the wait (deadline / net op / edge snapshot)
+ *     _state = STATE_<n>;
+ *     return;        // yield the pump
+ *     case STATE_<n>:
+ *     <gate>         // early-return until the wait has fired
+ *
+ * so re-entry resumes exactly after the await, at any nesting depth. This
+ * replaces the former flat segment model, which could only split awaits at
+ * the top level of a lone `while (true)` — an `if` inside the loop made the
+ * renderer (header-only for control flow) drop the whole body, and an
+ * `await` inside a nested `while (cond)` silently became the next
+ * statement's loop body. The shapes the old model supported lower to the
+ * same states; everything else used to be wrong and now works.
+ *
+ * Locals cannot live in run()'s stack frame across the returns (and C++
+ * forbids jumping past an initialization into a block), so every `let` /
+ * `var` / `const` in the body is hoisted to a `_v_<name>` member, renamed
+ * at its declaration site and at every reference, and re-initialized by the
+ * body itself on (re)entry to STATE_0 — preserving TS block semantics.
+ *
  * @param fnName The original function name
  * @param fnStatements The function body statements
  * @param strategy The platform strategy for rendering
@@ -105,262 +141,730 @@ export function generateAsyncTaskClass(
   const owner = options?.ownerClassName;
   const starterName = `__tc_async_start_${fnName}`;
 
-  // Detect whether the body is a single while-loop (cyclic) or linear statements
-  let bodyStatements: StatementIR[];
-  let isCyclic = false;
+  const now = strategy.currentTimeMillis();
+  const readPin = (pin: string) => strategy.readDigitalPin?.(pin) ?? `digitalRead(${pin})`;
+  const unsupported = (code: string, message: string, span?: StatementIR["sourceSpan"]) =>
+    options?.onUnsupportedStatement?.(code, message, span);
 
-  if (fnStatements.length === 1 && fnStatements[0].kind === "while") {
-    isCyclic = true;
-    bodyStatements = fnStatements[0].body as StatementIR[];
-  } else {
-    bodyStatements = fnStatements;
-  }
-
-  // Split body into segments at each awaited call
-  const segments: Segment[] = [];
-  let currentPre: StatementIR[] = [];
-
-  for (const stmt of bodyStatements) {
-    if (stmt.kind === "call" && stmt.isAwaited) {
-      segments.push({ preStatements: currentPre, awaitedCallee: stmt.callee, awaitedArgs: stmt.args, awaitedSpan: stmt.sourceSpan });
-      currentPre = [];
-    } else if (
-      // Chained HAL calls (e.g. `await Http.get(url).send()`) resolve to a
-      // block of hal-ops whose LAST statement is the awaited wait marker.
-      // Flatten it so the split sees the marker; the leading ops (begin,
-      // setters) run as pre-statements of the same segment.
-      stmt.kind === "block" &&
-      stmt.body.length > 0 &&
-      stmt.body[stmt.body.length - 1].kind === "call" &&
-      (stmt.body[stmt.body.length - 1] as Extract<StatementIR, { kind: "call" }>).isAwaited
-    ) {
-      const last = stmt.body[stmt.body.length - 1] as Extract<StatementIR, { kind: "call" }>;
-      currentPre.push(...stmt.body.slice(0, -1));
-      segments.push({ preStatements: currentPre, awaitedCallee: last.callee, awaitedArgs: last.args, awaitedSpan: last.sourceSpan });
-      currentPre = [];
-    } else {
-      currentPre.push(stmt);
-    }
-  }
-  // Terminal segment (trailing statements after the last await, or the whole body if no awaits)
-  segments.push({ preStatements: currentPre, awaitedArgs: [] });
-
-  const awaitCount = segments.filter((s) => s.awaitedCallee !== undefined).length;
-  const stateCount = awaitCount + 1; // STATE_0 … STATE_{awaitCount}; cyclic loops back, linear adds STATE_DONE
-
-  // State enum is emitted as `enum class State` (AUTOSAR A7-2-1), so all
-  // references must be scope-qualified as `State::STATE_X`. The stateEnumList
-  // (used inside `enum class State { ... }`) uses the bare names; everywhere
-  // else (assignments, case labels, comparisons) uses the qualified form.
-  const stateNames: string[] = [];
-  const qualifiedStateNames: string[] = [];
-  for (let i = 0; i < stateCount; i++) {
-    stateNames.push(`STATE_${i}`);
-    qualifiedStateNames.push(`State::STATE_${i}`);
-  }
-  if (!isCyclic) {
-    stateNames.push("STATE_DONE");
-    qualifiedStateNames.push("State::STATE_DONE");
-  }
-  const Q = (i: number) => qualifiedStateNames[i];
-  const Q_DONE = "State::STATE_DONE";
-  const Q_0 = "State::STATE_0";
-
-  // Helper: render a non-await statement as a single C++ line
-  const renderStmt = (stmt: StatementIR): string =>
-    renderStatement(stmt, false, strategy, undefined, undefined, knownFunctionReturnTypes);
-
-  // Collect edge-detection markers from segments
-  const edgeInfoMap = new Map<number, { pin: string; edge: "rising" | "falling"; timeout: number | null }>();
-  const edgeMembers = new Set<string>();
-
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    if (seg.awaitedCallee === "__EMIT__" && seg.awaitedArgs.length > 0) {
-      const argText = seg.awaitedArgs[0].kind === "string"
-        ? (seg.awaitedArgs[0] as Extract<ExpressionIR, { kind: "string" }>).value
-        : renderExpression(seg.awaitedArgs[0], strategy);
-      const info = parseEdgeMarker(argText);
-      if (info) {
-        edgeInfoMap.set(i, info);
-        edgeMembers.add(`_edgePrev_p${info.pin}`);
+  // ── Pass 1: collect local declarations (hoist candidates) ────────────────
+  const declSites = new Map<string, { cppType: string; count: number; initializer?: ExpressionIR }>();
+  const collectDecls = (stmts: StatementIR[] | undefined): void => {
+    if (!stmts) return;
+    for (const stmt of stmts) {
+      switch (stmt.kind) {
+        case "var_decl": {
+          const site = declSites.get(stmt.name);
+          if (site) site.count += 1;
+          else declSites.set(stmt.name, { cppType: stmt.cppType, count: 1, initializer: stmt.initializer });
+          if (stmt.initializer) collectExprAwaits(stmt.initializer, stmt);
+          break;
+        }
+        case "assign":
+          collectExprAwaits(stmt.value, stmt);
+          break;
+        case "update":
+          break;
+        case "return":
+          if (stmt.value) collectExprAwaits(stmt.value, stmt);
+          if (stmt.value) {
+            unsupported(
+              "async-return-value",
+              `async function ${fnName}() returns a value — tasks are fire-and-forget; use a shared top-level variable instead of a return value.`,
+              stmt.sourceSpan,
+            );
+          }
+          break;
+        case "call":
+          for (const a of stmt.args) collectExprAwaits(a, stmt);
+          break;
+        case "hal-op":
+          break;
+        case "while":
+          collectExprAwaits(stmt.condition, stmt);
+          collectDecls(stmt.body);
+          break;
+        case "if":
+          collectExprAwaits(stmt.condition, stmt);
+          collectDecls(stmt.thenBranch);
+          collectDecls(stmt.elseBranch);
+          break;
+        case "for":
+          collectDecls([stmt.initializer].filter(Boolean) as StatementIR[]);
+          if (stmt.condition) collectExprAwaits(stmt.condition, stmt);
+          collectDecls([stmt.increment].filter(Boolean) as StatementIR[]);
+          collectDecls(stmt.body);
+          break;
+        case "for_of":
+          collectDecls([stmt.variable]);
+          collectExprAwaits(stmt.iterable, stmt);
+          collectDecls(stmt.body);
+          break;
+        case "for_in":
+          collectDecls([stmt.variable]);
+          collectExprAwaits(stmt.object, stmt);
+          collectDecls(stmt.body);
+          break;
+        case "do_while":
+          collectDecls(stmt.body);
+          collectExprAwaits(stmt.condition, stmt);
+          break;
+        case "switch":
+          unsupported(
+            "async-unsupported-statement",
+            `switch inside async function ${fnName}() is not supported — the cooperative state machine uses case labels for continuations, which a user switch would capture. Use if/else chains instead.`,
+            stmt.sourceSpan,
+          );
+          break;
+        case "try":
+          unsupported(
+            "async-unsupported-statement",
+            `try/catch inside async function ${fnName}() is not supported — the targets are built with exceptions disabled. Restructure to check return values.`,
+            stmt.sourceSpan,
+          );
+          break;
+        case "throw":
+          unsupported(
+            "async-unsupported-statement",
+            `throw inside async function ${fnName}() is not supported — the targets are built with exceptions disabled.`,
+            stmt.sourceSpan,
+          );
+          break;
+        case "yield":
+          unsupported(
+            "async-unsupported-statement",
+            `yield inside async function ${fnName}() is not supported.`,
+            stmt.sourceSpan,
+          );
+          break;
+        case "labeled":
+          unsupported(
+            "async-unsupported-statement",
+            `labeled statement inside async function ${fnName}() is not supported — the break-target label would live in a different scope than the lowered goto. Use a flag instead.`,
+            stmt.sourceSpan,
+          );
+          break;
+        case "block":
+          collectDecls(stmt.body);
+          break;
+        default:
+          break;
       }
     }
+  };
+
+  /** Detect await expressions used in VALUE position (`const x = await f()`),
+   *  which the in-place split cannot represent (the continuation would have
+   *  to re-enter mid-expression). Awaited CALL STATEMENTS never carry an
+   *  await-expression node, so any hit here is a value position. */
+  function collectExprAwaits(expr: ExpressionIR | undefined, spanHolder: StatementIR): void {
+    if (!expr) return;
+    switch (expr.kind) {
+      case "await":
+        unsupported(
+          "await-value-position",
+          `await in expression position inside ${fnName}() is not supported — await a call as its own statement and read the result afterwards (e.g. \`await req.send(); req.status()\`).`,
+          spanHolder.sourceSpan,
+        );
+        collectExprAwaits(expr.value, spanHolder);
+        break;
+      case "ternary":
+        collectExprAwaits(expr.condition, spanHolder);
+        collectExprAwaits(expr.whenTrue, spanHolder);
+        collectExprAwaits(expr.whenFalse, spanHolder);
+        break;
+      case "array":
+        for (const p of expr.elements) collectExprAwaits(p, spanHolder);
+        break;
+      case "string_concat":
+        for (const p of expr.parts) collectExprAwaits(p, spanHolder);
+        break;
+      case "template_string":
+        collectExprAwaits(expr.expression, spanHolder);
+        break;
+      case "object":
+        for (const f of expr.fields) collectExprAwaits(f.value, spanHolder);
+        break;
+      case "instanceof":
+        collectExprAwaits(expr.object, spanHolder);
+        break;
+      case "spread_array":
+        collectExprAwaits(expr.spreadExpr, spanHolder);
+        for (const e of expr.additionalElements) collectExprAwaits(e, spanHolder);
+        break;
+      case "binary":
+        collectExprAwaits(expr.left, spanHolder);
+        collectExprAwaits(expr.right, spanHolder);
+        break;
+      case "unary":
+        collectExprAwaits(expr.operand, spanHolder);
+        break;
+      case "property-access":
+        collectExprAwaits(expr.object, spanHolder);
+        break;
+      case "method-call":
+        collectExprAwaits(expr.receiverExpr, spanHolder);
+        for (const a of expr.args) collectExprAwaits(a, spanHolder);
+        break;
+      case "element-access":
+        collectExprAwaits(expr.object, spanHolder);
+        collectExprAwaits(expr.index, spanHolder);
+        break;
+      case "tuple-access":
+        collectExprAwaits(expr.object, spanHolder);
+        break;
+      case "paren":
+        collectExprAwaits(expr.inner, spanHolder);
+        break;
+      default:
+        break;
+    }
   }
 
-  // Collect awaitable-tap markers (await ui.onTap()). args[0] is the node
-  // filter: -1 = any tap, >=0 = a specific node index. Each tap-await needs a
-  // per-await snapshot of __ui_tap_seq to detect the NEXT bump.
-  const tapInfoMap = new Map<number, { nodeIndex: number }>();
-  const tapMembers = new Map<string, number>(); // member name → segment index
+  collectDecls(fnStatements);
 
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    if (seg.awaitedCallee === "__UI_TAP__" && seg.awaitedArgs.length > 0) {
-      const nodeArg = seg.awaitedArgs[0];
+  // Hoist every uniquely-named declaration with a known type. A name declared
+  // twice cannot share one member honestly — diagnose and leave it in place
+  // (the C++ will not compile, but the diagnostic names the reason).
+  // Machine-reserved names (_state/_waitUntil — plus anything already in the
+  // _v_ namespace) are left in place: hoisting them would make the raw-text
+  // rename rewrite the machine's own members.
+  const RESERVED_LOCAL_NAMES = new Set(["_state", "_waitUntil", "State"]);
+  const hoisted = new Map<string, HoistedLocal>();
+  for (const [name, site] of declSites) {
+    if (RESERVED_LOCAL_NAMES.has(name) || name.startsWith("_v_")) continue;
+    if (site.count > 1) {
+      const firstSpan = findDeclSpan(fnStatements, name);
+      unsupported(
+        "async-local-redecl",
+        `local '${name}' is declared ${site.count} times inside async function ${fnName}() — hoisted task members must map 1:1 to names. Rename one of the declarations.`,
+        firstSpan,
+      );
+      continue;
+    }
+    if (site.cppType === "auto") {
+      // Auto-deduced locals must hoist too — an in-place declaration before
+      // a resume label is ill-formed C++ ("jump to case label crosses
+      // initialization"). The member needs a concrete type; infer it from
+      // the initializer (TS source has the type; the IR recorded `auto`).
+      const inferred = inferAutoMemberType(site.initializer);
+      if (inferred === null) continue; // genuinely unknowable — leave in place
+      const local = { name, member: `_v_${name}`, cppType: inferred };
+      hoisted.set(name, local);
+      options?.registerLocalType?.(name, local.cppType);
+      options?.registerLocalType?.(local.member, local.cppType);
+      continue;
+    }
+    if (!site.cppType) {
+      // No member type to declare — leave the declaration at its site as a
+      // per-segment local. A local that DOES need to survive an await fails
+      // the C++ compile loudly ("jump to case label crosses initialization")
+      // instead of silently losing the value; annotate its type to hoist it.
+      continue;
+    }
+    const local = { name, member: `_v_${name}`, cppType: site.cppType };
+    hoisted.set(name, local);
+    // Both spellings: IR identifier nodes carry the member name after the
+    // rewrite below, raw/emit text (template-literal fragments, op-carried
+    // code) still carries the original.
+    options?.registerLocalType?.(name, local.cppType);
+    options?.registerLocalType?.(local.member, local.cppType);
+  }
+
+  // ── Pass 2: rewrite the tree — hoisted names → members ──────────────────
+  // Scopes bind name → member (hoisted here) or null (a declaration that
+  // stays in place and shadows an outer hoisted name).
+  type Scope = Map<string, string | null>;
+  const scopes: Scope[] = [];
+  const bindName = (name: string): string | null | undefined => {
+    for (let i = scopes.length - 1; i >= 0; i--) {
+      const binding = scopes[i].get(name);
+      if (binding !== undefined) return binding;
+    }
+    return undefined;
+  };
+
+  const rewriteIdentifiers = (expr: ExpressionIR | undefined): ExpressionIR | undefined => {
+    if (!expr) return expr;
+    switch (expr.kind) {
+      case "identifier": {
+        const member = bindName(expr.value);
+        return member ? { ...expr, value: member } : expr;
+      }
+      case "await":
+        return { ...expr, value: rewriteIdentifiers(expr.value) ?? expr.value };
+      case "ternary":
+        return { ...expr, condition: rewriteIdentifiers(expr.condition)!, whenTrue: rewriteIdentifiers(expr.whenTrue)!, whenFalse: rewriteIdentifiers(expr.whenFalse)! };
+      case "array":
+        return { ...expr, elements: expr.elements.map((e) => rewriteIdentifiers(e)!) };
+      case "string_concat":
+        return { ...expr, parts: expr.parts.map((e) => rewriteIdentifiers(e)!) };
+      case "template_string":
+        return { ...expr, expression: rewriteIdentifiers(expr.expression)! };
+      case "object":
+        return { ...expr, fields: expr.fields.map((f) => ({ ...f, value: rewriteIdentifiers(f.value)! })) };
+      case "instanceof":
+        return { ...expr, object: rewriteIdentifiers(expr.object)! };
+      case "spread_array":
+        return { ...expr, spreadExpr: rewriteIdentifiers(expr.spreadExpr)!, additionalElements: expr.additionalElements.map((e) => rewriteIdentifiers(e)!) };
+      case "binary":
+        return { ...expr, left: rewriteIdentifiers(expr.left)!, right: rewriteIdentifiers(expr.right)! };
+      case "unary":
+        return { ...expr, operand: rewriteIdentifiers(expr.operand)! };
+      case "property-access":
+        return { ...expr, object: rewriteIdentifiers(expr.object)! };
+      case "method-call":
+        return {
+          ...expr,
+          receiverExpr: rewriteIdentifiers(expr.receiverExpr),
+          args: expr.args.map((a) => rewriteIdentifiers(a)!),
+        };
+      case "element-access":
+        return { ...expr, object: rewriteIdentifiers(expr.object)!, index: rewriteIdentifiers(expr.index)! };
+      case "tuple-access":
+        return { ...expr, object: rewriteIdentifiers(expr.object)! };
+      case "paren":
+        return { ...expr, inner: rewriteIdentifiers(expr.inner)! };
+      default:
+        return expr;
+    }
+  };
+
+  /** Rewrite the leading identifier of an assign/update target string
+   *  (`seq` / `recent.head` → the hoisted member). */
+  const rewriteTarget = (target: string): string => {
+    const m = target.match(/^([A-Za-z_$][\w$]*)(\??[.(].*)?$/);
+    if (!m) return target;
+    const member = bindName(m[1]);
+    return member ? `${member}${m[2] ?? ""}` : target;
+  };
+
+  const rewriteStmts = (stmts: StatementIR[]): StatementIR[] => {
+    scopes.push(new Map());
+    const out = stmts.map((stmt) => rewriteStmt(stmt));
+    scopes.pop();
+    return out;
+  };
+
+  const rewriteStmt = (stmt: StatementIR): StatementIR => {
+    switch (stmt.kind) {
+      case "var_decl": {
+        const local = hoisted.get(stmt.name);
+        scopes[scopes.length - 1].set(stmt.name, local ? local.member : null);
+        const initializer = rewriteIdentifiers(stmt.initializer);
+        return local
+          ? { ...stmt, name: local.member, initializer }
+          : { ...stmt, initializer };
+      }
+      case "assign":
+        return { ...stmt, target: rewriteTarget(stmt.target), value: rewriteIdentifiers(stmt.value)! };
+      case "update":
+        return { ...stmt, target: rewriteTarget(stmt.target) };
+      case "return":
+        return { ...stmt, value: rewriteIdentifiers(stmt.value) };
+      case "call":
+        return { ...stmt, args: stmt.args.map((a) => rewriteIdentifiers(a)!) };
+      case "while":
+        return { ...stmt, condition: rewriteIdentifiers(stmt.condition)!, body: rewriteStmts(stmt.body) };
+      case "if":
+        return {
+          ...stmt,
+          condition: rewriteIdentifiers(stmt.condition)!,
+          thenBranch: rewriteStmts(stmt.thenBranch),
+          elseBranch: stmt.elseBranch ? rewriteStmts(stmt.elseBranch) : stmt.elseBranch,
+        };
+      case "for": {
+        const initializer = stmt.initializer ? rewriteStmt(stmt.initializer) : stmt.initializer;
+        // A hoisted loop variable must not declare in the header — the state
+        // switch may jump past it. Rewrite `for (TYPE v = init; …)` to an
+        // assign statement so the header renders `for (v = init; …)`.
+        if (initializer && initializer.kind === "var_decl") {
+          const local = hoisted.get(initializer.name.replace(/^_v_/, ""));
+          const isHoistedMember = initializer.name.startsWith("_v_") && local;
+          if (isHoistedMember && initializer.initializer) {
+            return {
+              ...stmt,
+              initializer: {
+                kind: "assign",
+                sourceSpan: stmt.sourceSpan,
+                target: initializer.name,
+                operator: "=",
+                value: initializer.initializer,
+              } as StatementIR,
+              condition: rewriteIdentifiers(stmt.condition),
+              increment: stmt.increment ? rewriteStmt(stmt.increment) : stmt.increment,
+              body: rewriteStmts(stmt.body),
+            };
+          }
+        }
+        return {
+          ...stmt,
+          initializer,
+          condition: rewriteIdentifiers(stmt.condition),
+          increment: stmt.increment ? rewriteStmt(stmt.increment) : stmt.increment,
+          body: rewriteStmts(stmt.body),
+        };
+      }
+      case "for_of":
+      case "for_in": {
+        const variable = rewriteStmt(stmt.variable);
+        const iterableKey = stmt.kind === "for_of" ? "iterable" : "object";
+        return {
+          ...stmt,
+          variable,
+          [iterableKey]: rewriteIdentifiers((stmt as unknown as { iterable?: ExpressionIR; object?: ExpressionIR })[iterableKey])!,
+          body: rewriteStmts(stmt.body),
+        } as StatementIR;
+      }
+      case "do_while":
+        return { ...stmt, body: rewriteStmts(stmt.body), condition: rewriteIdentifiers(stmt.condition)! };
+      case "block":
+        return { ...stmt, body: rewriteStmts(stmt.body) };
+      default:
+        return stmt;
+    }
+  };
+
+  const body = rewriteStmts(fnStatements);
+
+  // ── Pass 3: emit — the Duff's-device body with in-place await splits ────
+  // Raw/emit text (template-literal fragments, op-carried `k_msleep(waitMs)`,
+  // HAL body lines) is PRE-RENDERED at IR-build time, so the identifier-node
+  // rewrite above cannot reach names inside it. Post-process every emitted
+  // line with a word-boundary rename that skips string literals — a hoisted
+  // name inside quotes is text, not a reference. Shadowing (a local sharing
+  // a global's name, with raw text referring to the global) is the accepted
+  // gap: it fails the C++ compile loudly rather than silently misbehaving.
+  const hoistRenames: Array<[RegExp, string]> = Array.from(hoisted.entries())
+    .map(([name, local]) => [new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), local.member] as [RegExp, string]);
+  // Pointer members: user code writes `obj.method()` / `obj.field` on the TS
+  // instance; the hoisted member is a C++ POINTER, so member accesses arrow.
+  // The renderer's own arrow fallback only sees global pointer types, and the
+  // task body renders outside the scope that declared the local.
+  const pointerArrowRenames: Array<[RegExp, string]> = Array.from(hoisted.values())
+    .filter((l) => l.cppType.trim().endsWith("*"))
+    .map((l) => [new RegExp(`\\b${l.member.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.(?=[A-Za-z_])`, "g"), `${l.member}->`] as [RegExp, string]);
+  const renameRawText = (line: string): string => {
+    if ((hoistRenames.length === 0 && pointerArrowRenames.length === 0) || line.length === 0) return line;
+    let out = "";
+    let i = 0;
+    while (i < line.length) {
+      const c = line[i];
+      if (c === '"' || c === "'") {
+        const quote = c;
+        out += c;
+        i += 1;
+        while (i < line.length) {
+          out += line[i];
+          if (line[i] === "\\") {
+            if (i + 1 < line.length) { out += line[i + 1]; i += 2; continue; }
+          } else if (line[i] === quote) {
+            i += 1;
+            break;
+          }
+          i += 1;
+        }
+        continue;
+      }
+      let next = line.length;
+      for (const q of ['"', "'"]) {
+        const at = line.indexOf(q, i);
+        if (at >= 0 && at < next) next = at;
+      }
+      let segment = line.slice(i, next);
+      for (const [re, member] of hoistRenames) segment = segment.replace(re, member);
+      for (const [re, arrow] of pointerArrowRenames) segment = segment.replace(re, arrow);
+      out += segment;
+      i = next;
+    }
+    return out;
+  };
+
+  // ── Pass 3: emit — the Duff's-device body with in-place await splits ────
+  // Pointer-typed hoisted locals (cppType ends in *): the renderer arrows a
+  // member call's leading `obj.` → `obj->` only when it can see the receiver's
+  // pointer-ness, and the async body renders outside the scope that declared
+  // it. Thread the member→type map through the renderStatement channel.
+  const hoistedPointerTypes = new Map<string, string>(
+    Array.from(hoisted.values())
+      .filter((l) => l.cppType.trim().endsWith("*"))
+      .map((l) => [l.member, l.cppType] as [string, string]),
+  );
+  // Helper: render a non-await statement (returns possibly multi-line text:
+  // renderWithPrelude joins prelude + statement with newlines).
+  const renderStmt = (stmt: StatementIR): string =>
+    renderStatement(stmt, false, strategy, hoistedPointerTypes, undefined, knownFunctionReturnTypes);
+  const renderHeaderStmt = (stmt: StatementIR): string =>
+    renderStatement(stmt, true, strategy, hoistedPointerTypes, undefined, knownFunctionReturnTypes);
+
+  let stateCounter = 1; // STATE_0 is the entry state
+  const edgeMembers = new Set<string>();
+  const tapSites = new Map<number, { member: string; nodeIndex: number }>();
+  const emittedLines: string[] = [];
+
+  /** Render a statement's header (`while (cond)` / `if (cond)`) with the
+   *  condition fully lowered. */
+  const renderConditionHeader = (kind: "while", condition: ExpressionIR, span: StatementIR["sourceSpan"]): string =>
+    renderStmt({ kind, sourceSpan: span, condition, body: [] });
+
+  const classifyAwait = (stmt: Extract<StatementIR, { kind: "call" }>): AwaitMarker => {
+    if (stmt.callee === "__EMIT__" && stmt.args.length > 0) {
+      const argText = stmt.args[0].kind === "string"
+        ? (stmt.args[0] as Extract<ExpressionIR, { kind: "string" }>).value
+        : renderExpression(stmt.args[0], strategy);
+      const info = parseEdgeMarker(argText);
+      if (info) return { kind: "edge", ...info };
+    }
+    if (stmt.callee === "__UI_TAP__" && stmt.args.length > 0) {
+      const nodeArg = stmt.args[0];
       const nodeIndex = nodeArg.kind === "number"
         ? (nodeArg as Extract<ExpressionIR, { kind: "number" }>).value
         : -1;
-      const member = `_tapPrev_${i}`;
-      tapInfoMap.set(i, { nodeIndex });
-      tapMembers.set(member, i);
+      return { kind: "tap", nodeIndex };
     }
-  }
-
-  // Collect net-wait (WiFi/HTTP/HAL) markers: awaited hal-ops rewritten to
-  // __WIFI_WAIT__/__HTTP_WAIT__/__HAL_WAIT__ calls carrying the op as a
-  // hal-expr arg. The strategy lowers the op to start code + poll condition.
-  const netInfoMap = new Map<number, NetWaitInfo>();
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
     if (
-      (seg.awaitedCallee === "__WIFI_WAIT__" || seg.awaitedCallee === "__HTTP_WAIT__" || seg.awaitedCallee === "__BLE_WAIT__" || seg.awaitedCallee === "__HAL_WAIT__") &&
-      seg.awaitedArgs[0]?.kind === "hal-expr"
+      (stmt.callee === "__WIFI_WAIT__" || stmt.callee === "__HTTP_WAIT__" || stmt.callee === "__BLE_WAIT__" || stmt.callee === "__HAL_WAIT__") &&
+      stmt.args[0]?.kind === "hal-expr"
     ) {
-      const op = (seg.awaitedArgs[0] as Extract<ExpressionIR, { kind: "hal-expr" }>).operation;
-      netInfoMap.set(i, netWaitInfo(op, strategy));
+      const op = (stmt.args[0] as Extract<ExpressionIR, { kind: "hal-expr" }>).operation;
+      return { kind: "net", info: netWaitInfo(op, strategy) };
     }
-  }
+    return { kind: "plain" };
+  };
 
-  // ── Render each state ──────────────────────────────────────────────────
-  // Decomposition: a state's ENTRY condition comes from the await that ended
-  // the PREVIOUS segment (edge / tap / net poll / timed deadline); once the
-  // condition fires, the segment body runs and the await ending THIS segment
-  // is armed (pin snapshot / tap snapshot / net start op / deadline).
-
-  // Lines that arm the await ending segment i and advance the state.
-  const armNextLines = (i: number, pad: string): string[] => {
-    const seg = segments[i];
-    const lines: string[] = [];
-    if (seg.awaitedCallee === undefined) {
-      lines.push(`${pad}_state = ${isCyclic ? Q_0 : Q_DONE};`);
-      return lines;
+  /** Emit the arm (start the wait) + yield + resume label + gate (early
+   *  return until the wait fires) for one awaited call, at nesting depth
+   *  `pad`. This is the in-place split that makes nested awaits work. */
+  const emitAwaitArm = (stmt: Extract<StatementIR, { kind: "call" }>, pad: string, inRangeFor: boolean): void => {
+    if (inRangeFor) {
+      unsupported(
+        "async-unsupported-statement",
+        `await inside a for..of/for..in body of ${fnName}() is not supported — the range-for declares its loop variable in the header, which a resume label cannot jump past. Rewrite as an index loop.`,
+        stmt.sourceSpan,
+      );
     }
-    const edge = edgeInfoMap.get(i);
-    const tap = tapInfoMap.get(i);
-    const net = netInfoMap.get(i);
-    if (edge) {
-      lines.push(`${pad}_edgePrev_p${edge.pin} = ${strategy.readDigitalPin?.(String(edge.pin)) ?? `digitalRead(${edge.pin})`};`);
-      if (edge.timeout !== null) {
-        lines.push(`${pad}_waitUntil = ${strategy.currentTimeMillis()} + ${edge.timeout};`);
+    const idx = stateCounter++;
+    const marker = classifyAwait(stmt);
+    const label = `State::STATE_${idx}`;
+
+    // ── arm: start the wait before yielding ──
+    if (marker.kind === "edge") {
+      const member = `_edgePrev_p${marker.pin}`;
+      edgeMembers.add(member);
+      emittedLines.push(renameRawText(`${pad}${member} = ${readPin(marker.pin)};`));
+      if (marker.timeout !== null) {
+        emittedLines.push(renameRawText(`${pad}_waitUntil = ${now} + ${marker.timeout};`));
       }
-    } else if (tap) {
-      lines.push(`${pad}_tapPrev_${i} = __ui_tap_seq;`);
-    } else if (net) {
-      for (const startLine of net.startLines) lines.push(`${pad}${startLine}`);
-      if (net.timeoutExpr !== null) {
-        lines.push(`${pad}_waitUntil = ${strategy.currentTimeMillis()} + ${net.timeoutExpr};`);
+    } else if (marker.kind === "tap") {
+      const member = `_tapPrev_${idx}`;
+      tapSites.set(idx, { member, nodeIndex: marker.nodeIndex });
+      emittedLines.push(renameRawText(`${pad}${member} = __ui_tap_seq;`));
+    } else if (marker.kind === "net") {
+      for (const startLine of marker.info.startLines) emittedLines.push(renameRawText(`${pad}${startLine}`));
+      if (marker.info.timeoutExpr !== null) {
+        emittedLines.push(renameRawText(`${pad}_waitUntil = ${now} + ${marker.info.timeoutExpr};`));
       }
     } else {
       // Plain timed wait (await delay(ms)) — arm its deadline. Anything whose
       // callee is not a known timer shape has no cooperative lowering here:
       // the call itself is NOT rendered (only marker/net awaits carry start
       // code), so report it instead of silently dropping it.
-      if (!PLAIN_AWAIT_CALLEES.has(seg.awaitedCallee)) {
-        options?.onUnsupportedAwait?.(seg.awaitedCallee, seg.awaitedSpan);
+      if (!PLAIN_AWAIT_CALLEES.has(stmt.callee)) {
+        options?.onUnsupportedAwait?.(stmt.callee, stmt.sourceSpan);
       }
-      const ms = seg.awaitedArgs[0] ? renderExpression(seg.awaitedArgs[0], strategy) : "0";
-      lines.push(`${pad}_waitUntil = ${strategy.currentTimeMillis()} + ${ms};`);
+      const ms = stmt.args[0] ? renderExpression(stmt.args[0], strategy) : "0";
+      emittedLines.push(renameRawText(`${pad}_waitUntil = ${now} + ${ms};`));
     }
-    lines.push(`${pad}_state = ${Q(i + 1)};`);
-    return lines;
+
+    // ── yield ──
+    emittedLines.push(`${pad}_state = ${label};`);
+    emittedLines.push(`${pad}return;`);
+
+    // ── resume label + gate ──
+    emittedLines.push(`${pad}case ${label}:`);
+    if (marker.kind === "edge") {
+      const member = `_edgePrev_p${marker.pin}`;
+      const cond = marker.edge === "rising"
+        ? `${member} == LOW && _cur == HIGH`
+        : `${member} == HIGH && _cur == LOW`;
+      const fullCond = marker.timeout !== null
+        ? `(${cond}) || ${now} >= _waitUntil`
+        : cond;
+      emittedLines.push(renameRawText(`${pad}{`));
+      emittedLines.push(renameRawText(`${pad}  int _cur = ${readPin(marker.pin)};`));
+      emittedLines.push(renameRawText(`${pad}  if (!(${fullCond})) { ${member} = _cur; return; }`));
+      emittedLines.push(renameRawText(`${pad}  ${member} = _cur;`));
+      emittedLines.push(renameRawText(`${pad}}`));
+    } else if (marker.kind === "tap") {
+      const site = tapSites.get(idx)!;
+      const cond = site.nodeIndex < 0
+        ? `__ui_tap_seq != ${site.member}`
+        : `(__ui_tap_seq != ${site.member}) && (__ui_tap_node == ${site.nodeIndex})`;
+      emittedLines.push(renameRawText(`${pad}if (!(${cond})) { return; }`));
+    } else if (marker.kind === "net") {
+      const info = marker.info;
+      const deadline = `${now} >= _waitUntil`;
+      const cond = info.pollCond === null
+        ? deadline
+        : info.timeoutExpr !== null
+          ? `(${info.pollCond}) || ${deadline}`
+          : info.pollCond;
+      emittedLines.push(renameRawText(`${pad}if (!(${cond})) { return; }`));
+    } else {
+      emittedLines.push(renameRawText(`${pad}if (${now} < _waitUntil) { return; }`));
+    }
   };
 
-  const caseLines: string[] = [];
-
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    const stateName = Q(i);
-    const body: string[] = [];
-
-    const edgePoll = i > 0 ? edgeInfoMap.get(i - 1) : undefined;
-    const tapPoll = i > 0 ? tapInfoMap.get(i - 1) : undefined;
-    const netPoll = i > 0 ? netInfoMap.get(i - 1) : undefined;
-
-    // Segment body + arming of the next await, at the given indent.
-    const runSegment = (pad: string): string[] => {
-      const lines: string[] = [];
-      for (const stmt of seg.preStatements) lines.push(`${pad}${renderStmt(stmt)}`);
-      lines.push(...armNextLines(i, pad));
-      return lines;
-    };
-
-    if (edgePoll) {
-      // Poll state: check pin transition via digitalRead
-      const prevVar = `_edgePrev_p${edgePoll.pin}`;
-      const cond = edgePoll.edge === "rising"
-        ? `${prevVar} == LOW && _cur == HIGH`
-        : `${prevVar} == HIGH && _cur == LOW`;
-      const fullCond = edgePoll.timeout !== null
-        ? `(${cond}) || ${strategy.currentTimeMillis()} >= _waitUntil`
-        : cond;
-
-      body.push(`        {`);
-      body.push(`          int _cur = ${strategy.readDigitalPin?.(String(edgePoll.pin)) ?? `digitalRead(${edgePoll.pin})`};`);
-      body.push(`          if (${fullCond}) {`);
-      body.push(`            ${prevVar} = _cur;`);
-      body.push(...runSegment(`            `));
-      body.push(`          } else {`);
-      body.push(`            ${prevVar} = _cur;`);
-      body.push(`          }`);
-      body.push(`        }`);
-    } else if (tapPoll) {
-      // Tap-poll state: a previous segment ended with `await ui.onTap()`.
-      // Wait until __ui_tap_seq bumps from the captured snapshot. A per-node
-      // await also requires __ui_tap_node to match the awaited node index.
-      const prevVar = `_tapPrev_${i - 1}`;
-      const nodeFilter = tapPoll.nodeIndex;
-      const cond = nodeFilter < 0
-        ? `__ui_tap_seq != ${prevVar}`
-        : `(__ui_tap_seq != ${prevVar}) && (__ui_tap_node == ${nodeFilter})`;
-      body.push(`        if (${cond}) {`);
-      body.push(...runSegment(`          `));
-      body.push(`        }`);
-    } else if (netPoll) {
-      // Net-poll state: a previous segment ended with an awaited WiFi/HTTP
-      // op. Wait until its poll condition fires (or its deadline expires).
-      const deadline = `${strategy.currentTimeMillis()} >= _waitUntil`;
-      const cond = netPoll.pollCond === null
-        ? deadline
-        : netPoll.timeoutExpr !== null
-          ? `(${netPoll.pollCond}) || ${deadline}`
-          : netPoll.pollCond;
-      body.push(`        if (${cond}) {`);
-      body.push(...runSegment(`          `));
-      body.push(`        }`);
-    } else if (i === 0) {
-      // First state runs immediately.
-      body.push(...runSegment(`        `));
-    } else {
-      // Previous await was a plain timed wait — poll its deadline.
-      body.push(`        if (${strategy.currentTimeMillis()} >= _waitUntil) {`);
-      body.push(...runSegment(`          `));
-      body.push(`        }`);
+  /** A hoisted var_decl renders as `<type> _v_x = <init>;` — strip the
+   *  declaration so only the assignment remains (the member persists in the
+   *  class). A bare declaration (no initializer) emits nothing. */
+  const emitHoistedDecl = (stmt: Extract<StatementIR, { kind: "var_decl" }>, pad: string): void => {
+    const text = renderStmt(stmt);
+    const lines = text.split("\n");
+    const last = lines.pop() ?? "";
+    const at = last.indexOf(stmt.name);
+    if (at < 0) {
+      emittedLines.push(renameRawText(`${pad}${text}`));
+      return;
     }
+    const tail = last.slice(at + stmt.name.length);
+    if (tail.trimStart().startsWith("=")) {
+      // keep any prelude lines (snprintf buffers), then the assignment
+      for (const l of lines) emittedLines.push(renameRawText(`${pad}${l}`));
+      emittedLines.push(renameRawText(`${pad}${stmt.name}${tail}`));
+    } else if (lines.length > 0) {
+      for (const l of lines) emittedLines.push(renameRawText(`${pad}${l}`));
+    }
+  };
 
-    caseLines.push(`      case ${stateName}:`, `        {`, ...body, `        }`, `        break;`);
-  }
+  const emitStmts = (stmts: StatementIR[], pad: string, inRangeFor: boolean): void => {
+    for (const stmt of stmts) emitStmt(stmt, pad, inRangeFor);
+  };
 
-  if (!isCyclic) caseLines.push(`      case ${Q_DONE}:`, `        break;`);
+  const emitStmt = (stmt: StatementIR, pad: string, inRangeFor: boolean): void => {
+    switch (stmt.kind) {
+      case "call":
+        if (stmt.isAwaited) {
+          emitAwaitArm(stmt, pad, inRangeFor);
+          return;
+        }
+        emittedLines.push(renameRawText(`${pad}${renderStmt(stmt)}`));
+        return;
+      case "var_decl": {
+        if (hoisted.has(stmt.name.replace(/^_v_/, "")) && stmt.name.startsWith("_v_")) {
+          emitHoistedDecl(stmt, pad);
+          return;
+        }
+        emittedLines.push(renameRawText(`${pad}${renderStmt(stmt)}`));
+        return;
+      }
+      case "while":
+        emittedLines.push(renameRawText(`${pad}${renderConditionHeader("while", stmt.condition, stmt.sourceSpan)}`));
+        emittedLines.push(renameRawText(`${pad}{`));
+        emitStmts(stmt.body, `${pad}  `, inRangeFor);
+        emittedLines.push(renameRawText(`${pad}}`));
+        return;
+      case "if":
+        emittedLines.push(renameRawText(`${pad}${renderStmt(stmt)}`));
+        emittedLines.push(renameRawText(`${pad}{`));
+        emitStmts(stmt.thenBranch, `${pad}  `, inRangeFor);
+        emittedLines.push(renameRawText(`${pad}}`));
+        if (stmt.elseBranch && stmt.elseBranch.length > 0) {
+          emittedLines.push(renameRawText(`${pad}else {`));
+          emitStmts(stmt.elseBranch, `${pad}  `, inRangeFor);
+          emittedLines.push(renameRawText(`${pad}}`));
+        }
+        return;
+      case "for": {
+        // A for header that declares its variable (`for (double i = 0; …)`)
+        // puts an initialization where a resume label cannot jump past it.
+        // Emit the declaration as its own statement before the loop and
+        // render the header initializer-free (`for (; …; …)`). Hoisted
+        // initializers were already rewritten to assigns above, which are
+        // safe in the header — only var_decl initializers need the split.
+        if (stmt.initializer && stmt.initializer.kind === "var_decl") {
+          emitStmt(stmt.initializer, pad, inRangeFor);
+          emittedLines.push(renameRawText(`${pad}${renderStmt({ ...stmt, initializer: undefined })}`));
+        } else {
+          emittedLines.push(renameRawText(`${pad}${renderStmt(stmt)}`));
+        }
+        emittedLines.push(renameRawText(`${pad}{`));
+        emitStmts(stmt.body, `${pad}  `, inRangeFor);
+        emittedLines.push(renameRawText(`${pad}}`));
+        return;
+      }
+      case "for_of":
+      case "for_in": {
+        emittedLines.push(renameRawText(`${pad}${renderStmt(stmt)}`));
+        emittedLines.push(renameRawText(`${pad}{`));
+        emitStmts(stmt.body, `${pad}  `, true);
+        emittedLines.push(renameRawText(`${pad}}`));
+        return;
+      }
+      case "do_while": {
+        emittedLines.push(renameRawText(`${pad}do`));
+        emittedLines.push(renameRawText(`${pad}{`));
+        emitStmts(stmt.body, `${pad}  `, inRangeFor);
+        // The statement renderer returns only `do` for do_while — render the
+        // condition through a synthetic while header and strip the keyword.
+        const header = renderConditionHeader("while", stmt.condition, stmt.sourceSpan);
+        const cond = header.replace(/^\s*while\s*\(/, "").replace(/\)\s*$/, "");
+        emittedLines.push(renameRawText(`${pad}} while (${cond});`));
+        return;
+      }
+      case "block":
+        emittedLines.push(renameRawText(`${pad}{`));
+        emitStmts(stmt.body, `${pad}  `, inRangeFor);
+        emittedLines.push(renameRawText(`${pad}}`));
+        return;
+      case "return":
+        // A bare return exits run() — rewind to DONE so the task completes
+        // instead of re-executing the current continuation forever.
+        if (stmt.value) {
+          emittedLines.push(renameRawText(`${pad}${renderStmt(stmt)}`));
+          return;
+        }
+        emittedLines.push(renameRawText(`${pad}_state = State::STATE_DONE;`));
+        emittedLines.push(renameRawText(`${pad}return;`));
+        return;
+      default:
+        emittedLines.push(renameRawText(`${pad}${renderStmt(stmt)}`));
+        return;
+    }
+  };
 
-  const stateEnumList = stateNames.join(", ");
-  const isCompleteExpr = isCyclic ? "false" : `_state == ${Q_DONE}`;
+  emitStmts(body, "      ", false);
 
-  // Build constructor initializer list and edge/tap member declarations
+  // Fall-off-the-end: the task is done (a `while (true)` body never reaches
+  // here — the loop just keeps running inside the case).
+  emittedLines.push("      _state = State::STATE_DONE;");
+  emittedLines.push("      return;");
+
+  // ── Class assembly ───────────────────────────────────────────────────────
+  const stateNames = ["STATE_0"];
+  for (let i = 1; i < stateCounter; i++) stateNames.push(`STATE_${i}`);
+  stateNames.push("STATE_DONE");
+
+  const hoistedArr = Array.from(hoisted.values());
   const edgeMemberArr = Array.from(edgeMembers);
-  const tapMemberArr = Array.from(tapMembers.keys());
-  const inits: string[] = [`_state(${Q_0})`, `_waitUntil(0)`];
+  const inits: string[] = [`_state(State::STATE_0)`, `_waitUntil(0)`];
   for (const m of edgeMemberArr) inits.push(`${m}(LOW)`);
-  for (const m of tapMemberArr) inits.push(`${m}(0)`);
+  for (const site of tapSites.values()) inits.push(`${site.member}(0)`);
+  for (const l of hoistedArr) inits.push(`${l.member}{}`);
   // Owner pointer (async methods): initialized null, bound by start(owner).
   // Declared last / initialized last so the initializer list order matches.
   if (owner) inits.push("_owner(nullptr)");
   const ctorInitList = inits.join(", ");
-  const edgeResetList = edgeMemberArr.map(m => ` ${m} = LOW;`).join("");
-  const tapResetList = tapMemberArr.map(m => ` ${m} = 0;`).join("");
-  const edgeMemberDecls = edgeMemberArr.map(m => `  int ${m};`);
+  const edgeResetList = edgeMemberArr.map((m) => ` ${m} = LOW;`).join("");
+  const tapResetList = Array.from(tapSites.values()).map((s) => ` ${s.member} = 0;`).join("");
+  const edgeMemberDecls = edgeMemberArr.map((m) => `  int ${m};`);
   // __ui_tap_seq is uint32_t; the snapshot must match to detect bumps correctly.
-  const tapMemberDecls = tapMemberArr.map(m => `  uint32_t ${m};`);
+  const tapMemberDecls = Array.from(tapSites.values()).map((s) => `  uint32_t ${s.member};`);
+  // Strategy-normalize each hoisted member type: a `string` local's IR type
+  // is std::string, but on a const char* string target (Zephyr/Arduino) every
+  // helper taking/returning strings is const char* — a `std::string _v_line`
+  // member made `dispatch(_v_line)` / `strlen(_v_line)` / substring calls
+  // fail g++ ("cannot convert std::string to const char*").
+  const hoistedMemberDecls = hoistedArr.map((l) => `  ${strategy.normalizeCppType(l.cppType)} ${l.member};`);
   const ownerMemberDecl = owner ? [`  ${owner}* _owner;`] : [];
   const runGuard = owner ? [`    if (_owner == nullptr) { return; }`] : [];
   // start(owner): (re)bind the receiver and rewind the machine. Calling the
@@ -369,7 +873,7 @@ export function generateAsyncTaskClass(
   const startMethod = owner ? [
     `  void start(${owner}* owner) {`,
     `    _owner = owner;`,
-    `    _state = ${Q_0};`,
+    `    _state = State::STATE_0;`,
     `    _waitUntil = 0;${edgeResetList}${tapResetList}`,
     `  }`,
   ] : [];
@@ -378,22 +882,27 @@ export function generateAsyncTaskClass(
     `// Async state machine for ${fnName}`,
     `class ${className} {`,
     `public:`,
-    `  enum class State { ${stateEnumList} };`,
+    `  enum class State { ${stateNames.join(", ")} };`,
     `  ${className}() : ${ctorInitList} {}`,
     ...startMethod,
     `  void run() {`,
     ...runGuard,
     `    switch (_state) {`,
-    ...caseLines,
+    `      case State::STATE_0: {`,
+    ...emittedLines,
+    `      }`,
+    `      case State::STATE_DONE:`,
+    `        break;`,
     `    }`,
     `  }`,
-    `  bool isComplete() const { return ${isCompleteExpr}; }`,
-    `  void reset() { _state = ${Q_0}; _waitUntil = 0;${edgeResetList}${tapResetList} }`,
+    `  bool isComplete() const { return _state == State::STATE_DONE; }`,
+    `  void reset() { _state = State::STATE_0; _waitUntil = 0;${edgeResetList}${tapResetList} }`,
     `private:`,
     `  State _state;`,
     `  unsigned long _waitUntil;`,
     ...edgeMemberDecls,
     ...tapMemberDecls,
+    ...hoistedMemberDecls,
     ...ownerMemberDecl,
     `};`,
   ].join("\n");
@@ -403,6 +912,93 @@ export function generateAsyncTaskClass(
     : undefined;
 
   return { classDef, instanceDecl: `${className} ${instanceName};`, taskVarName: instanceName, starterDef };
+}
+
+/** Infer a concrete member type for an `auto`-deduced local from its
+ *  initializer shape, for hoisting into the task class. Returns null when
+ *  the shape carries no type signal (leave the declaration in place — the
+ *  C++ compile fails loudly if an await then crosses it).
+ *
+ *  JS-number semantics: numeric-valued initializers are `double` — the
+ *  repo-wide lowering of TS `number`. Boolean/comparison shapes are `bool`.
+ *  String literals are `const char*`. HAL expressions consult the op's
+ *  registered C++ return type. */
+function inferAutoMemberType(init: ExpressionIR | undefined): string | null {
+  if (!init) return null;
+  switch (init.kind) {
+    case "boolean":
+      return "bool";
+    case "number":
+      return "double";
+    case "string":
+      return "const char*";
+    case "binary": {
+      // Comparisons/logic are boolean; arithmetic is double-valued.
+      const ops = ["==", "!=", "<", ">", "<=", ">=", "&&", "||"];
+      return ops.includes(init.operator) ? "bool" : "double";
+    }
+    case "unary":
+      return init.operator === "!" ? "bool" : "double";
+    case "ternary":
+      return "double";
+    case "paren":
+      return inferAutoMemberType(init.inner);
+    case "await":
+      return inferAutoMemberType(init.value);
+    case "hal-expr":
+      return cppTypeForHalOp(init.operation.operation) ?? "double";
+    case "raw": {
+      const t = init.value.trim();
+      if (t === "true" || t === "false") return "bool";
+      if (t.startsWith('"')) return "const char*";
+      // String-method helper calls (`__tc_charAt(s, i)`, `__tc_toUpperCase(s)`,
+      // `__tc_substring2(...)`, ...) produce strings — the strategy normalizes
+      // the member declaration (std::string → const char* on embedded). A
+      // charAt result used to fall to the numeric default and hoisted as
+      // `double _v_ch`, failing g++ on the const char* assignment.
+      if (/^__tc_(?:toUpperCase|toLowerCase|trim|replace|charAt|substring\d?|slice\d?|padStart(?:_default)?|padEnd(?:_default)?|repeat|toFixed|jsonStringify)\(/.test(t)) {
+        return "std::string";
+      }
+      if (/^__tc_num_radix\(/.test(t)) return "const char*";
+      if (/^static_cast<(?:bool|int\d*_t|uint\d*_t)>/.test(t)) {
+        return /bool/.test(t) ? "bool" : "int32_t";
+      }
+      // static_cast<double>, numeric literals, comma-expr of numeric calls,
+      // method-call text — all double under JS-number semantics.
+      return "double";
+    }
+    default:
+      // method-call / property-access of unknown return: reportJson-style
+      // helpers with recorded returns never arrive here as `auto`; treat
+      // the rest as double (JS number) — the overwhelmingly common shape.
+      return "double";
+  }
+}
+
+/** Find the source span of the first declaration of `name` (diagnostics). */
+function findDeclSpan(stmts: StatementIR[], name: string): StatementIR["sourceSpan"] | undefined {
+  for (const stmt of stmts) {
+    if (stmt.kind === "var_decl" && stmt.name === name) return stmt.sourceSpan;
+    const nested: StatementIR[][] = [];
+    if (stmt.kind === "while" || stmt.kind === "do_while" || stmt.kind === "block") nested.push(stmt.body);
+    if (stmt.kind === "if") {
+      nested.push(stmt.thenBranch);
+      if (stmt.elseBranch) nested.push(stmt.elseBranch);
+    }
+    if (stmt.kind === "for") {
+      if (stmt.initializer) nested.push([stmt.initializer]);
+      nested.push(stmt.body);
+    }
+    if (stmt.kind === "for_of" || stmt.kind === "for_in") {
+      nested.push([stmt.variable]);
+      nested.push(stmt.body);
+    }
+    for (const list of nested) {
+      const span = findDeclSpan(list, name);
+      if (span) return span;
+    }
+  }
+  return undefined;
 }
 
 /**

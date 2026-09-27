@@ -99,6 +99,7 @@ function isIndirectType(cppType: string, strategy: PlatformStrategy): boolean {
   // Pointer or C-array. Detected structurally rather than by regex.
   if (strategy.isPointerType(cppType)) return true;
   const ir = parseCppType(cppType);
+  if (ir.kind === "pointer" || ir.kind === "strPtr") return true;
   return ir.kind === "cArray" || ir.kind === "staticArray";
 }
 
@@ -209,6 +210,12 @@ export class StatementRenderer {
       knownFunctionReturnTypes: context.knownFunctionReturnTypes,
       knownVariableTypes: context.knownVariableTypes,
       pointerVarTypes: context.pointerVarTypes,
+      // Thread through: member access on a module-scope pointer variable
+      // (a promoted `const stats = new Stats()` referenced from a class
+      // method declared earlier in TS source) arrows via this map — without
+      // it the statement renderer's method-call path emitted `stats.count()`
+      // (dot on a pointer) and failed g++.
+      globalPointerVarTypes: context.globalPointerVarTypes,
       stringVarNames: context.stringVarNames,
       cArrayVarNames: context.cArrayVarNames,
       namespaceNames: context.namespaceNames,
@@ -338,6 +345,41 @@ export class StatementRenderer {
               : `${target} = static_cast<int>(${target}) ${op} ${renderedBitwiseValue};`;
           }
         }
+        // ── JS string compound assignment: `s += part` ─────────────────────
+        // JS strings are immutable — `s += v` is concat-then-rebind. On the
+        // const char* string targets there is no operator+= between pointers
+        // at all, and on std::string targets the value side is usually a
+        // bounded snprintf buffer anyway. Lower to the same snprintf rebind
+        // the `=` concat path uses, into a STATIC buffer so the accumulated
+        // pointer stays valid after the statement (later reads, loop
+        // iterations, the next async-task run() slice). The `=`-path's
+        // non-static buffer dangled in exactly those positions.
+        if (statement.operator === "+=") {
+          const stringAssignTargetType = this.expressionRenderer.inferLvalueCppType(statement.target, knownVariableTypes);
+          const targetIsString = stringAssignTargetType !== undefined
+            && this.strategy.isStringLikeType(stringAssignTargetType);
+          // Classify the appended value through the format machinery so the
+          // specifier matches its C++ type (%s strings, %c chars, %g numbers).
+          const valueClass = this.expressionRenderer.inferFormatSpecifier(statement.value, undefined, knownVariableTypes);
+          const valueIsStringish = valueClass?.format === "%s" || valueClass?.format === "%c";
+          if (targetIsString || (stringAssignTargetType === undefined && valueIsStringish)) {
+            const valueText = valueClass
+              ? valueClass.arg
+              : this.expressionRenderer.render(statement.value, undefined, knownVariableTypes);
+            if (valueClass?.preludeLines?.length) {
+              this.expressionRenderer.pushPrelude(valueClass.preludeLines);
+            }
+            const fmt = valueClass ? valueClass.format : "%s";
+            // Bounded accumulation: the target's current length is a runtime
+            // fact, so budget generously (the engine's bounded-string model
+            // truncates past the cap, same as __tc_* helpers).
+            const capacity = Math.max(257, (valueClass?.estimatedLength ?? 64) + 129);
+            const buffer = this.expressionRenderer.mintStaticStringBuffer(`%s${fmt}`, [target, valueText], capacity);
+            return forHeader
+              ? `${target} = ${buffer}`
+              : `${target} = ${buffer};`;
+          }
+        }
         // Render the assigned value type-aware: when the target's resolved
         // C++ type sits on the other side of an enum↔integral boundary from
         // the value (e.g. `this->nxt[r][c] = next` where `nxt` is
@@ -429,8 +471,29 @@ export class StatementRenderer {
           }
           // Range-for by reference for non-primitive element types (structs,
           // classes, strings) to avoid the per-iteration copy g++ warns about
-          // (-Wrange-loop-construct). Primitives stay by value.
-          const isRef = !isPrimitiveCppType(varDecl.cppType) && !isIndirectType(varDecl.cppType, this.strategy);
+          // (-Wrange-loop-construct). Primitives stay by value. Normalize the
+          // element type FIRST — a loop var may carry the TS-native "string"
+          // while renderTypedName normalizes later (Zephyr: → const char*),
+          // and an unnormalized "string" looks non-indirect here, emitting
+          // `const char*& h` against a const vector's elements (g++ discards
+          // qualifiers).
+          const normalizedElemType = this.normalizeCppType(varDecl.cppType);
+          const isRef = !isPrimitiveCppType(normalizedElemType) && !isIndirectType(normalizedElemType, this.strategy);
+          // Register the loop variable's element type in the emission scope
+          // BEFORE the body renders. When the iterable is declared LATER in
+          // TS source than the function containing this loop (legal TS —
+          // the loop runs post-init), the IR-build element-type pass saw no
+          // type for it and left the var `auto` — then `c.field` in the body
+          // can't resolve pointer-ness and renders `c.field` (dot on a
+          // class pointer, a hard g++ error). Here the emission scope DOES
+          // know the iterable's final type (all top-levels are registered
+          // by setup), so derive the element type and bind the loop var.
+          if (varDecl.cppType === "auto" && iterableType && knownVariableTypes) {
+            const elem = parsedElementString(iterableType);
+            if (elem && elem !== "auto") {
+              knownVariableTypes.set(varDecl.name, { cppType: elem });
+            }
+          }
           return `for (${this.renderTypedName(varDecl.cppType, varDecl.name, varDecl.storage === "const", isRef)} : ${this.expressionRenderer.render(statement.iterable, undefined, knownVariableTypes)})`;
         }
         return `for (auto item : ${this.expressionRenderer.render(statement.iterable, undefined, knownVariableTypes)})`;
@@ -448,7 +511,9 @@ export class StatementRenderer {
         }
         const varDecl = statement.variable;
         if (varDecl.kind === "var_decl") {
-          const isRef = !isPrimitiveCppType(varDecl.cppType) && !isIndirectType(varDecl.cppType, this.strategy);
+          // Normalize before the isRef decision (see the for_of branch).
+          const normalizedForInType = this.normalizeCppType(varDecl.cppType);
+          const isRef = !isPrimitiveCppType(normalizedForInType) && !isIndirectType(normalizedForInType, this.strategy);
           return `for (${this.renderTypedName(varDecl.cppType, varDecl.name, varDecl.storage === "const", isRef)} : ${this.expressionRenderer.render(statement.object, undefined, knownVariableTypes)})`;
         }
         return `for (auto key : ${this.expressionRenderer.render(statement.object, undefined, knownVariableTypes)})`;

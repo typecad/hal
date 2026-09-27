@@ -6,7 +6,7 @@ import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-
 import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName } from "./compile-time-only.js";
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveAliasedTypeNode } from "./type-resolution.js";
 import { escapeCppKeyword } from "../utils/strings.js";
-import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeEnumNames, activeStringEnumNames, resetFunctionScopeState, topLevelClassNames, topLevelClasses, requiredIncludes } from "./build-ir-state.js";
+import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeEnumNames, activeStringEnumNames, resetFunctionScopeState, topLevelClassNames, topLevelClasses, requiredIncludes, mapEntryVarNames } from "./build-ir-state.js";
 import { getCurrentIrTypeScope, bindIrTypeScopeLocals } from "./symbol-types.js";
 import { calleeToText, renderExprAsText } from "./render-expr.js";
 import { expressionToIR } from "./expression-to-ir.js";
@@ -449,9 +449,15 @@ export function lowerStatementList(
   // but preserve file-level mutable array tracking (populated by build-ir.ts pre-scan).
   const savedMutableArrayVars = new Set(mutableArrayVars);
   const savedArrayLiteralSizes = new Map(arrayLiteralSizes);
+  // A for-of-over-Map loop var registers in mapEntryVarNames BEFORE the
+  // body's lowerStatementList runs (which lands here and resets function
+  // state) — preserve the registration across the reset or the body's
+  // entry[0]/entry[1] loses its pair semantics.
+  const savedMapEntryVarNames = new Set(mapEntryVarNames);
   resetFunctionScopeState();
   for (const v of savedMutableArrayVars) mutableArrayVars.add(v);
   for (const [k, v] of savedArrayLiteralSizes) arrayLiteralSizes.set(k, v);
+  for (const v of savedMapEntryVarNames) mapEntryVarNames.add(v);
 
   // resetFunctionScopeState re-seeded scope.locals from classFields. Now bind
   // the threaded localVariableTypes map as the scope's locals storage (folding
@@ -466,7 +472,7 @@ export function lowerStatementList(
   }
 
   for (const statement of statements) {
-    prescanArrayUsage(statement);
+    prescanArrayUsage(statement, !functionNameForDiagnostics);
   }
 
   // Phase 3: Process remaining (non-function, non-class) statements.

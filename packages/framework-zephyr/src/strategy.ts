@@ -1845,7 +1845,28 @@ export class ZephyrStrategy implements PlatformStrategy {
   normalizeCppType(typeName: string): string {
     if (typeName === 'auto') return 'auto';
     if (typeName === 'std::string') return 'const char*';
-    return typeName;
+    // Container ELEMENT types on the const char* string model: every string
+    // VALUE the program produces (literals, __tc_* helper results) is
+    // const char*. Insertion into a std::string-element container converts
+    // implicitly, but EXTRACTION (arr[i] into a const char* context) does
+    // not — `const x = args[0]` failed g++ with "cannot convert
+    // std::string to const char*". Vectors/StaticArrays/map VALUES map to
+    // const char* elements. Map KEYS are deliberately exempt:
+    // std::map<const char*, V> orders by POINTER ADDRESS, silently breaking
+    // keyed lookups; a std::string key still accepts const char* probes via
+    // its implicit constructor.
+    return typeName
+      .replace(/std::vector<(\s*)std::string(\s*)>/g, 'std::vector<$1const char*$2>')
+      .replace(/__tc_StaticArray<(\s*)std::string(\s*),/g, '__tc_StaticArray<$1const char*$2,')
+      .replace(/std::map<([^<>]*),(\s*)std::string(\s*)>/g, 'std::map<$1,$2const char*$3>');
+  }
+
+  promoteDivisionToDouble(): boolean {
+    // JS `/` is real division even for int operands — ZephyrStrategy
+    // implements PlatformStrategy directly (no GenericPlatformStrategy
+    // inheritance), so without this override the emit-side promotion never
+    // ran and `sum / n` truncated as C++ integer division.
+    return true;
   }
 
   defaultNumericType(compliance?: { isBanned(ruleId: string): boolean }): string {
@@ -2079,8 +2100,11 @@ export class ZephyrStrategy implements PlatformStrategy {
   }
 
   needsStdVector(): boolean {
-    // No <vector> in the minimal C++ lib.
-    return false;
+    // <vector> IS available: builds run with CONFIG_REQUIRES_FULL_LIBCPP
+    // (real libstdc++ — same reasoning as mathHeader below). The former
+    // `false` left the typed `new Array<E>(n)` lowering (std::vector<E>)
+    // without its include — uncompilable output, silently.
+    return true;
   }
 
   needsStdExcept(): boolean {
@@ -2292,28 +2316,32 @@ export class ZephyrStrategy implements PlatformStrategy {
   }
 
   getStdLibSupport(_architecture?: string): StdLibSupport {
-    // Zephyr's minimal C++ support (lib/cpp/minimal) provides only <cstddef>,
-    // <cstdint>, <new>. No <vector>, <string>, <iostream>, <functional>, no
-    // exceptions, no RTTI. The blink MVP uses only GPIO + kernel timing, so
-    // none of those are needed. Array/string literals are not promoted to the
-    // STL containers; a future program needing them must enable a full STL
-    // and update these flags.
+    // Builds run with CONFIG_REQUIRES_FULL_LIBCPP (real libstdc++), so
+    // <vector> is available (needsStdVector above). The remaining flags
+    // describe what the lowerings actually use: no <string>/<iostream>/
+    // <functional>, no exceptions, no RTTI.
     return {
-      hasVector: false,
+      hasVector: true,
       hasString: false,
       hasIostream: false,
       hasExceptions: false,
       hasRTTI: false,
       recommendedArrayImpl: 'static_array',
-      recommendedStringImpl: 'static_string',
-    };
+      recommendedStringImpl: 'static_string',    };
+  }
+
+  supportsStdVariant(): boolean {
+    // The scaffold pins CONFIG_STD_CPP14 — <variant> ships in the full
+    // libstdc++ headers but does not compile under C++14. Unrelated to
+    // hasVector: the library is present; the standard is not.
+    return false;
   }
 
   // ── Polyfills ───────────────────────────────────────────────────────────
-  // Zephyr is a no-STL target (hasVector/hasString = false), so array/string
-  // literals lower to __tc_StaticArray / const char* and string methods lower
-  // to __tc_* helpers — both need STL-free definitions emitted here (there is
-  // no shared-runtime fallback; the pipeline sources 100% of polyfills from
+  // Array/string literals lower to __tc_StaticArray / const char* and string
+  // methods lower to __tc_* helpers — both need STL-free definitions emitted
+  // here (there is no shared-runtime fallback; the pipeline sources 100% of
+  // polyfills from
   // generateNativePolyfills). Mirrors framework-arduino's AVR polyfills.
 
   nativePolyfills(): Set<string> {
@@ -2400,6 +2428,13 @@ export class ZephyrStrategy implements PlatformStrategy {
 #define CUTTLEFISH_STR_BUF_SIZE 64
 #endif
 bool __tc_endsWith(const char* s, const char* suffix) { int sl = strlen(s), tl = strlen(suffix); return sl >= tl && strcmp(s + sl - tl, suffix) == 0; }
+bool __tc_startsWith(const char* s, const char* prefix) { size_t tl = strlen(prefix); return strncmp(s, prefix, tl) == 0; }
+bool __tc_includes(const char* s, const char* needle) { return strstr(s, needle) != nullptr; }
+// (3.14159).toFixed(2) → "3.14". %.*f needs CBPRINTF_FP_SUPPORT — the usage
+// scan flags __tc_toFixed( as a float-format site so the scaffold turns it
+// on. Digits are clamped so a bad input cannot balloon the fixed-point
+// expansion past the buffer.
+const char* __tc_toFixed(double val, int digits) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; if (digits < 0) digits = 0; if (digits > 20) digits = 20; snprintf(b, CUTTLEFISH_STR_BUF_SIZE, "%.*f", digits, val); return b; }
 const char* __tc_toUpperCase(const char* s) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) { if (*p >= 'a' && *p <= 'z') { *p = static_cast<char>(*p - 32); } } return b; }
 const char* __tc_toLowerCase(const char* s) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) { if (*p >= 'A' && *p <= 'Z') { *p = static_cast<char>(*p + 32); } } return b; }
 const char* __tc_trim(const char* s) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; while (*s == ' ' || *s == '\\t' || *s == '\\n' || *s == '\\r') s++; int len = strlen(s); while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\\t' || s[len-1] == '\\n' || s[len-1] == '\\r')) len--; int cplen = len < CUTTLEFISH_STR_BUF_SIZE - 1 ? len : CUTTLEFISH_STR_BUF_SIZE - 1; strncpy(b, s, cplen); b[cplen] = '\\0'; return b; }
@@ -2411,6 +2446,12 @@ const char* __tc_replace(const char* s, const char* old, const char* repl) { sta
 const char* __tc_charAt(const char* s, int idx) { static char buf[2][2]; static uint8_t slot = 0; slot ^= 1; buf[slot][0] = s[idx]; buf[slot][1] = '\\0'; return buf[slot]; }
 int __tc_charCodeAt(const char* s, int idx) { return static_cast<int>(static_cast<unsigned char>(s[idx])); }
 int __tc_indexOf(const char* s, const char* needle) { const char* p = strstr(s, needle); return p ? static_cast<int>(p - s) : -1; }
+int __tc_lastIndexOf(const char* s, const char* needle) { int slen = static_cast<int>(strlen(s)); if (strlen(needle) == 0U) { return slen; } int last = -1; const char* p = strstr(s, needle); while (p != nullptr) { last = static_cast<int>(p - s); p = strstr(p + 1, needle); } return last; }
+const char* __tc_padStart(const char* s, int len, const char* fill) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; int slen = static_cast<int>(strlen(s)); int flen = static_cast<int>(strlen(fill)); if (flen <= 0) { flen = 1; } if (len > CUTTLEFISH_STR_BUF_SIZE - 1) { len = CUTTLEFISH_STR_BUF_SIZE - 1; } if (len < 0 || slen >= len) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } int pad = len - slen; int i = 0; for (; i < pad; i++) { b[i] = fill[i % flen]; } for (int j = 0; j < slen; j++) { b[i + j] = s[j]; } b[i + slen] = '\\0'; return b; }
+const char* __tc_padStart_default(const char* s, int len) { return __tc_padStart(s, len, " "); }
+const char* __tc_padEnd(const char* s, int len, const char* fill) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; int slen = static_cast<int>(strlen(s)); int flen = static_cast<int>(strlen(fill)); if (flen <= 0) { flen = 1; } if (len > CUTTLEFISH_STR_BUF_SIZE - 1) { len = CUTTLEFISH_STR_BUF_SIZE - 1; } if (len < 0 || slen >= len) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } int i = 0; for (; i < slen; i++) { b[i] = s[i]; } for (int j = 0; i < len; j++, i++) { b[i] = fill[j % flen]; } b[i] = '\\0'; return b; }
+const char* __tc_padEnd_default(const char* s, int len) { return __tc_padEnd(s, len, " "); }
+const char* __tc_repeat(const char* s, int count) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; int slen = static_cast<int>(strlen(s)); if (count < 0) { count = 0; } int i = 0; if (slen > 0) { for (int c = 0; c < count; c++) { for (int j = 0; j < slen && i < CUTTLEFISH_STR_BUF_SIZE - 1; j++, i++) { b[i] = s[j]; } } } b[i] = '\\0'; return b; }
 const char* __tc_num_radix(long long v, int radix) { static char buf[72]; if (radix == 16) { snprintf(buf, sizeof(buf), "%llx", v); } else if (radix == 8) { snprintf(buf, sizeof(buf), "%llo", v); } else if (radix == 2) { unsigned long long u = static_cast<unsigned long long>(v); char tmp[72]; int i = 0; if (u == 0ULL) { buf[0] = '0'; buf[1] = '\\0'; return buf; } while (u > 0ULL) { tmp[i++] = static_cast<char>('0' + static_cast<char>(u & 1ULL)); u >>= 1; } for (int j = 0; j < i; j++) { buf[j] = tmp[i - 1 - j]; } buf[i] = '\\0'; } else { snprintf(buf, sizeof(buf), "%lld", v); } return buf; }
 `],
         shimMacros: [],
@@ -2453,6 +2494,33 @@ struct __tc_StaticArray {
     const T* begin() const { return &data[0]; }
     const T* end() const { return &data[_size]; }
 };
+#endif
+`],
+        shimMacros: [],
+        dependencies: [],
+      },
+      {
+        // Vector helpers for std::vector receivers (annotated `T[]`
+        // declarations lower to std::vector on Zephyr — only array literals
+        // become __tc_StaticArray). `.includes`/`.indexOf` on those lower to
+        // these template overloads (`.push` inlines to push_back at IR time).
+        // Separate polyfill so the <vector> include only follows actual
+        // vector-helper use. AUTOSAR: fixed-form templates, no dynamic
+        // allocation — a bounded linear scan, same shape as __tc_StaticArray's
+        // indexOf.
+        kind: 'polyfill',
+        id: 'vector_methods',
+        domain: 'embedded' as const,
+        requiredIncludes: ['<vector>'],
+        forwardDeclarations: [],
+        helperStructs: [],
+        helperFunctions: [`
+#ifndef __TC_VECTOR_METHODS_DEFINED
+#define __TC_VECTOR_METHODS_DEFINED
+template <typename T>
+int __tc_indexOf(const std::vector<T>& v, const T& val) { for (size_t i = 0; i < v.size(); i++) { if (v[i] == val) { return static_cast<int>(i); } } return -1; }
+template <typename T>
+bool __tc_includes(const std::vector<T>& v, const T& val) { for (size_t i = 0; i < v.size(); i++) { if (v[i] == val) { return true; } } return false; }
 #endif
 `],
         shimMacros: [],

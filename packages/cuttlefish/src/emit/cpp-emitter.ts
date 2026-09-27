@@ -5,7 +5,7 @@ import { buildEmitterContext } from "./emitters/setup.js";
 import type { EmitterOptions } from "./emitters/emitter-context.js";
 export { type EmitterOptions } from "./emitters/emitter-context.js";
 
-import { emitPreamble, emitAsyncTaskClasses, emitAsyncMethodTasks, finalizeOutput } from "./emitters/output-finalizer.js";
+import { emitPreamble, emitAsyncTaskClasses, emitAsyncMethodTasks, emitPromotedVarExterns, finalizeOutput } from "./emitters/output-finalizer.js";
 import { runTopLevelPreprocessing } from "./emitters/top-level-prep.js";
 import { synthesizeEntrypoints } from "./emitters/entrypoint-synthesizer.js";
 import { emitTypeDeclarations } from "./emitters/type-decl-emitter.js";
@@ -46,14 +46,26 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // 5. Emit type declarations (enums, type aliases, interfaces, top-level constants)
   emitTypeDeclarations(ctx);
 
-  // 5.5. Async state machines — after globals so WIFI_SSID etc. are in scope
-  emitAsyncTaskClasses(ctx);
-
   // 6. Emit namespaces
   emitNamespaces(ctx);
 
-  // 6.5. Emit function forward declarations (split mode — must precede class definitions)
+  // 6.5. Emit function forward declarations (split mode — must precede class
+  // definitions; also precedes the async task classes below)
   emitFunctionForwardDeclarations(ctx);
+
+  // 6.55. Early `extern` declarations for promoted runtime vars. Their real
+  // forward declarations land in step 8, AFTER the task classes (6.6) and
+  // user classes (7) that may reference them in TS source order — a class
+  // method using a global declared later in the file is legal TS (methods
+  // run post-init) but invalid C++ emission order without these externs.
+  emitPromotedVarExterns(ctx);
+
+  // 6.6. Async state machines — after globals (WIFI_SSID etc. in scope) AND
+  // after the function forward declarations: task bodies call the user's
+  // plain helper functions (`clamp`, `reportJson`) whose prototypes land in
+  // 6.5. Before the reorder, every such call failed with "not declared in
+  // this scope".
+  emitAsyncTaskClasses(ctx);
 
   // 7. Emit classes
   emitClasses(ctx);

@@ -18,8 +18,12 @@ class Derived extends Base { y: number = 2; }
     // The class definition line for Base is `class Base {` (no final).
     expect(result.cpp).toMatch(/class\s+Base\s*\{[^_]/m);
     expect(result.cpp).not.toMatch(/class\s+Base[^{]*\bfinal\b/);
-    // Derived has an inheritance clause, so final appears after `: public Base`.
-    expect(result.cpp).toMatch(/class\s+Derived\s*:[^{]*\bfinal\s*\{/);
+    // `final` must PRECEDE the base-clause in the derived form
+    // (`class Derived final : public Base {`) — the trailing position is
+    // invalid C++ ("virt-specifiers ... not allowed outside a class
+    // definition").
+    expect(result.cpp).toMatch(/class\s+Derived\s+final\s*:\s*public\s+Base\s*\{/);
+    expect(result.cpp).not.toMatch(/class\s+Derived\s*:[^{]*\bfinal\s*\{/);
   });
 
   it("does not stamp final when autosar is off (default)", () => {

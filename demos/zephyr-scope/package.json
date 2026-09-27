@@ -1,0 +1,15 @@
+{
+  "name": "zephyr-scope",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ASCII oscilloscope — waveform synthesis on PWM, ADC capture, and a UART console (Zephyr)",
+  "type": "module",
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload --monitor"
+  },
+  "dependencies": {
+    "@typecad/hal": "*"
+  }
+}

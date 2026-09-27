@@ -110,7 +110,9 @@ export interface InterruptDetachOp {
 
 export interface TimingSleepOp {
   operation: "timing.sleep";
-  ms: number;
+  /** Milliseconds — a compile-time literal or the rendered text of a runtime
+   *  expression (`Time.sleep(waitMs)`); lowerings interpolate it directly. */
+  ms: number | string;
 }
 
 export interface TimingNowOp {
@@ -123,7 +125,9 @@ export interface TimingNowUsOp {
 
 export interface TimingBusyWaitUsOp {
   operation: "timing.busy_wait_us";
-  us: number;
+  /** Microseconds — literal or rendered runtime-expression text (see
+   *  TimingSleepOp.ms). */
+  us: number | string;
 }
 
 // ---------------------------------------------------------------------------

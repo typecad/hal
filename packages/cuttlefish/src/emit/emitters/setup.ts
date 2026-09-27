@@ -10,6 +10,7 @@ import { ensureDir } from "../../utils/fs.js";
 import { resolveImport } from "../../libdef/registry.js";
 import { isRegisteredCuttlefishLibrary } from "../../library-packages.js";
 import { emitPolyfillBoilerplate } from "../native-helpers-emitter.js";
+import { collectPointerVarTypes } from "../utils/type-inference.js";
 import { ResolvedNpmPackage } from "../../transpile/resolution.js";
 import { resolveStrategy } from "../../platform/registry.js";
 import { buildCoopSchedulerPolyfill } from "../../platform/coop-scheduler-runtime.js";
@@ -989,8 +990,23 @@ export function buildEmitterContext(
   const asyncTaskClasses: AsyncTaskClass[] = [];
   const asyncMethodStarters: { proto: string }[] = [];
   if (hasAsyncRuntime) {
+    // Seed the global pointer map BEFORE generating the task classes: their
+    // bodies render HERE, in setup — BEFORE top-level-prep (cpp-emitter
+    // step 3) populates this same map in place. A task body referencing a
+    // module-scope class instance (`stats.push(...)`) needs the leading
+    // `obj.` → `obj->` rewrite at this render, or the dot is frozen into
+    // the prebuilt classDef text. Prep re-populates the map later for
+    // everything emitted after step 3.
+    globalPointerVarTypes.clear();
+    for (const [n, t] of collectPointerVarTypes(program.topLevelStatements, classNameMap)) {
+      globalPointerVarTypes.set(n, t);
+    }
     for (const fn of program.functions) {
       if (fn.isAsync) {
+        // Hoisted-local type registrations land in topLevelScope.knownVariableTypes
+        // (the task's statement renderer has no function scope of its own);
+        // undone after the task is emitted so later functions never see them.
+        const asyncLocalTypeKeys: string[] = [];
         const task = generateAsyncTaskClass(
           fn.originalName,
           fn.statements,
@@ -1034,8 +1050,21 @@ export function buildEmitterContext(
                 ...(span ? { source: `${callee}(...)` } : {}),
               } as never);
             },
+            onUnsupportedStatement: (code, message, span) => {
+              emitDiagnostics.push({
+                severity: "error",
+                code,
+                message,
+                ...(span ? { source: span.filePath ? `${span.filePath}:${span.startLine}` : undefined } : {}),
+              } as never);
+            },
+            registerLocalType: (name, cppType) => {
+              asyncLocalTypeKeys.push(name);
+              topLevelScope.knownVariableTypes.set(name, { cppType });
+            },
           },
         );
+        for (const k of asyncLocalTypeKeys) topLevelScope.knownVariableTypes.delete(k);
         asyncTaskClasses.push({ ...task, taskVarName: `${fn.originalName}Task` });
       }
     }
@@ -1072,6 +1101,7 @@ export function buildEmitterContext(
           } as never);
           continue;
         }
+        const asyncLocalTypeKeys: string[] = [];
         const task = generateAsyncTaskClass(
           fnName,
           method.statements,
@@ -1114,8 +1144,21 @@ export function buildEmitterContext(
                 ...(span ? { source: `${callee}(...)` } : {}),
               } as never);
             },
+            onUnsupportedStatement: (code, message, span) => {
+              emitDiagnostics.push({
+                severity: "error",
+                code,
+                message,
+                ...(span ? { source: span.filePath ? `${span.filePath}:${span.startLine}` : undefined } : {}),
+              } as never);
+            },
+            registerLocalType: (name, cppType) => {
+              asyncLocalTypeKeys.push(name);
+              topLevelScope.knownVariableTypes.set(name, { cppType });
+            },
           },
         );
+        for (const k of asyncLocalTypeKeys) topLevelScope.knownVariableTypes.delete(k);
         asyncTaskClasses.push({ ...task, taskVarName: `${fnName}Task` });
         asyncMethodStarters.push({
           proto: `void __tc_async_start_${fnName}(${cls.name}* owner);`,

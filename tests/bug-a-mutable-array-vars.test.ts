@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { transpile, transpileNative } from "./setup";
+import { ZephyrStrategy } from "../packages/framework-zephyr/src/strategy";
 
+// StaticArray promotion is the EMBEDDED-target behavior (Zephyr/Arduino);
+// the hosted/native target keeps std::vector by contract
+// (GenericPlatformStrategy.promotesArrayLiteralsToStaticArray === false),
+// so these assertions run against the Zephyr strategy.
 describe("Bug A: mutableArrayVars survives class processing", () => {
   it("promotes array to StaticArray even when class appears before variable", () => {
     const result = transpile(`
@@ -12,7 +17,7 @@ describe("Bug A: mutableArrayVars survives class processing", () => {
       items.push(1);
       items.push(2);
       const _log1 = items[0];
-    `);
+    `, { strategy: new ZephyrStrategy(), target: 'zephyr' });
     expect(result.cpp).toContain("__tc_StaticArray<double");
   });
 

@@ -1247,7 +1247,12 @@ export function tryResolveSemanticCall(
     }
 
     case "timeSleep": {
-      const ms = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      // Literal OR runtime expression (`Time.sleep(waitMs)` — a computed
+      // duration). The former numeric-only resolve dropped the op for
+      // non-literal args, and the method body's trailing
+      // `return Promise.resolve();` then surfaced as the ONLY output — the
+      // sleep itself silently vanished.
+      const ms = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (ms === null) return null;
       return { operation: "timing.sleep", ms };
     }
@@ -1274,7 +1279,9 @@ export function tryResolveSemanticCall(
     }
 
     case "timeBusyWaitUs": {
-      const us = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      // Same literal-or-runtime rule as timeSleep — busyWaitUs(computedUs)
+      // must not drop the op.
+      const us = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (us === null) return null;
       return { operation: "timing.busy_wait_us", us };
     }
