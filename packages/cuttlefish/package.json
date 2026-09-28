@@ -1,6 +1,6 @@
 {
   "name": "@typecad/cuttlefish",
-  "version": "1.0.0-alpha.20",
+  "version": "1.0.0-alpha.21",
   "description": "TypeScript to C++ transpiler \u2014 native, Arduino, and bare-metal targets",
   "type": "module",
   "main": "./dist/transpile.js",
