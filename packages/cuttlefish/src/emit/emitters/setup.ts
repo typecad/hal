@@ -1336,6 +1336,7 @@ export function buildEmitterContext(
     knownFunctionReturnTypes,
     mappedFunctions,
     freeFunctionsCalledFromClassMethods,
+    hoistedExportedFnPrototypes: new Set<string>(),
     topLevelScope,
     snprintfCounter,
     stringVarNames,

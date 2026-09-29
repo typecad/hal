@@ -1701,6 +1701,35 @@ export function variableStatementToIR(
       loweredDeclaration.storage = "let";
     }
 
+    // A Record/Map-typed declaration with an object-literal initializer
+    // cannot lower to `std::map<...> x = { v1, v2 };` — a braced list of
+    // bare values is not a map initializer (each element must be a pair).
+    // Emit the map EMPTY and append one `name["key"] = value;` assignment
+    // per field, which also preserves the field names the value-only object
+    // render drops.
+    const varMapIr = parseCppType(varCppType);
+    if (
+      varMapIr.kind === "map"
+      && loweredDeclaration.initializer
+      && loweredDeclaration.initializer.kind === "object"
+    ) {
+      const objInit = loweredDeclaration.initializer as Extract<ExpressionIR, { kind: "object" }>;
+      loweredDeclaration.initializer = undefined;
+      lowered.push(loweredDeclaration);
+      for (const field of objInit.fields) {
+        // String keys quote; numeric keys subscript bare.
+        const keyText = /^\d+$/.test(field.name) ? field.name : JSON.stringify(field.name);
+        lowered.push({
+          kind: "assign",
+          sourceSpan: loweredDeclaration.sourceSpan,
+          target: `${declaration.name.text}[${keyText}]`,
+          operator: "=",
+          value: field.value,
+        });
+      }
+      return lowered;
+    }
+
     lowered.push(loweredDeclaration);
   }
 

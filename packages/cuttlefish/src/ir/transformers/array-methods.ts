@@ -271,6 +271,34 @@ export function tryLowerArrayAndStringMethods(
   diagnostics: Diagnostic[],
   pointerVars: any,
 ): ExpressionIR | null {
+  // ── push/pop on NON-identifier receivers (a class field: `this._buf.pop()`)
+  // ── The identifier branches below cover locals/globals (including the
+  // StaticArray promotion prediction); a property-access receiver fell
+  // through VERBATIM (`this->_buf.pop()` — std::vector has no .pop/.push;
+  // they are pop_back/push_back). Rewrite when the receiver resolves to a
+  // plain std::vector (a __tc_StaticArray DOES expose .push). Identifier
+  // receivers are intentionally NOT handled here — their type can be stale
+  // (pre-promotion) and the StaticArray prediction below owns them.
+  if (ts.isPropertyAccessExpression(expr.expression)) {
+    const paReceiver = expr.expression.expression;
+    const paMethod = expr.expression.name.text;
+    if ((paMethod === "pop" || paMethod === "push")
+        && ts.isPropertyAccessExpression(paReceiver)
+        && paReceiver.expression.kind === ts.SyntaxKind.ThisKeyword) {
+      const recvNodeType = getCurrentIrTypeScope()?.locals.get(`this->${paReceiver.name.text}`)
+        ?? getCurrentIrTypeScope()?.classFields.get(`this->${paReceiver.name.text}`);
+      if (recvNodeType !== undefined && recvNodeType.startsWith("std::vector<")) {
+        const recvIR = expressionToIR(paReceiver, sourceText, diagnostics, pointerVars);
+        const recvText = renderExprAsText(recvIR);
+        if (paMethod === "pop") {
+          return { kind: "raw", value: `${recvText}.pop_back()` };
+        }
+        const args = expr.arguments.map(a => renderExprAsText(expressionToIR(a, sourceText, diagnostics, pointerVars)));
+        return { kind: "raw", value: `${recvText}.push_back(${args.join(", ")})` };
+      }
+    }
+  }
+
   if (ts.isPropertyAccessExpression(expr.expression) &&
       ts.isIdentifier(expr.expression.expression)) {
     const receiverName = expr.expression.expression.text;

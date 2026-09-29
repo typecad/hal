@@ -33,6 +33,11 @@ export interface EmitterOptions {
   crossModuleEnumNames?: Set<string>;
   crossModuleStringEnumNames?: Set<string>;
   crossModuleVariableTypes?: Map<string, string>;
+  /** Interface IRs declared in OTHER files, keyed by interface name. The
+   *  class emitter consults this when `implements Iface` names an imported
+   *  interface — the current file's program.interfaces can't see it, and the
+   *  base clause (`: public Iface`) was silently dropped. */
+  crossModuleInterfaces?: Map<string, { name: string; methods: unknown[] }>;
   /** AUTOSAR C++14 compliance mode. Default 'off' — feature is opt-in. */
   autosar?: ComplianceMode;
   /** Tool version, written into the sidecar deviation registry. */
@@ -138,6 +143,11 @@ export interface EmitterContext {
    * Demo #18 Finding B.
    */
   freeFunctionsCalledFromClassMethods: Set<string>;
+  /** Exported functions whose split-mode header prototype was already hoisted
+   *  by emitFunctionForwardDeclarations (before the classes) — the definition
+   *  pass must not emit a second copy. Inline class bodies in the header can
+   *  call exported free functions, so the prototype must precede the classes. */
+  hoistedExportedFnPrototypes: Set<string>;
   topLevelScope: EmissionScopeState;
   snprintfCounter: { value: number };
   stringVarNames: Set<string>;

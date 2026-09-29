@@ -736,6 +736,23 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       prebuildContext.classTypeNames.add(declaration.name.text);
     }
   }
+  // Cross-module INTERFACE names: an imported interface is a pointer-typed
+  // reference (`Map<number, CommandHandler>` → CommandHandler*) exactly like
+  // a same-file one; without the cross-file names the pointer mapping only
+  // fired in the declaring file.
+  const prebuiltInterfaceNames = new Set<string>();
+  for (const { filePath, sourceText } of classSources) {
+    try {
+      const source = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true);
+      for (const statement of source.statements) {
+        if (ts.isInterfaceDeclaration(statement) && statement.name) {
+          prebuiltInterfaceNames.add(statement.name.text);
+        }
+      }
+    } catch {
+      // Parse errors surface during the real IR build
+    }
+  }
   contextStorage.run(prebuildContext, () => {
     for (const { filePath, sourceText, declarations } of classSources) {
       for (const declaration of declarations) {
@@ -761,10 +778,28 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       try {
         const source = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true);
         for (const statement of source.statements) {
-          if (!ts.isFunctionDeclaration(statement) || !statement.name || !statement.type) continue;
-          const returnType = typeNodeToCppType(statement.type, new Map());
-          if (returnType && returnType !== "auto" && returnType !== "void") {
-            prebuiltFunctionReturns.set(statement.name.text, returnType as string);
+          if (ts.isFunctionDeclaration(statement) && statement.name && statement.type) {
+            const returnType = typeNodeToCppType(statement.type, new Map());
+            if (returnType && returnType !== "auto" && returnType !== "void") {
+              prebuiltFunctionReturns.set(statement.name.text, returnType as string);
+            }
+            continue;
+          }
+          // Function-typed variables (`const f = (x): string => …`) are
+          // callables the template-literal ladder must classify too —
+          // same contract as the function declarations above.
+          if (ts.isVariableStatement(statement)) {
+            for (const decl of statement.declarationList.declarations) {
+              if (!ts.isIdentifier(decl.name) || !decl.initializer) continue;
+              const fnExpr = ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer)
+                ? decl.initializer
+                : undefined;
+              if (!fnExpr || !fnExpr.type) continue;
+              const returnType = typeNodeToCppType(fnExpr.type, new Map());
+              if (returnType && returnType !== "auto" && returnType !== "void") {
+                prebuiltFunctionReturns.set(decl.name.text, returnType as string);
+              }
+            }
           }
         }
       } catch {
@@ -807,7 +842,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     }
 
     profiler.startTimer(`ir:build-ir:${fileBasename}`);
-    const programIR = buildProgramIR(filePath, sourceText, options.boardTarget, prebuiltClassMap, prebuiltFunctionReturns);
+    const programIR = buildProgramIR(filePath, sourceText, options.boardTarget, prebuiltClassMap, prebuiltFunctionReturns, prebuiltInterfaceNames);
     profiler.endTimer(`ir:build-ir:${fileBasename}`);
 
     const npmPackage = npmPackages.get(filePath);
@@ -997,6 +1032,17 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   const allClassAccessors = crossModuleTable.classAccessors;
   const allFunctionReturnTypes = crossModuleTable.functionReturnTypes;
   const allVariableTypes = crossModuleTable.variableTypes;
+  // Interface IRs across ALL files — a class in one file `implements` an
+  // interface declared in another; the class emitter needs the interface's
+  // method list to attach the C++ base clause.
+  const allInterfaces = new Map<string, { name: string; methods: unknown[] }>();
+  for (const { programIR } of preBuilt.values()) {
+    for (const iface of programIR.interfaces as { name: string; methods: unknown[] }[]) {
+      if (!allInterfaces.has(iface.name)) {
+        allInterfaces.set(iface.name, iface);
+      }
+    }
+  }
   profiler.startTimer("emit:register-enums");
   registerAllEnumNames(allEnumIRs);
   profiler.endTimer("emit:register-enums");
@@ -1082,6 +1128,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       crossModuleEnumNames: allEnumNames,
       crossModuleStringEnumNames: allStringEnumNames,
       crossModuleVariableTypes: allVariableTypes,
+      crossModuleInterfaces: allInterfaces,
       autosar: options.autosar,
       toolVersion: CUTTLEFISH_VERSION,
       autosarArxml: options.autosarArxml,

@@ -141,7 +141,7 @@ function resolveUIImportPath(fromFile: string, moduleSpecifier: string): string 
   return undefined;
 }
 
-export function buildProgramIR(fileName: string, sourceText: string, boardTarget?: string, prebuiltClassMap?: Map<string, ClassIR>, prebuiltFunctionReturns?: Map<string, string>): ProgramIR {
+export function buildProgramIR(fileName: string, sourceText: string, boardTarget?: string, prebuiltClassMap?: Map<string, ClassIR>, prebuiltFunctionReturns?: Map<string, string>, prebuiltInterfaceNames?: Set<string>): ProgramIR {
   const parentStrategy = getContext().activeStrategy;
   return contextStorage.run(new CompilationContext(), () => {
     getContext().activeStrategy = parentStrategy;
@@ -190,14 +190,41 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
       getContext().crossModuleFunctionReturns.set(name, cppType);
     }
   }
+  // Cross-module interface names — an imported interface is pointer-typed
+  // like a same-file one (see typeNodeToCppType); seed the per-file registry
+  // AFTER resetBuildState so every file's IR build sees all of them.
+  if (prebuiltInterfaceNames) {
+    for (const name of prebuiltInterfaceNames) {
+      topLevelInterfaceNames.add(name);
+    }
+  }
   // Same coverage for THIS file's own annotated top-level functions — direct
   // buildProgramIR callers (tests, tooling) don't run the transpile pre-scan,
   // and a same-file `${fn(x)}` needs the same classification.
   for (const statement of source.statements) {
-    if (!ts.isFunctionDeclaration(statement) || !statement.name || !statement.type) continue;
-    const ownReturnType = typeNodeToCppType(statement.type, typeAliasNodes);
-    if (ownReturnType && ownReturnType !== "auto" && ownReturnType !== "void") {
-      getContext().crossModuleFunctionReturns.set(statement.name.text, ownReturnType);
+    if (ts.isFunctionDeclaration(statement) && statement.name && statement.type) {
+      const ownReturnType = typeNodeToCppType(statement.type, typeAliasNodes);
+      if (ownReturnType && ownReturnType !== "auto" && ownReturnType !== "void") {
+        getContext().crossModuleFunctionReturns.set(statement.name.text, ownReturnType);
+      }
+      continue;
+    }
+    // A function-typed VARIABLE (`const f = (x): string => …`) is a callable
+    // too — variableAsFunctionToIR lowers it to a free function, so the
+    // template-literal ladder must classify `${f(x)}` the same way. Without
+    // this, an arrow returning string formatted as %d (a pointer value).
+    if (ts.isVariableStatement(statement)) {
+      for (const decl of statement.declarationList.declarations) {
+        if (!ts.isIdentifier(decl.name) || !decl.initializer) continue;
+        const fnExpr = ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer)
+          ? decl.initializer
+          : undefined;
+        if (!fnExpr || !fnExpr.type) continue;
+        const fnReturnType = typeNodeToCppType(fnExpr.type, typeAliasNodes);
+        if (fnReturnType && fnReturnType !== "auto" && fnReturnType !== "void") {
+          getContext().crossModuleFunctionReturns.set(decl.name.text, fnReturnType);
+        }
+      }
     }
   }
   resetHALResolver();

@@ -795,14 +795,9 @@ export function runSemanticGates(
       }
 
       if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
-        if (isContainerLookupCall(node.left, checker)) {
-          pushDiag(
-            node,
-            "Nullish coalescing on .get()/.at() is not supported by the C++ lowering.",
-            "TS2CPP_GET_NULLISH_COMPARE",
-            "Use .has(key) before .get(key), or restructure the value as an explicit { present, value } result.",
-          );
-        }
+        // `m.get(k) ?? d` DOES lower: the IR emits the presence-checked
+        // (m.count(k) != 0 ? m.at(k) : d) — the guard is the semantics. Only
+        // equality against null/undefined stays gated (gate 6 above).
         if (isOptionalFieldAccess(node.left, checker)) {
           pushDiag(
             node,

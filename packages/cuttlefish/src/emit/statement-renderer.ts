@@ -374,7 +374,13 @@ export class StatementRenderer {
             // fact, so budget generously (the engine's bounded-string model
             // truncates past the cap, same as __tc_* helpers).
             const capacity = Math.max(257, (valueClass?.estimatedLength ?? 64) + 129);
-            const buffer = this.expressionRenderer.mintStaticStringBuffer(`%s${fmt}`, [target, valueText], capacity);
+            // Copy the target through a std::string temp BEFORE the snprintf:
+            // after the first rebind the target POINTS at the previous static
+            // buffer, and `snprintf(buf, "%s%s", buf, value)` reads its own
+            // output buffer — undefined behavior on every iteration past the
+            // first. The temp lives to the end of the full expression, so the
+            // copy is safe and the rebind reuses the same static buffer.
+            const buffer = this.expressionRenderer.mintStaticStringBuffer(`%s${fmt}`, [`std::string(${target}).c_str()`, valueText], capacity);
             return forHeader
               ? `${target} = ${buffer}`
               : `${target} = ${buffer};`;
@@ -536,12 +542,17 @@ export class StatementRenderer {
         const discText = this.expressionRenderer.render(discExpr, undefined, knownVariableTypes);
         // C++ switch requires an integral discriminant. Since `number` vars are now
         // `double`/`float` (Issue 5), cast floating-point discriminants to int.
+        // Element/property discriminants (`switch (buf[0])`) infer their type
+        // through the general expression path, not the identifier table.
         let needsIntCast = false;
         if (discExpr.kind === "identifier") {
           const t = knownVariableTypes?.get(discExpr.value)?.cppType;
           needsIntCast = t === "double" || t === "float" || t === "long double";
-        } else if (discExpr.kind === "number" && !Number.isInteger(discExpr.value)) {
-          needsIntCast = true;
+        } else if (discExpr.kind === "number") {
+          needsIntCast = !Number.isInteger(discExpr.value);
+        } else {
+          const t = this.expressionRenderer.inferExpressionCppType(discExpr, knownVariableTypes);
+          needsIntCast = t === "double" || t === "float" || t === "long double";
         }
         return `switch (${needsIntCast ? `static_cast<int>(${discText})` : discText})`;
       }

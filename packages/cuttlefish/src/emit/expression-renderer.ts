@@ -555,12 +555,19 @@ export class ExpressionRenderer {
         const elemIr = objIr.kind === "vector" || objIr.kind === "staticArray" || objIr.kind === "cArray"
           ? objIr.element
           : undefined;
-        return elemIr ? renderCppType(elemIr) : undefined;
+        if (elemIr) return renderCppType(elemIr);
+        // Element access on a MAP (`HELP["dump"]`, or the dot-form lowered to
+        // it) is the VALUE type — without this the interpolation fell to the
+        // numeric default and produced std::to_string(const char*).
+        if (objIr.kind === "map") {
+          return renderCppType(objIr.value);
+        }
+        return undefined;
       }
       case "array":
         return `std::vector<${expr.elementType}>`;
       case "method-call": {
-        const helper = expr.callee.match(/^__tc_(?:toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|padStart_default|padEnd_default|repeat|jsonStringify|toFixed)\b/);
+        const helper = expr.callee.match(/^__tc_(?:toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|padStart_default|padEnd_default|repeat|jsonStringify|toFixed|num_radix)\b/);
         if (helper) return "std::string";
         if (/^__tc_(?:startsWith|endsWith|includes)\b/.test(expr.callee)) return "bool";
         if (/^__tc_(?:charCodeAt|indexOf|lastIndexOf)\b/.test(expr.callee)) return "int";
@@ -592,7 +599,7 @@ export class ExpressionRenderer {
         return this.knownFunctionReturnTypes?.get(expr.callee);
       }
       case "raw": {
-        if (/^std::string\(/.test(expr.value) || /^__tc_(?:toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|padStart_default|padEnd_default|repeat|jsonStringify|toFixed)\b/.test(expr.value)) {
+        if (/^std::string\(/.test(expr.value) || /^__tc_(?:toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|padStart_default|padEnd_default|repeat|jsonStringify|toFixed|num_radix)\b/.test(expr.value)) {
           return "std::string";
         }
         if (/^__tc_(?:startsWith|endsWith|includes)\b/.test(expr.value)) return "bool";
@@ -865,7 +872,7 @@ export class ExpressionRenderer {
           if (floatArg !== undefined) return floatArg;
           // Use %.15g (not %g) so large integer-valued doubles don't collapse
           // to scientific notation — matches JS Number.toString() more closely.
-          return { format: knownPrecision !== undefined ? `%.${knownPrecision}f` : "%.15g", arg: rendered, estimatedLength: 16 };
+          return { format: knownPrecision !== undefined ? `%.${knownPrecision}f` : "%.15g", arg: rendered, estimatedLength: 24 };
         }
         // Enum-typed value (struct field, variable, etc. whose type resolves
         // to a known numeric enum name). C++ enum class values need
@@ -905,10 +912,10 @@ export class ExpressionRenderer {
           const rendered = numStr.includes('.') || numStr.includes('e') || numStr.includes('E')
             ? `${numStr}f`
             : `${numStr}.0f`;
-          return { format: "%.15g", arg: rendered, estimatedLength: 16 };
+          return { format: "%.15g", arg: rendered, estimatedLength: 24 };
         }
         if (!Number.isInteger(expr.value)) {
-          return { format: "%.15g", arg: numStr, estimatedLength: 16 };
+          return { format: "%.15g", arg: numStr, estimatedLength: 24 };
         }
         return { format: "%d", arg: `${expr.value}`, estimatedLength: 12 };
       }
@@ -937,7 +944,7 @@ export class ExpressionRenderer {
         if (cppType === "float" || cppType === "double") {
           const floatArg = this.strategy.floatToSnprintfArg?.(expr.value, knownVar?.floatPrecision, ++this._snprintfCounter.value);
           if (floatArg !== undefined) return floatArg;
-          return { format: knownVar?.floatPrecision !== undefined ? `%.${knownVar.floatPrecision}f` : "%.15g", arg: expr.value, estimatedLength: 16 };
+          return { format: knownVar?.floatPrecision !== undefined ? `%.${knownVar.floatPrecision}f` : "%.15g", arg: expr.value, estimatedLength: 24 };
         }
         if (cppType === "int" || cppType === "short" || cppType === "int16_t" || cppType === "uint16_t" || cppType === "int32_t") {
           return { format: "%d", arg: expr.value, estimatedLength: 12 };
@@ -1006,7 +1013,7 @@ export class ExpressionRenderer {
         // member access on a non-class type (avr-g++: "request for member
         // 'c_str' in '__tc_trim(...)', which is of non-class type 'const
         // char*'"). Demo #35 Finding A.
-        if (/^__tc_(toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|padStart_default|padEnd_default|repeat|jsonStringify|toFixed)\b/.test(rendered)) {
+        if (/^__tc_(toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|padStart_default|padEnd_default|repeat|jsonStringify|toFixed|num_radix)\b/.test(rendered)) {
           const needsCStr = this.strategy.needsStdString();
           return { format: "%s", arg: needsCStr ? `${rendered}.c_str()` : rendered, estimatedLength: 32 };
         }
@@ -1061,7 +1068,7 @@ export class ExpressionRenderer {
             return { format: "%s", arg: normalized === "__tc_str_ptr" ? `${rendered}.c_str()` : rendered, estimatedLength: 128 };
           }
           if (ret === "float" || ret === "double") {
-            return { format: "%.15g", arg: rendered, estimatedLength: 16 };
+            return { format: "%.15g", arg: rendered, estimatedLength: 24 };
           }
           if (ret === "bool") {
             return { format: "%s", arg: `(${rendered} ? "true" : "false")`, estimatedLength: 5 };
@@ -1071,7 +1078,7 @@ export class ExpressionRenderer {
         // holds a JS number → %g, never the %d default. (`count`/`has` are
         // integer/bool and keep the default.)
         if (/[.>](?:at|get)\([^()]*\)\s*$/.test(rendered)) {
-          return { format: "%.15g", arg: rendered, estimatedLength: 16 };
+          return { format: "%.15g", arg: rendered, estimatedLength: 24 };
         }
         // Element access that arrived as raw text (`args[0]`, `s[i]` — a
         // template-literal part) resolves its base's ELEMENT type from the
@@ -1090,7 +1097,7 @@ export class ExpressionRenderer {
                   return { format: "%s", arg: rendered, estimatedLength: 128 };
                 }
                 if (elemType === "float" || elemType === "double") {
-                  return { format: "%.15g", arg: rendered, estimatedLength: 16 };
+                  return { format: "%.15g", arg: rendered, estimatedLength: 24 };
                 }
               }
             }
@@ -1138,10 +1145,18 @@ export class ExpressionRenderer {
     // resolves) so enum indices lower correctly. Non-enum indices are passed
     // through unchanged. Demo #28 Finding E.
     const indexText = this.renderEnumSafeValue(expr.index, knownVariableTypes);
-    return `${objectText}[${indexText}]`;
+    // A real-typed index (`const idx = cond ? i : (h + i) % cap` — number
+    // params are double) is not a valid C++ subscript either; JS indexes
+    // with ToInt32-truncated numbers. Cast real-typed indices to int so the
+    // C++ compiles with the same values the JS would have used.
+    const indexCppType = this.inferExpressionCppType(expr.index, knownVariableTypes);
+    const finalIndex = indexCppType === "double" || indexCppType === "float" || indexCppType === "long double"
+      ? `static_cast<int>(${indexText})`
+      : indexText;
+    return `${objectText}[${finalIndex}]`;
   }
 
-  private isEnumComparisonOperand(expr: ExpressionIR, inferredType: string | undefined): boolean {
+  public isEnumComparisonOperand(expr: ExpressionIR, inferredType: string | undefined): boolean {
     if (inferredType && this.enumNames.has(inferredType)) return true;
     // Property/element access on an enum name (e.g. Color::Green) is also enum-valued.
     if (expr.kind === "property-access" && expr.object.kind === "identifier" && this.enumNames.has(expr.object.value)) return true;
@@ -1396,7 +1411,7 @@ export class ExpressionRenderer {
    * TS string enum). Such operands must NOT be static_cast<int>'d in
    * comparisons — they compare as C-strings instead.
    */
-  private isStringEnumOperand(expr: ExpressionIR, inferredType: string | undefined): boolean {
+  public isStringEnumOperand(expr: ExpressionIR, inferredType: string | undefined): boolean {
     if (inferredType && this.stringEnumNames.has(inferredType)) return true;
     if (expr.kind === "property-access" && expr.object.kind === "identifier" && this.stringEnumNames.has(expr.object.value)) return true;
     return false;

@@ -1,6 +1,6 @@
 ﻿import ts from "typescript";
 import { CppType } from "../api/index.js";
-import { classTypeNames, topLevelClasses, discriminatedUnionVariantNames, activeEnumNames } from "./build-ir-state.js";
+import { classTypeNames, topLevelClasses, discriminatedUnionVariantNames, activeEnumNames, topLevelInterfaceNames } from "./build-ir-state.js";
 import { getCurrentIrTypeScope } from "./symbol-types.js";
 import {
   type CppTypeIR,
@@ -10,6 +10,7 @@ import {
   bareType,
   elementOf,
   isPointer,
+  parsedIsMap,
 } from "../api/shared/cpp-type-ir.js";
 
 export type CppTypeHint =
@@ -480,6 +481,18 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
       return renderCppType(ir) as CppTypeHint;
     }
 
+    // TypeScript interface VALUES are polymorphic references. An interface
+    // lowers to an abstract C++ struct (`virtual … = 0`), so storing or
+    // passing it by value is ill-formed (`std::vector<Handler>` cannot
+    // instantiate the abstract type) and would slice the dispatch anyway.
+    // Model an interface reference as a pointer, exactly like class values
+    // above — params, fields, containers, and loop variables all inherit the
+    // pointer form, and method calls render `->` via the pointer receiver.
+    if (topLevelInterfaceNames.has(typeName)) {
+      const ir: CppTypeIR = { kind: "pointer", base: { kind: "named", name: typeName } };
+      return renderCppType(ir) as CppTypeHint;
+    }
+
     return resolvedNode.typeName.text as CppTypeHint;
   }
 
@@ -692,6 +705,14 @@ export function inferExprCppType(
     return inferExprCppType(expr.operand, functionReturnTypes, localVariableTypes, sourceText);
   }
 
+  // JS bitwise operators coerce to int32 — a `| 0` truncation idiom or a
+  // mask (`x & 0xFF`) yields an INTEGER, never the double the operands
+  // were. Declaring the receiver `double` left an array subscript that is
+  // not an integral expression (`buckets[i]` with `const double i`).
+  if (ts.isBinaryExpression(expr) && ["<<", ">>", ">>>", "|", "&", "^"].includes(expr.operatorToken.getText())) {
+    return "int";
+  }
+
   if (ts.isCallExpression(expr)) {
     if (ts.isIdentifier(expr.expression)) {
       const fnReturnType = functionReturnTypes.get(expr.expression.text);
@@ -732,6 +753,21 @@ export function inferExprCppType(
           const classMethod = classDef.methods.find((m) => m.name === method);
           if (classMethod) {
             return classMethod.returnType as CppTypeHint;
+          }
+        }
+      }
+
+      // m.get(k) / m.at(k) on a Map-typed receiver — the value type V. TS
+      // types the result `V | undefined`; the `?? fallback` lowering resolves
+      // to V-or-fallback, and the declaration previously took the FALLBACK's
+      // type (HelpHandler* instead of the map's CommandHandler* — a downcast
+      // the ternary cannot implicitly perform).
+      if (expr.expression.name.text === "get" || expr.expression.name.text === "at") {
+        const recvType = inferExprCppType(expr.expression.expression, functionReturnTypes, localVariableTypes, sourceText);
+        if (recvType && parsedIsMap(recvType)) {
+          const recvIr = parseCppType(recvType);
+          if (recvIr.kind === "map") {
+            return renderCppType(recvIr.value) as CppTypeHint;
           }
         }
       }
@@ -794,6 +830,13 @@ export function inferExprCppType(
       return "int";
     }
     if (whenTrueType === whenFalseType) {
+      return whenTrueType;
+    }
+    // Mixed POINTER arms (`cond ? CommandHandler* : HelpHandler*`): any
+    // pointer makes member access arrow-rendered and the call virtual —
+    // return the true arm rather than auto (an auto decl left `handler.run`
+    // dot-rendered on a pointer).
+    if (whenTrueType?.endsWith("*") && whenFalseType?.endsWith("*")) {
       return whenTrueType;
     }
     return "auto";
@@ -861,6 +904,14 @@ export function inferExprCppType(
     const operator = expr.operatorToken.kind;
     const leftType = inferExprCppType(expr.left, functionReturnTypes, localVariableTypes, sourceText);
     const rightType = inferExprCppType(expr.right, functionReturnTypes, localVariableTypes, sourceText);
+
+    // `a ?? b` lowers to the count-guarded map lookup (left) or the fallback
+    // (right) — the LEFT arm is the primary type (the map's value type).
+    if (operator === ts.SyntaxKind.QuestionQuestionToken) {
+      if (leftType && leftType !== "auto") return leftType;
+      if (rightType && rightType !== "auto") return rightType;
+      return "auto";
+    }
 
     if (
       operator === ts.SyntaxKind.EqualsEqualsToken ||

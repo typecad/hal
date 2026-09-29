@@ -673,14 +673,21 @@ describe("index-signature annotations", () => {
 });
 
 describe("struct equality", () => {
-  it("interface-value === fails loudly instead of emitting a == b", () => {
+  it("interface === lowers to pointer identity (interfaces are references)", () => {
+    // Interfaces lower to pointer-typed references (bench-supervisor demo:
+    // value-typed interface containers could not instantiate the abstract
+    // struct), so `a === b` is pointer identity — exactly JS's reference
+    // equality — and compiles. The struct-equality guard now only fires for
+    // genuine struct values (object-literal types).
     const out = transpile(`
       interface P { x: number; }
       function go(a: P, b: P): boolean { return a === b; }
       while (true) {}
     `, { strategy: zephyr(), target: 'zephyr' });
+    expect(out.cpp).toMatch(/go\(P\* a, P\* b\)/);
+    expect(out.cpp).toMatch(/a == b/);
     const errs = (out.diagnostics ?? []).filter(d => d.severity === "error");
-    expect(errs.some(d => d.code === "struct-equality-unsupported")).toBe(true);
+    expect(errs.some(d => d.code === "struct-equality-unsupported")).toBe(false);
   });
 
   it("class-instance === keeps pointer identity (correct JS semantics)", () => {

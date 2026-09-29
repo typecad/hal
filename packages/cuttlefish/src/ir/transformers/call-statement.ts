@@ -18,7 +18,7 @@ import {
 import { rewriteCanvasCall } from "./canvas-lowering.js";
 import { callbackContextLabel, unsupportedStatementHint } from "./callback-context-registry.js";
 import { tryLowerArrayAndStringMethods } from "./array-methods.js";
-import { expressionToIR } from "../expression-to-ir.js";
+import { expressionToIR, castEnumArgsForCallParams } from "../expression-to-ir.js";
 import { lowerStatementList } from "../statement-to-ir.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import { renderExprAsText, calleeToText } from "../render-expr.js";
@@ -78,7 +78,9 @@ function castEnumKeyIfNeeded(
   if (!parsedIsMap(receiverType) && !parsedIsSet(receiverType)) return keyText;
   const containerIr = parseCppType(receiverType);
   const keyType = containerIr.kind === "map" ? renderCppType(containerIr.key) : "";
-  const isIntegral = /^(int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|long|short|unsigned|char)$/.test(keyType);
+  // double/float included: TS `Map<number, V>` lowers to std::map<double, V>
+  // — a scoped enum converts to neither implicitly.
+  const isIntegral = /^(int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|long|short|unsigned|char|double|float)$/.test(keyType);
   if (!isIntegral) return keyText;
   // Detect an enum-typed key operand.
   let isEnum = false;
@@ -893,7 +895,9 @@ export function callToStatement(
     leadingComments: comments.leadingComments,
     trailingComments: comments.trailingComments,
     callee: calleeText,
-    args: call.arguments.map((arg) => expressionToIR(arg, sourceText, diagnostics, pointerVars)),
+    // Statement-position calls must apply the same param-aware enum→number
+    // cast the expression path does (castEnumArgsForCallParams).
+    args: castEnumArgsForCallParams(calleeText, call.arguments.map((arg) => expressionToIR(arg, sourceText, diagnostics, pointerVars)), call),
   };
 }
 

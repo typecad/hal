@@ -65,6 +65,58 @@ export function expressionStatementToIR(
     }
   }
 
+  // ── `x.length = 0` on a container — JS's truncate/clear idiom ──────────
+  // The .length read lowers to `static_cast<long long>(x.size())`; assigned
+  // to, that renders `static_cast<long long>(x.size()) = 0` — a cast is not
+  // an lvalue, so g++ rejects it. On a vector/StaticArray/string receiver
+  // with a literal-0 right side, lower to `x.clear()` (the semantics JS code
+  // means by this). A nonzero length assignment has no C++ equivalent —
+  // fail loudly with a diagnostic instead of emitting broken C++.
+  if (
+    ts.isBinaryExpression(expr)
+    && expr.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    && ts.isPropertyAccessExpression(expr.left)
+    && expr.left.name.text === "length"
+    && ts.isNumericLiteral(expr.right)
+    && Number(expr.right.text) === 0
+  ) {
+    const recvNode = expr.left.expression;
+    const recvType = inferExprCppType(recvNode, functionReturnTypes, localVariableTypes, sourceText);
+    const recvIR = expressionToIR(recvNode, sourceText, diagnostics, pointerVars);
+    const recvText = renderExprAsText(recvIR);
+    const isContainer = recvType !== undefined && (
+      recvType.startsWith("std::vector<") || recvType.startsWith("StaticArray<")
+      || recvType.startsWith("__tc_StaticArray<") || recvType === "std::string"
+    );
+    if (isContainer) {
+      // A call statement on the container — `recv.clear()` — via the plain
+      // call IR (no raw-statement kind exists).
+      return {
+        kind: "call",
+        sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+        callee: `${recvText}.clear`,
+        args: [],
+      };
+    }
+  }
+  // A NONZERO `.length = n` assignment cannot lower — say so instead of
+  // emitting an assignment to a cast.
+  if (
+    ts.isBinaryExpression(expr)
+    && expr.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    && ts.isPropertyAccessExpression(expr.left)
+    && expr.left.name.text === "length"
+  ) {
+    diagnostics.push(makeDiagnostic(
+      sourceText,
+      expr.left.getStart(),
+      "Assigning a nonzero `.length` has no C++ lowering (arrays do not resize by assignment). Use .push()/.pop() to change the size, or `x.length = 0` to clear.",
+      "error",
+      "length-assign-unsupported",
+    ));
+    return undefined;
+  }
+
   // Handle this.field = value, obj.field = value, and compound assignments (+=, -=, etc.)
   if (ts.isBinaryExpression(expr) && ts.isPropertyAccessExpression(expr.left)) {
     const operator = assignmentOperatorToString(expr.operatorToken.kind);
@@ -156,7 +208,22 @@ export function expressionStatementToIR(
     const operator = assignmentOperatorToString(expr.operatorToken.kind);
     if (operator) {
       const targetIR = expressionToIR(expr.left, sourceText, diagnostics, pointerVars);
-      const targetText = renderExprAsText(targetIR);
+      let targetText = renderExprAsText(targetIR);
+      // An element-assign target's INDEX needs the same real→int cast the
+      // emit-side renderElementAccess applies to reads (`this->_events[i] =
+      // ev` with a number-typed i lowered as a double subscript). The target
+      // renders through renderExprAsText here, which has no cast logic, so
+      // wrap the index node's text when it infers double/float.
+      if (targetIR.kind === "element-access") {
+        const idxNode = expr.left.argumentExpression;
+        const idxType = inferExprCppType(idxNode, functionReturnTypes, localVariableTypes, sourceText);
+        if (idxType === "double" || idxType === "float") {
+          const m = targetText.match(/^(.*)\[((?:[^\[\]]|\[[^\]]*\])*)\]$/);
+          if (m) {
+            targetText = `${m[1]}[static_cast<int>(${m[2]})]`;
+          }
+        }
+      }
       const comments = extractNodeComments(statement, sourceText);
       return {
         kind: "assign",

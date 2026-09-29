@@ -155,6 +155,31 @@ function tryGetterCallIR(
     }
     return undefined;
   }
+  // `this.field.getter` inside a class body: the FIELD's class holds the
+  // getter (`this._log.size` → `this->_log->getSize()`). Without this arm the
+  // access lowered to a plain field read of the private backing member (or a
+  // non-existent member when the getter computes).
+  if (ts.isPropertyAccessExpression(receiverNode) && receiverNode.expression.kind === ts.SyntaxKind.ThisKeyword) {
+    const fieldType = getCurrentIrTypeScope()?.locals.get(`this->${receiverNode.name.text}`)
+      ?? getCurrentIrTypeScope()?.classFields.get(`this->${receiverNode.name.text}`);
+    if (fieldType) {
+      const bare = bareType(parseCppType(fieldType));
+      const fieldClassName = bare.kind === "named" ? bare.name : undefined;
+      if (fieldClassName) {
+        const getter = findClassGetter(fieldClassName, propName, false);
+        if (getter) {
+          return {
+            kind: "method-call",
+            callee: `this->${receiverNode.name.text}->${getter.getterName}`,
+            args: [],
+            isPointer: true,
+            ...(getter.returnType && getter.returnType !== "auto" ? { cppType: getter.returnType } : {}),
+          };
+        }
+      }
+    }
+    return undefined;
+  }
   // Instance getter: receiver is an identifier whose class comes from the
   // pointer tracker (`new Cls()` initializers) or the IR type scope
   // (`Cls*`-typed locals/globals — includes cross-file instances).
@@ -252,6 +277,161 @@ const MATH_CONSTANT_LITERALS: Record<string, number> = Object.assign(Object.crea
  * Demo #18 Finding A: without this, `findAccount(1) === null` and
  * `this.find(1) === null` lower to the invalid `call() == CUTTLEFISH_UNDEFINED`.
  */
+/** Real/integral C++ types an enum-typed argument may need a cast into at a
+ *  call site (a scoped enum converts to none of them implicitly). */
+const ENUM_CASTABLE_PARAM_RE = /^(int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|long|long long|short|unsigned|char|double|float)$/;
+
+/** For a call `recv->method(args)` / `fn(args)`, wrap enum-typed argument IR
+ *  in static_cast<int> ONLY when the callee's corresponding parameter is a
+ *  real/integral C++ type — a parameter OF the same enum type takes the value
+ *  directly (casting would break the call). Param types come from the class
+ *  method registry (for `obj->m(...)` callees) or the call site's source file
+ *  (for free functions). */
+export function castEnumArgsForCallParams(calleeText: string, args: ExpressionIR[], callNode?: ts.CallExpression): ExpressionIR[] {
+  const lastSep = Math.max(calleeText.lastIndexOf("->"), calleeText.lastIndexOf("::"), calleeText.lastIndexOf("."));
+  const methodName = lastSep >= 0 ? calleeText.slice(lastSep + (calleeText[lastSep] === "." ? 1 : 2)) : calleeText;
+
+  // Resolve the callee's parameter C++ types.
+  let paramTypes: string[] | undefined;
+  const receiverText = lastSep >= 0 ? calleeText.slice(0, lastSep) : "";
+  if (receiverText) {
+    // Class method: resolve the receiver's class through the type scope.
+    const recvType = getCurrentIrTypeScope()?.locals.get(receiverText)
+      ?? getCurrentIrTypeScope()?.globals.get(receiverText);
+    if (recvType) {
+      const className = recvType.replace(/\*$/, "").replace(/^const\s+/, "");
+      const classDef = topLevelClasses.get(className);
+      const method = classDef?.methods.find(m => m.name === methodName);
+      if (method) {
+        paramTypes = method.parameters.map(p => p.cppType);
+      }
+    }
+  } else if (callNode) {
+    // Free function: scan the call site's own source file for the
+    // FunctionDeclaration (the same walk resolveCallReturnTypeForNullGuard
+    // uses for return types).
+    const fnName = methodName;
+    const sourceFile = callNode.getSourceFile();
+    let fnDecl: ts.FunctionDeclaration | undefined;
+    const visit = (node: ts.Node): void => {
+      if (fnDecl) return;
+      if (ts.isFunctionDeclaration(node) && node.name?.text === fnName) {
+        fnDecl = node;
+        return;
+      }
+      ts.forEachChild(node, visit);
+    };
+    ts.forEachChild(sourceFile, visit);
+    if (fnDecl?.parameters) {
+      paramTypes = fnDecl.parameters.map(p => typeNodeToCppType(p.type) || "auto");
+    }
+  }
+  if (!paramTypes || paramTypes.length === 0) return args;
+
+  return args.map((arg, i) => {
+    const paramType = paramTypes![i];
+    if (!paramType || !ENUM_CASTABLE_PARAM_RE.test(paramType)) return arg;
+    // Only enum-typed identifiers / member accesses take the cast.
+    let argEnum = "";
+    if (arg.kind === "identifier") {
+      const t = getCurrentIrTypeScope()?.locals.get(arg.value)
+        ?? getCurrentIrTypeScope()?.globals.get(arg.value);
+      if (t && activeEnumNames.has(t) && !activeStringEnumNames.has(t)) argEnum = t;
+    } else if (arg.kind === "property-access") {
+      if ((arg as { isEnum?: boolean }).isEnum) {
+        const objName = (arg as { object: { value?: string } }).object?.value ?? "";
+        if (objName && activeEnumNames.has(objName) && !activeStringEnumNames.has(objName)) argEnum = objName;
+      } else if (callNode && callNode.arguments[i]) {
+        // An enum-typed FIELD on an instance (`record(sev, cmd.verb)` —
+        // Command::verb): resolve the AST node through the class registry.
+        const t = resolveExprCppType(callNode.arguments[i]);
+        if (t && activeEnumNames.has(t) && !activeStringEnumNames.has(t)) argEnum = t;
+      }
+    }
+    if (!argEnum || argEnum === paramType) return arg;
+    return { kind: "raw" as const, value: `static_cast<int>(${renderExprAsText(arg)})` };
+  });
+}
+
+/** Recognize `m.get(k)` / `m.at(k)` on a Map-typed receiver for the `??`
+ *  lowering. Returns the receiver/key render texts so the nullish branch can
+ *  emit the presence-checked `count`/`at` form; null when the left side is
+ *  not a container lookup (plain cuttlefish_nullish then). */
+function mapLookupForNullish(
+  expr: ts.Expression,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  pointerVars: PointerTracker,
+): { receiver: string; key: string } | undefined {
+  if (!ts.isCallExpression(expr) || !ts.isPropertyAccessExpression(expr.expression)) {
+    return undefined;
+  }
+  const methodName = expr.expression.name.text;
+  if (methodName !== "get" && methodName !== "at") {
+    return undefined;
+  }
+  if (expr.arguments.length !== 1) {
+    return undefined;
+  }
+  const receiver = expr.expression.expression;
+  let receiverType: string | undefined;
+  if (ts.isIdentifier(receiver)) {
+    receiverType = getCurrentIrTypeScope()?.locals.get(receiver.text)
+      ?? getCurrentIrTypeScope()?.globals.get(receiver.text);
+  } else if (ts.isPropertyAccessExpression(receiver) && receiver.expression.kind === ts.SyntaxKind.ThisKeyword) {
+    receiverType = getCurrentIrTypeScope()?.locals.get(`this->${receiver.name.text}`);
+  }
+  if (!receiverType || !parsedIsMap(receiverType)) {
+    return undefined;
+  }
+  // An enum-typed key must cast to the map's key type (a scoped enum has no
+  // implicit conversion — mirrors the Map-method lowering's keyIsEnum cast).
+  const mapIr = parseCppType(receiverType);
+  const mapKeyType = mapIr.kind === "map" ? renderCppType(mapIr.key) : "";
+  const keyIsIntegral = /^(int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|long|short|unsigned|char|double|float)$/.test(mapKeyType);
+  let keyIsEnum = false;
+  if (keyIsIntegral) {
+    const keyArg = expr.arguments[0];
+    if (ts.isPropertyAccessExpression(keyArg) && ts.isIdentifier(keyArg.expression)) {
+      keyIsEnum = activeEnumNames.has(keyArg.expression.text);
+    } else if (ts.isIdentifier(keyArg)) {
+      const keyVarType = getCurrentIrTypeScope()?.locals.get(keyArg.text) ?? getCurrentIrTypeScope()?.globals.get(keyArg.text);
+      if (keyVarType && activeEnumNames.has(keyVarType)) {
+        keyIsEnum = true;
+      }
+    }
+    // An enum-typed FIELD on a class instance (`handlers.get(cmd.verb)` —
+    // Command::verb is a scoped enum): resolve the property access's type
+    // through the class registry.
+    if (!keyIsEnum && ts.isPropertyAccessExpression(keyArg)) {
+      const t = resolveExprCppType(keyArg);
+      if (t && activeEnumNames.has(t) && !activeStringEnumNames.has(t)) {
+        keyIsEnum = true;
+      }
+    }
+  }
+  const keyText = renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars));
+  return {
+    receiver: renderExprAsText(expressionToIR(receiver, sourceText, diagnostics, pointerVars)),
+    key: keyIsEnum ? `static_cast<${mapKeyType}>(${keyText})` : keyText,
+  };
+}
+
+/** String→number argument shaping for the conversion globals (atoi/atof):
+ *  an std::string arg needs `.c_str()`; a plain const char* or literal —
+ *  the common embedded shape — must NOT grow one, and `.c_str()` on the
+ *  const char* result of a `__tc_*` string helper is ill-formed. */
+function cStrIfManaged(argNode: ts.Expression, argText: string): string {
+  if (ts.isStringLiteral(argNode) || ts.isNoSubstitutionTemplateLiteral(argNode)) return argText;
+  if (/^__tc_[a-z]/.test(argText.trim())) return argText;
+  if (ts.isIdentifier(argNode)) {
+    const t = getCurrentIrTypeScope()?.locals.get(argNode.text) ?? getCurrentIrTypeScope()?.globals.get(argNode.text);
+    if (t === "std::string") return `(${argText}).c_str()`;
+    if (t === "const char*" || t === "char*") return argText;
+  }
+  return `(${argText}).c_str()`;
+}
+
 function resolveCallReturnTypeForNullGuard(call: ts.CallExpression, sourceText: string): string | undefined {
   const callee = call.expression;
   // `this.method(...)` or `someExpr.method(...)`.
@@ -1105,6 +1285,17 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   // Nullish coalescing: use a helper instead of truthiness so that
   // values like 0 and false are preserved correctly.
   if (ts.isBinaryExpression(expr) && expr.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
+    // map.get(k) ?? d — .at() throws on a miss and cuttlefish_nullish
+    // evaluates both arguments eagerly, so the fallback could never fire.
+    // Lower to the presence-checked form instead: the guard IS the semantics.
+    const lookup = mapLookupForNullish(expr.left, sourceText, diagnostics, pointerVars);
+    if (lookup) {
+      const right = renderExprAsText(expressionToIR(expr.right, sourceText, diagnostics, pointerVars));
+      return {
+        kind: "raw",
+        value: `(${lookup.receiver}.count(${lookup.key}) != 0 ? ${lookup.receiver}.at(${lookup.key}) : ${right})`,
+      };
+    }
     const left = renderExprAsText(expressionToIR(expr.left, sourceText, diagnostics, pointerVars));
     const right = renderExprAsText(expressionToIR(expr.right, sourceText, diagnostics, pointerVars));
     return { kind: "raw", value: `cuttlefish_nullish(${left}, ${right})` };
@@ -1597,15 +1788,6 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       // String→number argument shaping for the conversion globals: an
       // std::string arg needs .c_str() for atoi/atof; a const char*/literal
       // (the common embedded shape) must NOT grow one.
-      const cStrIfManaged = (argNode: ts.Expression, argText: string): string => {
-        if (ts.isStringLiteral(argNode) || ts.isNoSubstitutionTemplateLiteral(argNode)) return argText;
-        if (ts.isIdentifier(argNode)) {
-          const t = getCurrentIrTypeScope()?.locals.get(argNode.text) ?? getCurrentIrTypeScope()?.globals.get(argNode.text);
-          if (t === "std::string") return `(${argText}).c_str()`;
-          if (t === "const char*" || t === "char*") return argText;
-        }
-        return `(${argText}).c_str()`;
-      };
       if (fnName === "parseInt" && expr.arguments.length >= 1) {
         const argText = renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars));
         requiredIncludes.add("<cstdlib>");
@@ -1657,6 +1839,29 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     if (ts.isPropertyAccessExpression(expr.expression) && ts.isIdentifier(expr.expression.expression)) {
       const objName = expr.expression.expression.text;
       const methodName = expr.expression.name.text;
+
+      // Number.isNaN / Number.isFinite / Number.parseInt / Number.parseFloat —
+      // the SAME lowerings as the bare-global forms (isNaN/isFinite/…), which
+      // the property-access shape previously fell through and emitted
+      // verbatim (`Number.isNaN(v)` — no such symbol in C++).
+      if (objName === "Number" && expr.arguments.length >= 1) {
+        const argIR = expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars);
+        const argText = renderExprAsText(argIR);
+        if (methodName === "isNaN") {
+          return { kind: "raw", value: `std::isnan(${argText})` };
+        }
+        if (methodName === "isFinite") {
+          return { kind: "raw", value: `std::isfinite(${argText})` };
+        }
+        if (methodName === "parseInt") {
+          requiredIncludes.add("<cstdlib>");
+          return { kind: "raw", value: `atoi(${cStrIfManaged(expr.arguments[0], argText)})` };
+        }
+        if (methodName === "parseFloat") {
+          requiredIncludes.add("<cstdlib>");
+          return { kind: "raw", value: `atof(${cStrIfManaged(expr.arguments[0], argText)})` };
+        }
+      }
 
       if (objName === "Array" && methodName === "isArray" && expr.arguments.length === 1) {
         const argIR = expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars);
@@ -1894,8 +2099,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       }
 
       // --- Map/Set method lowering ---
-      if ((methodName === "set" || methodName === "get" || methodName === "has" || methodName === "delete" || methodName === "add") && expr.arguments.length >= 1) {
-        let receiverType: string | undefined;
+      if ((methodName === "set" || methodName === "get" || methodName === "has" || methodName === "delete" || methodName === "add") && expr.arguments.length >= 1) {        let receiverType: string | undefined;
         let receiverText: string | undefined;
 
         if (ts.isIdentifier(receiver)) {
@@ -1920,7 +2124,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           //     form) compiled to an uncast map.count(k)/map.at(k) and failed.
           const receiverIr = parseCppType(receiverType);
           const mapKeyType = receiverIr.kind === "map" ? renderCppType(receiverIr.key) : "";
-          const keyIsIntegral = /^(int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|long|short|unsigned|char)$/.test(mapKeyType);
+          const keyIsIntegral = /^(int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|long|short|unsigned|char|double|float)$/.test(mapKeyType);
           let keyIsEnum = false;
           if (keyIsIntegral) {
             const keyArg = expr.arguments[0];
@@ -2128,7 +2332,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     return {
       kind: "method-call",
       callee: calleeText,
-      args: argIRs,
+      args: castEnumArgsForCallParams(calleeText, argIRs, expr),
       isStatic,
       isNamespace,
       // isPointer when the callee text already uses ->, OR when the receiver
@@ -2546,6 +2750,21 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
 
     // General deep chain: resolve receiver type, use -> if receiver is a pointer
     const receiverCppType = resolveExprCppType(expr.expression);
+    // A map-typed receiver's member READ (`HELP.dump` on
+    // `std::map<string, string>`) has no such C++ member — lower to the
+    // element access `HELP["dump"]`. Method CALLS (`m.clear()`, `m.size()`)
+    // lower through the call paths and never reach this read branch, so even
+    // a Record key named like a std::map member ("clear") reads correctly.
+    if (receiverCppType) {
+      const rcvMapIr = parseCppType(receiverCppType);
+      if (rcvMapIr.kind === "map") {
+        return {
+          kind: "element-access",
+          object,
+          index: { kind: "string", value: propName },
+        };
+      }
+    }
     if (receiverCppType && parsedIsPointer(receiverCppType)) {
       return {
         kind: "property-access",

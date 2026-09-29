@@ -301,7 +301,12 @@ export function emitClasses(ctx: EmitterContext): void {
     // Field-only interfaces stay structural (aggregate structs) — inheriting
     // those would double-declare fields the class re-states.
     for (const ifaceName of classDef.implementsInterfaces ?? []) {
-      const ifaceDef = program.interfaces.find((i: any) => i.name === ifaceName);
+      const ifaceDef = program.interfaces.find((i: any) => i.name === ifaceName)
+        // A cross-module interface (imported from another file) lives in
+        // ctx.options.crossModuleInterfaces — without this lookup the base
+        // clause was silently dropped and the class no longer satisfied the
+        // interface's virtual contract (UartSink implements Sink).
+        ?? (ctx.options.crossModuleInterfaces?.get(ifaceName) as { name: string; methods: unknown[] } | undefined);
       if (ifaceDef && ifaceDef.methods.length > 0) {
         inheritanceParts.push(`public ${ifaceName}`);
       }

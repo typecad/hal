@@ -134,7 +134,11 @@ describe('FIX 2: string compound assignment', () => {
       UART0.writeLine(row(3));
     `);
 
-    expect(r.cpp).toMatch(/"%s%c", out, RAMP\[level\]/);
+    // The %s arg rides a std::string temp: after the first rebind the target
+    // points at the previous static buffer, and snprintf(buf, "%s…", buf, …)
+    // reading its own output is UB (bench-supervisor finding). The char
+    // append still classifies %c; a double-typed index casts.
+    expect(r.cpp).toMatch(/"%s%c", std::string\(out\)\.c_str\(\), RAMP\[static_cast<int>\(level\)\]/);
   });
 });
 

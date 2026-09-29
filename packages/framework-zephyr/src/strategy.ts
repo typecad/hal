@@ -1904,16 +1904,12 @@ export class ZephyrStrategy implements PlatformStrategy {
       v = v.replace(/\bnull\b/g, 'CUTTLEFISH_UNDEFINED');
     }
     // String-method lowering is shared across targets (see string-method-
-    // registry). Zephyr's strings are const char*, so the __tc_* helpers this
-    // rewrites to (defined by the string_methods polyfill) take const char*.
-    // includes/startsWith lower to inline strstr/strncmp (matching framework-
-    // arduino); everything else → a __tc_* helper call.
+    // registry). The __tc_* helpers take const char* AND a std::string
+    // overload (the polyfill block supplies both), so every method routes
+    // through a helper — the old inline strstr/strncmp forms could not
+    // accept a std::string receiver (a split() element) and failed g++.
     v = applyStringMethodRewrites(v, {
       wrapReceiverFor: new Set(['indexOf']),
-      special: {
-        includes: (recv, args) => `(strstr(${recv}, ${args[0]}) != NULL)`,
-        startsWith: (recv, args) => `(strncmp(${recv}, ${args[0]}, strlen(${args[0]})) == 0)`,
-      },
     });
     return v;
   }
@@ -2419,7 +2415,7 @@ export class ZephyrStrategy implements PlatformStrategy {
         kind: 'polyfill',
         id: 'string_methods',
         domain: 'embedded' as const,
-        requiredIncludes: ['<cstring>'],
+        requiredIncludes: ['<cstring>', '<string>', '<vector>'],
         forwardDeclarations: [],
         helperStructs: [],
         helperFunctions: [`
@@ -2435,32 +2431,58 @@ export class ZephyrStrategy implements PlatformStrategy {
 #ifndef CUTTLEFISH_STR_SLOTS
 #define CUTTLEFISH_STR_SLOTS 8
 #endif
-bool __tc_endsWith(const char* s, const char* suffix) { int sl = strlen(s), tl = strlen(suffix); return sl >= tl && strcmp(s + sl - tl, suffix) == 0; }
-bool __tc_startsWith(const char* s, const char* prefix) { size_t tl = strlen(prefix); return strncmp(s, prefix, tl) == 0; }
-bool __tc_includes(const char* s, const char* needle) { return strstr(s, needle) != nullptr; }
+inline bool __tc_endsWith(const char* s, const char* suffix) { int sl = strlen(s), tl = strlen(suffix); return sl >= tl && strcmp(s + sl - tl, suffix) == 0; }
+inline bool __tc_startsWith(const char* s, const char* prefix) { size_t tl = strlen(prefix); return strncmp(s, prefix, tl) == 0; }
+inline bool __tc_includes(const char* s, const char* needle) { return strstr(s, needle) != nullptr; }
 // (3.14159).toFixed(2) → "3.14". %.*f needs CBPRINTF_FP_SUPPORT — the usage
 // scan flags __tc_toFixed( as a float-format site so the scaffold turns it
 // on. Digits are clamped so a bad input cannot balloon the fixed-point
 // expansion past the buffer.
-const char* __tc_toFixed(double val, int digits) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; if (digits < 0) digits = 0; if (digits > 20) digits = 20; snprintf(b, CUTTLEFISH_STR_BUF_SIZE, "%.*f", digits, val); return b; }
-const char* __tc_toUpperCase(const char* s) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) { if (*p >= 'a' && *p <= 'z') { *p = static_cast<char>(*p - 32); } } return b; }
-const char* __tc_toLowerCase(const char* s) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) { if (*p >= 'A' && *p <= 'Z') { *p = static_cast<char>(*p + 32); } } return b; }
-const char* __tc_trim(const char* s) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; while (*s == ' ' || *s == '\\t' || *s == '\\n' || *s == '\\r') s++; int len = strlen(s); while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\\t' || s[len-1] == '\\n' || s[len-1] == '\\r')) len--; int cplen = len < CUTTLEFISH_STR_BUF_SIZE - 1 ? len : CUTTLEFISH_STR_BUF_SIZE - 1; strncpy(b, s, cplen); b[cplen] = '\\0'; return b; }
-const char* __tc_substring2(const char* s, int start, int end) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; int slen = strlen(s); if (start < 0) start = 0; if (end > slen) end = slen; if (end < start) end = start; int len = end - start; if (len >= CUTTLEFISH_STR_BUF_SIZE) len = CUTTLEFISH_STR_BUF_SIZE - 1; strncpy(b, s + start, len); b[len] = '\\0'; return b; }
-const char* __tc_substring1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
-const char* __tc_slice2(const char* s, int start, int end) { return __tc_substring2(s, start, end); }
-const char* __tc_slice1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
-const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; const char* pos = strstr(s, old); if (!pos) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } int beforeLen = static_cast<int>(pos - s); int oldLen = static_cast<int>(strlen(old)); int replLen = static_cast<int>(strlen(repl)); if (beforeLen + replLen + static_cast<int>(strlen(pos + oldLen)) >= CUTTLEFISH_STR_BUF_SIZE) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } memcpy(b, s, beforeLen); memcpy(b + beforeLen, repl, replLen); strcpy(b + beforeLen + replLen, pos + oldLen); return b; }
-const char* __tc_charAt(const char* s, int idx) { static char buf[CUTTLEFISH_STR_SLOTS][2]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); buf[slot][0] = s[idx]; buf[slot][1] = '\\0'; return buf[slot]; }
-int __tc_charCodeAt(const char* s, int idx) { return static_cast<int>(static_cast<unsigned char>(s[idx])); }
-int __tc_indexOf(const char* s, const char* needle) { const char* p = strstr(s, needle); return p ? static_cast<int>(p - s) : -1; }
-int __tc_lastIndexOf(const char* s, const char* needle) { int slen = static_cast<int>(strlen(s)); if (strlen(needle) == 0U) { return slen; } int last = -1; const char* p = strstr(s, needle); while (p != nullptr) { last = static_cast<int>(p - s); p = strstr(p + 1, needle); } return last; }
-const char* __tc_padStart(const char* s, int len, const char* fill) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; int slen = static_cast<int>(strlen(s)); int flen = static_cast<int>(strlen(fill)); if (flen <= 0) { flen = 1; } if (len > CUTTLEFISH_STR_BUF_SIZE - 1) { len = CUTTLEFISH_STR_BUF_SIZE - 1; } if (len < 0 || slen >= len) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } int pad = len - slen; int i = 0; for (; i < pad; i++) { b[i] = fill[i % flen]; } for (int j = 0; j < slen; j++) { b[i + j] = s[j]; } b[i + slen] = '\\0'; return b; }
-const char* __tc_padStart_default(const char* s, int len) { return __tc_padStart(s, len, " "); }
-const char* __tc_padEnd(const char* s, int len, const char* fill) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; int slen = static_cast<int>(strlen(s)); int flen = static_cast<int>(strlen(fill)); if (flen <= 0) { flen = 1; } if (len > CUTTLEFISH_STR_BUF_SIZE - 1) { len = CUTTLEFISH_STR_BUF_SIZE - 1; } if (len < 0 || slen >= len) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } int i = 0; for (; i < slen; i++) { b[i] = s[i]; } for (int j = 0; i < len; j++, i++) { b[i] = fill[j % flen]; } b[i] = '\\0'; return b; }
-const char* __tc_padEnd_default(const char* s, int len) { return __tc_padEnd(s, len, " "); }
-const char* __tc_repeat(const char* s, int count) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; int slen = static_cast<int>(strlen(s)); if (count < 0) { count = 0; } int i = 0; if (slen > 0) { for (int c = 0; c < count; c++) { for (int j = 0; j < slen && i < CUTTLEFISH_STR_BUF_SIZE - 1; j++, i++) { b[i] = s[j]; } } } b[i] = '\\0'; return b; }
-const char* __tc_num_radix(long long v, int radix) { static char buf[72]; if (radix == 16) { snprintf(buf, sizeof(buf), "%llx", v); } else if (radix == 8) { snprintf(buf, sizeof(buf), "%llo", v); } else if (radix == 2) { unsigned long long u = static_cast<unsigned long long>(v); char tmp[72]; int i = 0; if (u == 0ULL) { buf[0] = '0'; buf[1] = '\\0'; return buf; } while (u > 0ULL) { tmp[i++] = static_cast<char>('0' + static_cast<char>(u & 1ULL)); u >>= 1; } for (int j = 0; j < i; j++) { buf[j] = tmp[i - 1 - j]; } buf[i] = '\\0'; } else { snprintf(buf, sizeof(buf), "%lld", v); } return buf; }
+inline const char* __tc_toFixed(double val, int digits) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; if (digits < 0) digits = 0; if (digits > 20) digits = 20; snprintf(b, CUTTLEFISH_STR_BUF_SIZE, "%.*f", digits, val); return b; }
+inline const char* __tc_toUpperCase(const char* s) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) { if (*p >= 'a' && *p <= 'z') { *p = static_cast<char>(*p - 32); } } return b; }
+inline const char* __tc_toLowerCase(const char* s) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) { if (*p >= 'A' && *p <= 'Z') { *p = static_cast<char>(*p + 32); } } return b; }
+inline const char* __tc_trim(const char* s) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; while (*s == ' ' || *s == '\\t' || *s == '\\n' || *s == '\\r') s++; int len = strlen(s); while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\\t' || s[len-1] == '\\n' || s[len-1] == '\\r')) len--; int cplen = len < CUTTLEFISH_STR_BUF_SIZE - 1 ? len : CUTTLEFISH_STR_BUF_SIZE - 1; strncpy(b, s, cplen); b[cplen] = '\\0'; return b; }
+inline const char* __tc_substring2(const char* s, int start, int end) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; int slen = strlen(s); if (start < 0) start = 0; if (end > slen) end = slen; if (end < start) end = start; int len = end - start; if (len >= CUTTLEFISH_STR_BUF_SIZE) len = CUTTLEFISH_STR_BUF_SIZE - 1; strncpy(b, s + start, len); b[len] = '\\0'; return b; }
+inline const char* __tc_substring1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
+inline const char* __tc_slice2(const char* s, int start, int end) { return __tc_substring2(s, start, end); }
+inline const char* __tc_slice1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
+inline const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; const char* pos = strstr(s, old); if (!pos) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } int beforeLen = static_cast<int>(pos - s); int oldLen = static_cast<int>(strlen(old)); int replLen = static_cast<int>(strlen(repl)); if (beforeLen + replLen + static_cast<int>(strlen(pos + oldLen)) >= CUTTLEFISH_STR_BUF_SIZE) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } memcpy(b, s, beforeLen); memcpy(b + beforeLen, repl, replLen); strcpy(b + beforeLen + replLen, pos + oldLen); return b; }
+inline const char* __tc_charAt(const char* s, int idx) { static char buf[CUTTLEFISH_STR_SLOTS][2]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); buf[slot][0] = s[idx]; buf[slot][1] = '\\0'; return buf[slot]; }
+inline int __tc_charCodeAt(const char* s, int idx) { return static_cast<int>(static_cast<unsigned char>(s[idx])); }
+inline int __tc_indexOf(const char* s, const char* needle) { const char* p = strstr(s, needle); return p ? static_cast<int>(p - s) : -1; }
+inline int __tc_lastIndexOf(const char* s, const char* needle) { int slen = static_cast<int>(strlen(s)); if (strlen(needle) == 0U) { return slen; } int last = -1; const char* p = strstr(s, needle); while (p != nullptr) { last = static_cast<int>(p - s); p = strstr(p + 1, needle); } return last; }
+inline const char* __tc_padStart(const char* s, int len, const char* fill) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; int slen = static_cast<int>(strlen(s)); int flen = static_cast<int>(strlen(fill)); if (flen <= 0) { flen = 1; } if (len > CUTTLEFISH_STR_BUF_SIZE - 1) { len = CUTTLEFISH_STR_BUF_SIZE - 1; } if (len < 0 || slen >= len) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } int pad = len - slen; int i = 0; for (; i < pad; i++) { b[i] = fill[i % flen]; } for (int j = 0; j < slen; j++) { b[i + j] = s[j]; } b[i + slen] = '\\0'; return b; }
+inline const char* __tc_padStart_default(const char* s, int len) { return __tc_padStart(s, len, " "); }
+inline const char* __tc_padEnd(const char* s, int len, const char* fill) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; int slen = static_cast<int>(strlen(s)); int flen = static_cast<int>(strlen(fill)); if (flen <= 0) { flen = 1; } if (len > CUTTLEFISH_STR_BUF_SIZE - 1) { len = CUTTLEFISH_STR_BUF_SIZE - 1; } if (len < 0 || slen >= len) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } int i = 0; for (; i < slen; i++) { b[i] = s[i]; } for (int j = 0; i < len; j++, i++) { b[i] = fill[j % flen]; } b[i] = '\\0'; return b; }
+inline const char* __tc_padEnd_default(const char* s, int len) { return __tc_padEnd(s, len, " "); }
+inline const char* __tc_repeat(const char* s, int count) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; int slen = static_cast<int>(strlen(s)); if (count < 0) { count = 0; } int i = 0; if (slen > 0) { for (int c = 0; c < count; c++) { for (int j = 0; j < slen && i < CUTTLEFISH_STR_BUF_SIZE - 1; j++, i++) { b[i] = s[j]; } } } b[i] = '\\0'; return b; }
+// std::string receiver overloads. The primary helpers return const char*;
+// these copy through the C-string form so a std::string receiver (a
+// split() element, a std::string-typed local) compiles against the same
+// lowering without the emitter tracking the receiver's string model.
+inline bool __tc_endsWith(const std::string& s, const char* suffix) { return __tc_endsWith(s.c_str(), suffix); }
+inline bool __tc_startsWith(const std::string& s, const char* prefix) { return __tc_startsWith(s.c_str(), prefix); }
+inline bool __tc_includes(const std::string& s, const char* needle) { return __tc_includes(s.c_str(), needle); }
+inline std::string __tc_toUpperCase(const std::string& s) { return std::string(__tc_toUpperCase(s.c_str())); }
+inline std::string __tc_toLowerCase(const std::string& s) { return std::string(__tc_toLowerCase(s.c_str())); }
+inline std::string __tc_trim(const std::string& s) { return std::string(__tc_trim(s.c_str())); }
+inline std::string __tc_charAt(const std::string& s, int idx) { return std::string(__tc_charAt(s.c_str(), idx)); }
+inline int __tc_charCodeAt(const std::string& s, int idx) { return __tc_charCodeAt(s.c_str(), idx); }
+inline std::string __tc_substring2(const std::string& s, int start, int end) { return std::string(__tc_substring2(s.c_str(), start, end)); }
+inline std::string __tc_substring1(const std::string& s, int start) { return std::string(__tc_substring1(s.c_str(), start)); }
+inline std::string __tc_slice2(const std::string& s, int start, int end) { return std::string(__tc_slice2(s.c_str(), start, end)); }
+inline std::string __tc_slice1(const std::string& s, int start) { return std::string(__tc_slice1(s.c_str(), start)); }
+inline std::string __tc_replace(const std::string& s, const char* old, const char* repl) { return std::string(__tc_replace(s.c_str(), old, repl)); }
+inline std::string __tc_padStart(const std::string& s, int len, const char* fill) { return std::string(__tc_padStart(s.c_str(), len, fill)); }
+inline std::string __tc_padEnd(const std::string& s, int len, const char* fill) { return std::string(__tc_padEnd(s.c_str(), len, fill)); }
+inline std::string __tc_repeat(const std::string& s, int count) { return std::string(__tc_repeat(s.c_str(), count)); }
+inline int __tc_indexOf(const std::string& s, const char* needle) { return __tc_indexOf(s.c_str(), needle); }
+inline int __tc_lastIndexOf(const std::string& s, const char* needle) { return __tc_lastIndexOf(s.c_str(), needle); }
+// Split a C string on a delimiter. JS semantics: an empty delimiter splits
+// into single characters; the trailing empty part is kept.
+inline std::vector<std::string> __tc_split(const char* s, const char* delim) { std::vector<std::string> parts; if (delim[0] == '\\0') { for (const char* p = s; *p != '\\0'; ++p) { parts.push_back(std::string(1, *p)); } return parts; } const char* start = s; const char* pos = strstr(s, delim); while (pos != nullptr) { parts.push_back(std::string(start, static_cast<size_t>(pos - start))); start = pos + strlen(delim); pos = strstr(start, delim); } parts.push_back(std::string(start)); return parts; }
+inline std::vector<std::string> __tc_split(const std::string& s, const char* delim) { return __tc_split(s.c_str(), delim); }
+inline const char* __tc_num_radix(long long v, int radix) { static char buf[CUTTLEFISH_STR_SLOTS][72]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; if (radix == 16) { snprintf(b, 72, "%llx", v); } else if (radix == 8) { snprintf(b, 72, "%llo", v); } else if (radix == 2) { unsigned long long u = static_cast<unsigned long long>(v); char tmp[72]; int i = 0; if (u == 0ULL) { b[0] = '0'; b[1] = '\\0'; return b; } while (u > 0ULL) { tmp[i++] = static_cast<char>('0' + static_cast<char>(u & 1ULL)); u >>= 1; } for (int j = 0; j < i; j++) { b[j] = tmp[i - 1 - j]; } b[i] = '\\0'; } else { snprintf(b, 72, "%lld", v); } return b; }
 `],
         shimMacros: [],
         dependencies: [],

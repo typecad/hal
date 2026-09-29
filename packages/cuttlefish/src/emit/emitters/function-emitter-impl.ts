@@ -263,7 +263,7 @@ export function emitFunctions(ctx: EmitterContext): void {
     const needsStatic = !isExported && !isEntrypoint && !calledFromClassMethod;
 
     if (effectiveEmitMode === "split") {
-      if (isExported) {
+      if (isExported && !ctx.hoistedExportedFnPrototypes.has(fn.name)) {
         emitCommentLines(fn.leadingComments, "", (line) => appendHeaderLine(ctx, line));
         if (fn.typeParameters && fn.typeParameters.length > 0) {
           appendHeaderLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
@@ -537,7 +537,30 @@ export function emitFunctionForwardDeclarations(ctx: EmitterContext): void {
       emittedAnyFn = true;
       continue;
     }
-    if (effectiveEmitMode === "split" && (isExported || isEntrypoint)) continue;
+    if (effectiveEmitMode === "split" && (isExported || isEntrypoint)) {
+      // An exported function's header prototype used to ride with its
+      // DEFINITION (after the classes). Inline class bodies in the header can
+      // call exported free functions (`LogEvent.line()` → severityLabel()),
+      // so hoist the prototype here — this pass runs BEFORE emitClasses.
+      if (isExported) {
+        const declarationParameterList = ctx.statementRenderer.renderParameters(fn.parameters, true);
+        const readonlyPrefix = fn.isReadonlyReturnType ? "const " : "";
+        const fnReturnType = fn.isGenerator
+          ? `__tc_Generator<${fn.returnType === "void" ? "void" : ctx.statementRenderer.mapTypeForEmit(fn.returnType)}>`
+          : `${readonlyPrefix}${ctx.statementRenderer.mapReturnTypeForEmit(fn.name, fn.returnType)}`;
+        if (fn.typeParameters && fn.typeParameters.length > 0) {
+          appendHeaderLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
+        }
+        appendHeaderLine(ctx, `${fnReturnType} ${fn.name}(${declarationParameterList});`, {
+          tsSpan: fn.sourceSpan,
+          nodeKind: "function_declaration",
+          symbolName: fn.name,
+        });
+        ctx.hoistedExportedFnPrototypes.add(fn.name);
+        emittedAnyFn = true;
+      }
+      continue;
+    }
 
     const declarationParameterList = ctx.statementRenderer.renderParameters(fn.parameters, true);
     const readonlyPrefix = fn.isReadonlyReturnType ? "const " : "";
