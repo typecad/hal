@@ -15,6 +15,8 @@ import { HELPER_RETURN_TYPES, helperReturnTypeForText, helperNameFromText } from
 import { POLYFILL_HELPER_MAP } from '../../../packages/cuttlefish/src/api/shared/polyfill-helper-registry';
 import { STRING_METHODS } from '../../../packages/cuttlefish/src/api/shared/string-method-registry';
 import { transpileZephyrStrategy } from '../../setup';
+import { buildCallGraph } from '../../../packages/cuttlefish/src/ir/call-graph';
+import { analyzeReachability } from '../../../packages/cuttlefish/src/ir/reachability';
 import { findHeaderLinkageIssues } from '../../../packages/cuttlefish/src/emit/emitters/header-linkage-check';
 
 describe('helper-return-types registry', () => {
@@ -70,20 +72,62 @@ describe('reserved-name variable consistency', () => {
     expect(r.cpp).not.toMatch(/[^\w_]log->/);
   });
 
-  it.fails('a top-level instance declaration after a class declaration is captured into the class body (known bug)', () => {
-    // `new LocalCls()` AFTER the class declaration in the same file gets
-    // emitted as a MEMBER of that class instead of a top-level definition —
-    // proven pre-existing (fires on the committed baseline too). Pinned as
-    // it.fails until the class-emitter capture is fixed.
+  it('a reserved-named top-level variable survives tree-shaking when referenced via method calls', () => {
+    // References bake the ESCAPED name into callee text (log_->record), so
+    // the call graph reports `log_` — without the emittedName alias mapping
+    // in reachability.ts, the declaration tree-shook away while its
+    // references survived, and g++ failed with an undeclared symbol (the
+    // bench-supervisor `log` finding).
+    const r = transpileZephyrStrategy(`
+      import { UART0 } from '@typecad/hal';
+      class ELog { record(n: number): void { } }
+      const log = new ELog(16);
+      log.record(1);
+      log.record(2);
+    `);
+    expect(r.cpp).toMatch(/ELog\* log_ = new ELog\(16\);/);
+    expect(r.cpp).toMatch(/log_->record\(1\)/);
+  });
+
+  it('reachability maps the escaped render name back to the declaration (unit)', () => {
+    // The single-file harness treats every top-level statement as an entry,
+    // so tree-shaking is not exercised there — the alias mapping is tested
+    // directly against the reachability analysis with a synthetic program
+    // mirroring the demo shape: a var_decl `log` (emittedName log_) whose
+    // only references bake the escape into callee text.
+    const span = { filePath: 'x.ts', startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 };
+    const program: any = {
+      fileName: 'x.ts',
+      imports: [], reExports: [], structs: [], enums: [], classes: [], typeAliases: [],
+      functions: [], boilerplates: [], registeredCallbacks: [],
+      topLevelStatements: [
+        { kind: 'var_decl', sourceSpan: span, name: 'log', storage: 'const', cppType: 'ELog*', emittedName: 'log_',
+          initializer: { kind: 'raw', value: 'new ELog(16)' } },
+        { kind: 'call', sourceSpan: span, callee: 'log_->record', args: [] },
+      ],
+    };
+    const graph = buildCallGraph(program);
+    const reach = analyzeReachability(program, graph, { target: 'zephyr', entryPointConfig: {} });
+    expect(reach.reachableVariables.has('log')).toBe(true);
+  });
+
+  it('a top-level instance declaration after a class declaration stays in main() (not the class body)', () => {
+    // Regression pin for a misdiagnosis: filtered probe output once made it
+    // look like `new LocalCls()` after the class declaration was captured
+    // into the class body. It never was — the declaration lands in the
+    // auto-generated main(), and the class body contains only its members.
+    // This parses the CLASS BODY precisely (between the class DEFINITION's
+    // braces, not the forward declaration).
     const r = transpileZephyrStrategy(`
       class EventLog { record(n: number): void { } }
       const elog = new EventLog(16);
       const hist = 3;
     `);
-    // The declaration must be a top-level definition, not a class member.
-    const inClass = r.cpp.split('class EventLog')[1]?.split('};')[0] ?? '';
-    expect(inClass).not.toContain('new EventLog');
-    expect(r.cpp).toMatch(/^EventLog\* elog = /m);
+    const classBody = r.cpp.split('class EventLog {')[1]?.split('\n};')[0] ?? '';
+    expect(classBody).not.toContain('new EventLog');
+    expect(classBody).toContain('void record');
+    // The declaration is an executable inside main().
+    expect(r.cpp).toMatch(/int main\(\)\s*\{[\s\S]*?\n\s*EventLog\* elog = new EventLog\(16\);/);
   });
 });
 

@@ -123,6 +123,11 @@ export interface VariableDeclarationIR {
   isVolatile?: boolean;
   /** Ownership kind inferred from type annotation (Shared<T>, Mutable<T>, Owned<T>). */
   ownershipKind?: 'owned' | 'shared' | 'mutable';
+  /** The name this variable RENDERS under when it differs from the TS name —
+   *  set when a user variable collides with a reserved name (log renders as
+   *  log_). Tree-shaking consults it so references baked into callee text
+   *  under the escape still mark the declaration reachable. */
+  emittedName?: string;
 }
 
 export interface AssignmentIR {

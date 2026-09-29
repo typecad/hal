@@ -137,6 +137,26 @@ export function analyzeReachability(
     }
   }
 
+  // A reserved-named variable renders under its ESCAPED name, and references
+  // bake that escape into callee TEXT (log_->record) — the identifier
+  // collector therefore reports `log_`, not `log`. Without mapping back, the
+  // declaration tree-shakes away while its references survive, and g++ fails
+  // with an undeclared symbol. Mark a declaration reachable when its
+  // recorded render name (var_decl.emittedName) is reachable.
+  {
+    const aliasToName = new Map<string, string>();
+    for (const stmt of program.topLevelStatements) {
+      if (stmt.kind === "var_decl" && stmt.emittedName && stmt.emittedName !== stmt.name) {
+        aliasToName.set(stmt.emittedName, stmt.name);
+      }
+    }
+    for (const alias of aliasToName.keys()) {
+      if (reachableSymbols.has(alias)) {
+        reachableVariables.add(aliasToName.get(alias) as string);
+      }
+    }
+  }
+
   // Mark base classes as reachable when their derived classes are reachable.
   // The call graph only tracks direct references, not inheritance relationships.
   let changed = true;

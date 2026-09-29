@@ -49,10 +49,10 @@ heartbeat.start(() => {
 });
 
 // ── Supervisor state ───────────────────────────────────────────────────────
-// Named elog: a top-level instance declaration positioned among HAL-instance
-// statements is currently swallowed by the class-emitter capture (known bug,
-// pinned by an it.fails repro in structural-invariants.test.ts).
-const elog = new EventLog(16);
+// `log` exercises the reserved-name escape end to end: it renders as log_ at
+// the declaration and every reference, and survives tree-shaking (references
+// bake the escape into callee text — the alias mapping in reachability.ts).
+const log = new EventLog(16);
 const hist = new Histogram(3300);
 const assembler = new LineAssembler(48);
 
@@ -64,11 +64,11 @@ class UartSink implements Sink {
 }
 const out = new UartSink();
 
-const dumpHandler = new DumpHandler(elog, out);
+const dumpHandler = new DumpHandler(log, out);
 const levelHandler = new LevelHandler(ALARM_DEFAULT_MV, out);
 const handlers = new Map<number, CommandHandler>();
 handlers.set(Verb.Dump, dumpHandler);
-handlers.set(Verb.Clear, new ClearHandler(elog, out));
+handlers.set(Verb.Clear, new ClearHandler(log, out));
 handlers.set(Verb.Level, levelHandler);
 handlers.set(Verb.Help, new HelpHandler(out));
 const fallbackHandler = new HelpHandler(out);
@@ -76,7 +76,7 @@ const fallbackHandler = new HelpHandler(out);
 UART0.writeLine(`[boot] bench-supervisor ready — ${handlers.size} commands, level=${ALARM_DEFAULT_MV}mV`);
 
 wdt.enable();
-elog.record(Severity.Info, 0, Time.now());
+log.record(Severity.Info, 0, Time.now());
 
 let lastReport = Time.now();
 let samples = 0;
@@ -90,7 +90,7 @@ while (true) {
     if (cmd.verb === Verb.None) {
       if (!cmd.ok) {
         out.writeLine(`? unknown command code=${cmd.arg.toString(16)} — try H`);
-        elog.record(Severity.Warn, 1, Time.now());
+        log.record(Severity.Warn, 1, Time.now());
       }
       continue;
     }
@@ -100,7 +100,7 @@ while (true) {
     if (cmd.verb === Verb.Level) {
       Trace.event('level', levelHandler.level);
     }
-    elog.record(Severity.Info, cmd.verb, Time.now());
+    log.record(Severity.Info, cmd.verb, Time.now());
   }
 
   // ── Button press dumps the log without the console ───────────────────────
@@ -116,7 +116,7 @@ while (true) {
   samples += 1;
   if (mv >= levelHandler.level) {
     Trace.event('mv', mv);
-    elog.record(Severity.Warn, 2, Time.now());
+    log.record(Severity.Warn, 2, Time.now());
     out.writeLine(`[alarm] ${mv.toFixed(0)}mV >= ${levelHandler.level.toFixed(0)}mV (${severityLabel(Severity.Warn)})`);
     Time.sleep(750);
   }
@@ -126,10 +126,10 @@ while (true) {
     lastReport = Time.now();
     out.writeLine(`── report: samples=${samples.toFixed(0)} peak=${hist.peak.toFixed(0)} ──`);
     out.writeLine(`hist [${hist.bar()}] alarm>=${levelHandler.level.toFixed(0)}mV`);
-    out.writeLine(`events ${elog.count('INFO')}/${elog.count('WARN')}/${elog.count('FAULT')} (I/W/F)`);
-    const shown = elog.size < 4 ? elog.size : 4;
+    out.writeLine(`events ${log.count('INFO')}/${log.count('WARN')}/${log.count('FAULT')} (I/W/F)`);
+    const shown = log.size < 4 ? log.size : 4;
     for (let i = 0; i < shown; i += 1) {
-      out.writeLine(elog.at(i).line());
+      out.writeLine(log.at(i).line());
     }
   }
 

@@ -476,22 +476,28 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
     }
   }
 
-  const filteredTopLevelDeclarations = ctx.reservedNames.size > 0
-    ? topLevelDeclarations.filter((item) => {
-      if (item.kind === "var_decl") {
-        return !ctx.reservedNames.has(item.name);
-      }
-      return true;
-    })
-    : topLevelDeclarations;
-  const filteredTopLevelExecutables_presuppress = ctx.reservedNames.size > 0
-    ? topLevelExecutables.filter((item) => {
-      if (item.kind === "var_decl") {
-        return !ctx.reservedNames.has(item.name);
-      }
-      return true;
-    })
-    : topLevelExecutables;
+  // A top-level variable whose name collides with a platform PASSTHROUGH
+  // MACRO is suppressed so its references render as the macro itself (the
+  // platform owns the symbol). That is the ONLY suppression: a name that is
+  // merely reserved (`log` — the libc collision) is a USER variable that
+  // renames consistently to its escape (`log_`) at declaration and every
+  // reference; dropping its declaration here emitted references to an
+  // undeclared symbol (the bench-supervisor `log` finding).
+  const passthroughMacros = strategy.passthroughMacroNames();
+  const suppressesDeclName = (name: string): boolean =>
+    passthroughMacros.size > 0 && passthroughMacros.has(name);
+  const filteredTopLevelDeclarations = topLevelDeclarations.filter((item) => {
+    if (item.kind === "var_decl") {
+      return !suppressesDeclName(item.name);
+    }
+    return true;
+  });
+  const filteredTopLevelExecutables_presuppress = topLevelExecutables.filter((item) => {
+    if (item.kind === "var_decl") {
+      return !suppressesDeclName(item.name);
+    }
+    return true;
+  });
 
   const entrypointFunctionName = strategy.entrypointFunctionName();
   const entrypointCallNames = new Set<string>([entrypointFunctionName]);

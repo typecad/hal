@@ -45,10 +45,8 @@ console to drive the command dispatcher; the KEY button dumps the log.
 
 ## Transpiler notes
 
-One demo shape is deliberately avoided (a documented sharp edge, see the
-changeset): a top-level variable named `log` (the emitter renames the
-declaration to dodge the libc collision but not the references — this demo
-uses `elog`). The former `charCodeAt`-constant sharp edge is FIXED —
-runtime-initialized constants now get a header extern (the prior-extern
-linkage rule) and a concrete type, and this demo uses `charCodeAt(0)`
-initializers again.
+The demo names its event log `log` — a libc-reserved name — exercising the
+reserved-name escape end to end: the variable renders as `log_` at its
+declaration and every reference, and survives tree-shaking (references bake
+the escape into callee text; the alias mapping in reachability.ts marks the
+declaration reachable).

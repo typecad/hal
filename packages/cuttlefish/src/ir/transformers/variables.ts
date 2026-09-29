@@ -1295,6 +1295,10 @@ export function variableStatementToIR(
       if (escapedName !== declaration.name.text) {
         localVariableTypes.set(escapedName, varCppType as CppTypeHint);
         setScopeLocalType(escapedName, varCppType as CppTypeHint);
+        // Record the render name for tree-shaking: references bake the
+        // escape into callee text (log_->record), which must still count as
+        // a use of the declaration named log.
+        (loweredDeclaration as { emittedName?: string }).emittedName = escapedName;
       }
     }
 
