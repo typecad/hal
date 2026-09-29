@@ -113,8 +113,9 @@ describe('bench-supervisor demo findings', () => {
     `);
 
     const atoiLine = r.cpp.split('\n').find(l => l.includes('atoi('));
-    expect(atoiLine).toMatch(/atoi\(__tc_slice1\("A10", 1\)\)/);
-    expect(atoiLine ?? '').not.toContain('.c_str()');
+    // The helper returns std::string (one string model); atoi's const
+    // char* parameter takes .c_str() at the boundary.
+    expect(atoiLine).toMatch(/atoi\(\(__tc_slice1\("A10", 1\)\)\.c_str\(\)\)/);
   });
 
   it('types a bitwise expression int so it can subscript', () => {
@@ -142,7 +143,7 @@ describe('bench-supervisor demo findings', () => {
     expect(r.cpp).toMatch(/HELP\["dump"\] = "D"/);
     expect(r.cpp).toMatch(/HELP\["clear"\] = "C"/);
     // Dot access on the Record (even the map-member-named key) → element access
-    expect(r.cpp).toMatch(/%s\/%s", HELP\["dump"\], HELP\["clear"\]/);
+    expect(r.cpp).toMatch(/%s\/%s", \(HELP\["dump"\]\)\.c_str\(\), \(HELP\["clear"\]\)\.c_str\(\)/);
     expect(r.cpp).not.toMatch(/HELP\.dump|HELP\.clear([^()]|$)/);
   });
 
@@ -170,7 +171,7 @@ describe('bench-supervisor demo findings', () => {
       UART0.writeLine(\`go \${onEvent(7)}\`);
     `);
 
-    expect(r.cpp).toMatch(/%s", onEvent\(7\)/);
+    expect(r.cpp).toMatch(/%s", \(onEvent\(7\)\)\.c_str\(\)/);
   });
 
   it('lowers x.length = 0 to clear() and rejects nonzero length assignment', () => {
@@ -283,7 +284,7 @@ describe('bench-supervisor demo findings', () => {
       UART0.writeLine(\`0x\${(255).toString(16).toUpperCase()}\`);
     `);
 
-    expect(r.cpp).toMatch(/0x%s", __tc_toUpperCase\(__tc_num_radix/);
+    expect(r.cpp).toMatch(/0x%s", \(__tc_toUpperCase\(__tc_num_radix/);
   });
 
   it('types a map-get nullish declaration as the map value type', () => {

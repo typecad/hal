@@ -3,6 +3,7 @@ import { HALOpIR } from "../../api/index.js";
 import { HALInstance } from "./hal-parser.js";
 import { getCurrentBoardConstants, halInstances, getContext } from "../build-ir-state.js";
 import { getCurrentIrTypeScope } from "../symbol-types.js";
+import { HELPER_RETURN_TYPES, helperNameFromText } from "../../api/shared/helper-return-types.js";
 import { resolveExpressionText, extractAndRegisterCallbacks } from "./hal-emitter.js";
 import { renderExprAsText } from "../render-expr.js";
 import type { ExpressionIR } from "../../api/index.js";
@@ -172,6 +173,25 @@ function dropUndefined(value: string | null): string | null {  return value === 
 /** dropUndefined for resolvers that also fold numbers (`string | number | null`). */
 function dropUnresolved(value: string | number | null): string | number | null {
   return value === "undefined" ? null : value;
+}
+
+/** Adapt rendered C++ text that denotes a std::string VALUE (a
+ *  string-returning __tc_* helper call, an owned local) for a const char*
+ *  shim parameter - .c_str() at the boundary, mirroring irArgIsStdString
+ *  on the text level where the IR node is not available. */
+function cstrIfStdStringText(text: string): string {
+  const trimmed = text.trim();
+  const helperName = helperNameFromText(trimmed);
+  if (helperName) {
+    return HELPER_RETURN_TYPES[helperName] === "std::string"
+      ? `(${trimmed}).c_str()`
+      : trimmed;
+  }
+  if (/^[A-Za-z_]\w*$/.test(trimmed)) {
+    const t = getCurrentIrTypeScope()?.locals.get(trimmed) ?? getCurrentIrTypeScope()?.globals.get(trimmed);
+    if (t === "std::string") return `(${trimmed}).c_str()`;
+  }
+  return text;
 }
 
 /** Fold a resolved bool argument: literal true/false become booleans, any
@@ -845,7 +865,7 @@ export function tryResolveSemanticCall(
       // The resolver yields C++-ready text (string literals arrive already
       // quoted); quoteNonIdentifier here baked a `name()` call into the
       // literal "name()".
-      return { operation: "preferences.put_string", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), value };
+      return { operation: "preferences.put_string", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), value: cstrIfStdStringText(value) };
     }
     case "preferencesGetString": {
       const ns = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
@@ -853,7 +873,7 @@ export function tryResolveSemanticCall(
       const key = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       const def = dropUndefined(resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults)) ?? '""';
       if (key === null) return null;
-      return { operation: "preferences.get_string", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), defaultValue: def };
+      return { operation: "preferences.get_string", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), defaultValue: cstrIfStdStringText(def) };
     }
 
     // ── FS (littlefs on the storage partition — lazy mount, no session) ──

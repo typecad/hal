@@ -3,7 +3,7 @@ import { ExpressionIR, HALOpIR } from "../../api/index.js";
 import { requiredIncludes, registeredCallbacks, isrHandlerFunctions, activeStringVars, TYPED_ARRAY_ELEMENT_MAP, getContext, floatVariables, halInstances, getCurrentBoardConstants, markHalOpResolved, topLevelClasses, crossModuleFunctionReturns, activeEnumNames, activeStringEnumNames } from "../build-ir-state.js";
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { parsedElementString, parseCppType, renderCppType } from "../../api/shared/cpp-type-ir.js";
-import { renderExprAsText } from "../render-expr.js";
+import { HELPER_RETURN_TYPES, helperNameFromText } from "../../api/shared/helper-return-types.js";import { renderExprAsText } from "../render-expr.js";
 import { escapeCppKeyword, escapeCppStringLiteral } from "../../utils/strings.js";
 import { HALInstance, halClassRegistry, halGlobalFunctions, HALMethodEntry } from "./hal-parser.js";
 import { tryResolveSemanticCall, tryResolveBoardResolveArg, tryResolveCompoundSemanticReturn, resolveConcatPath } from "./hal-plugins.js";
@@ -414,6 +414,64 @@ export function processHALMethodBody(
 
   const paramNames = methodEntry.paramNames;
   const spreadParamName = methodEntry.spreadParamName;
+/** True when the rendered arg text denotes a std::string VALUE that cannot
+ *  pass a const char* shim parameter implicitly: an owned local, a
+ *  string-returning __tc_* helper, a string container element, or a
+ *  string-returning method call on a known class. */
+function irArgIsStdString(a: ExpressionIR, text: string): boolean {
+  // Interpolation lowering wraps bare expressions in template_string /
+  // paren nodes — the value inside is what crosses the boundary.
+  if (a.kind === "template_string") {
+    return irArgIsStdString((a as { expression: ExpressionIR }).expression, text);
+  }
+  if (a.kind === "paren") {
+    return irArgIsStdString((a as { inner: ExpressionIR }).inner, text);
+  }
+  const trimmed = text.trim();
+  // String-returning helper call — classified by the shared registry.
+  const helperName = helperNameFromText(trimmed);
+  if (helperName) {
+    return HELPER_RETURN_TYPES[helperName] === "std::string";
+  }
+  // An owned std::string local/global.
+  if (a.kind === "identifier") {
+    const t = getCurrentIrTypeScope()?.locals.get((a as { value: string }).value)
+      ?? getCurrentIrTypeScope()?.globals.get((a as { value: string }).value);
+    return t === "std::string";
+  }
+  // A container element (`order[0]`) — the container's element type.
+  if (a.kind === "element-access") {
+    const obj = (a as { object: ExpressionIR }).object;
+    if (obj && obj.kind === "identifier") {
+      const t = getCurrentIrTypeScope()?.locals.get((obj as { value: string }).value)
+        ?? getCurrentIrTypeScope()?.globals.get((obj as { value: string }).value);
+      if (t) {
+        const elem = parsedElementString(t);
+        // parsedElementString covers std::vector; the StaticArray template
+        // spelling needs the raw first-argument check.
+        if (elem === "std::string") return true;
+        return /^__tc_StaticArray<\s*std::string\s*,/.test(t) || /^std::vector<\s*std::string\s*>/.test(t);
+      }
+    }
+  }
+  // A method call (`w->describe()`) — its resolved return type, either
+  // carried on the IR (getter-access lowering attaches cppType) or looked
+  // up in the class registry by the bare method name.
+  if (a.kind === "method-call") {
+    const carried = (a as { cppType?: string }).cppType;
+    if (carried === "std::string") return true;
+    const callee = (a as { callee: string }).callee ?? "";
+    const bare = callee.replace(/^.*->/, "").replace(/^.*\./, "");
+    for (const cls of topLevelClasses.values()) {
+      const m = cls.methods.find(mm => mm.name === bare);
+      if (m) return m.returnType === "std::string";
+      const g = cls.getters.find(gg => gg.name === bare);
+      if (g) return g.returnType === "std::string";
+    }
+  }
+  return false;
+}
+
   const callArgTexts = callArgs.map((a, i) => {
     const text = renderExprAsText(a);
     // Enum ↔ integral boundary at HAL call sites: an enum-typed identifier
@@ -446,6 +504,23 @@ export function processHALMethodBody(
       if (enumName && activeEnumNames.has(enumName) && !activeStringEnumNames.has(enumName)) {
         return `static_cast<int32_t>(${text})`;
       }
+    }
+    // String ↔ C-string boundary at HAL call sites: a `string`-annotated
+    // parameter (`write(data: SerialValue)`) lowers to a shim taking
+    // const char*, but a std::string ARGUMENT (an owned local, a helper
+    // result, a container element, or a string-returning method call) has
+    // no implicit conversion — it needs .c_str() at the boundary, exactly
+    // like the enum→int casts above.
+    if (
+      param
+      && (
+        param.type?.kind === ts.SyntaxKind.StringKeyword
+        || (param.type && ts.isTypeReferenceNode(param.type) && ts.isIdentifier(param.type.typeName)
+          && /^(SerialValue|string|String)$/.test(param.type.typeName.text))
+      )
+      && irArgIsStdString(a, text)
+    ) {
+      return `(${text.trim()}).c_str()`;
     }
     return text;
   });
@@ -838,6 +913,19 @@ function isStringHelperText(text: string): boolean {
   return /^__tc_(?:toFixed|toUpperCase|toLowerCase|trim|replace|charAt|substring\d?|slice\d?|padStart(?:_default)?|padEnd(?:_default)?|repeat|num_radix)\(/.test(text.trim());
 }
 
+/** Adapt a %s argument for the C varargs boundary: std::string (and any
+ *  string-returning __tc_* helper) passes its .c_str(); a const char* is
+ *  already a C-string and passes unchanged. */
+function cstrForVarargs(text: string, classifiedType: string | undefined): string {
+  if (classifiedType === "const char*" || classifiedType === "char*") return text;
+  if (classifiedType === "std::string") return `(${text}).c_str()`;
+  const helperName = helperNameFromText(text.trim());
+  if (helperName && HELPER_RETURN_TYPES[helperName] === "std::string") {
+    return `(${text.trim()}).c_str()`;
+  }
+  return text;
+}
+
 /** Build snprintf prelude lines from a string_concat expression.
  *  Returns { lines, bufferName } or null if the expression can't be formatted. */
 
@@ -1003,10 +1091,11 @@ export function buildSnprintfFromConcat(
           estimatedLength += 16;
         } else if (isStringHelperText(text)) {
           // Raw text of a lowered string method (`__tc_toFixed(x, 2)`,
-          // `__tc_toUpperCase(s)`, …) — these helpers return const char*
-          // (std::string on hosted): %s, never the %d default.
+          // `__tc_toUpperCase(s)`, …) — the helpers return std::string BY
+          // VALUE (one string model), so the C varargs boundary takes
+          // .c_str(): %s, never the %d default.
           formatString += "%s";
-          args.push(text);
+          args.push(cstrForVarargs(text, "std::string"));
           estimatedLength += 32;
         } else if (
           part.kind === "template_string"
@@ -1023,7 +1112,7 @@ export function buildSnprintfFromConcat(
           const elemType = baseType ? parsedElementString(baseType) : undefined;
           if (elemType && (elemType === "const char*" || elemType === "char*" || elemType === "std::string")) {
             formatString += "%s";
-            args.push(text);
+            args.push(cstrForVarargs(text, elemType));
             estimatedLength += 32;
           } else {
             formatString += "%g";
@@ -1058,7 +1147,7 @@ export function buildSnprintfFromConcat(
           }
           if (methodReturn === "const char*" || methodReturn === "char*" || methodReturn === "std::string") {
             formatString += "%s";
-            args.push(text);
+            args.push(cstrForVarargs(text, methodReturn));
             estimatedLength += 128;
           } else if (methodReturn === "float" || methodReturn === "double") {
             formatString += "%g";
@@ -1083,7 +1172,7 @@ export function buildSnprintfFromConcat(
           const callType = (part.expression as { cppType?: string }).cppType;
           if (callType === "const char*" || callType === "char*" || callType === "std::string") {
             formatString += "%s";
-            args.push(text);
+            args.push(cstrForVarargs(text, callType));
             estimatedLength += 128;
           } else if (callType === "float" || callType === "double") {
             formatString += "%g";
@@ -1111,7 +1200,7 @@ export function buildSnprintfFromConcat(
           const fnReturn = crossModuleFunctionReturns.get(callExpr.callee);
           if (fnReturn === "const char*" || fnReturn === "char*" || fnReturn === "std::string") {
             formatString += "%s";
-            args.push(text);
+            args.push(cstrForVarargs(text, fnReturn));
             estimatedLength += 128;
           } else if (fnReturn === "float" || fnReturn === "double") {
             formatString += "%g";
@@ -1151,7 +1240,7 @@ export function buildSnprintfFromConcat(
             estimatedLength += 5;
           } else if (staticType === "const char*" || staticType === "char*" || staticType === "std::string") {
             formatString += "%s";
-            args.push(text);
+            args.push(cstrForVarargs(text, staticType));
             estimatedLength += 128;
           } else {
             formatString += "%d";
@@ -1172,7 +1261,7 @@ export function buildSnprintfFromConcat(
           const valueType = mapIr?.kind === "map" ? renderCppType(mapIr.value) : undefined;
           if (valueType === "const char*" || valueType === "char*" || valueType === "std::string") {
             formatString += "%s";
-            args.push(text);
+            args.push(cstrForVarargs(text, valueType));
             estimatedLength += 32;
           } else if (valueType !== undefined) {
             formatString += "%g";

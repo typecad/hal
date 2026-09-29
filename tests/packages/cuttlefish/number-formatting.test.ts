@@ -29,9 +29,11 @@ describe('toFixed lowering', () => {
     `);
 
     // The shim is defined (framework string_methods polyfill).
-    expect(r.cpp).toMatch(/const char\* __tc_toFixed\(double val, int digits\)/);
-    // The snprintf arg is %s — the helper returns a C string.
-    expect(r.cpp).toMatch(/"t=%sC", __tc_toFixed\(t, 2\)/);
+    expect(r.cpp).toMatch(/std::string __tc_toFixed\(double val, int digits\)/);
+    // The snprintf arg is %s with .c_str() — the helper returns an OWNED
+    // std::string under the one string model, and the C varargs boundary
+    // takes its C-string view.
+    expect(r.cpp).toMatch(/"t=%sC", \(__tc_toFixed\(t, 2\)\)\.c_str\(\)/);
     // Never the %d-on-a-pointer garbage form.
     expect(r.cpp).not.toMatch(/%d[^\n]*__tc_toFixed/);
   });

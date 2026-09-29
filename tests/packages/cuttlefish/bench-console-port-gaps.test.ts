@@ -6,7 +6,7 @@
 //   1. String methods on NON-identifier receivers (pointer member, element
 //      access, chained call results) lower structurally on every target —
 //      the strategy-side regex mangled them (`c->__tc_padEnd(name, 7)`).
-//   2. `.length` on a `string` parameter lowers to strlen on const char*
+//   2. `.length` on a `string` binding lowers to the native .length()
 //      string targets (was `.length()` on a non-class type).
 //   3. for-of over a StaticArray types the loop var from the element type —
 //      even when the array is declared AFTER the class iterating it.
@@ -69,27 +69,28 @@ describe("string methods on non-identifier receivers (Zephyr)", () => {
     expect(out.cpp).not.toMatch(/__tc_num_radix\([^)]*\)\.toUpperCase/);
   });
 
-  it("startsWith uses strncmp on const char* string targets (not rfind)", () => {
+  it("startsWith lowers to the std::string prefix idiom (rfind at 0)", () => {
+    // One string model: `s: string` params are std::string, and the native
+    // prefix test is compare-at-0 (rendered via rfind). The old strncmp
+    // form assumed const char* locals.
     const out = transpile(`
       function go(s: string): boolean { return s.startsWith('0x'); }
       while (true) {}
     `, { strategy: zephyr(), target: 'zephyr' });
-    expect(out.cpp).toMatch(/strncmp\(s, "0x", strlen\("0x"\)\) == 0/);
-    expect(out.cpp).not.toContain(".rfind(");
+    expect(out.cpp).toMatch(/s\.rfind\("0x", 0\) == 0/);
   });
 });
 
-describe(".length on string bindings (const char* targets)", () => {
-  it("parameter .length lowers to cast strlen, never .length()", () => {
+describe(".length on string bindings (std::string model)", () => {
+  it("parameter .length lowers to the native .length()", () => {
     const out = transpile(`
       function nlen(s: string): number { return s.length; }
       while (true) {}
     `, { strategy: zephyr(), target: 'zephyr' });
-    expect(out.cpp).toMatch(/strlen\(s\)/);
-    expect(out.cpp).not.toMatch(/s\.length\(\)/);
+    expect(out.cpp).toMatch(/s\.length\(\)/);
   });
 
-  it("a toFixed-initialized local's .length lowers to strlen (was sizeof)", () => {
+  it("a toFixed-initialized local's .length is native (was sizeof)", () => {
     const out = transpile(`
       function pad(v: number): number {
         const s = v.toFixed(0);
@@ -97,7 +98,7 @@ describe(".length on string bindings (const char* targets)", () => {
       }
       while (true) {}
     `, { strategy: zephyr(), target: 'zephyr' });
-    expect(out.cpp).toMatch(/strlen\(s\)/);
+    expect(out.cpp).toMatch(/s\.length\(\)/);
     expect(out.cpp).not.toMatch(/sizeof\(s\)/);
   });
 });
@@ -147,8 +148,9 @@ describe("declare-after-use across the module (legal TS)", () => {
       }
       while (true) {}
     `, { strategy: zephyr(), target: 'zephyr' });
-    // The hoisted member must be the strategy string type, not std::string.
-    expect(out.cpp).not.toMatch(/std::string _v_line/);
+    // One string model: the hoisted member IS std::string (an owned
+    // buffer — the const char* ring model is gone).
+    expect(out.cpp).toMatch(/std::string _v_line/);
   });
 });
 

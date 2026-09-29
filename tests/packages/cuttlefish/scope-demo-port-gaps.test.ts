@@ -96,7 +96,7 @@ describe('FIX 1: unbounded-push array literals', () => {
       UART0.writeLine(order[0]);
     `);
 
-    expect(r.cpp).toMatch(/std::vector<const char\*> order/);
+    expect(r.cpp).toMatch(/std::vector<std::string> order/);
     expect(r.cpp).not.toMatch(/__tc_StaticArray<[^\n]*order/);
     expect(r.cpp).toMatch(/order\.push_back\(n\)/);
   });
@@ -173,9 +173,10 @@ describe('FIX 3: vector receivers on the StaticArray target', () => {
       if (line.startsWith('hell')) { UART0.writeLine('also'); }
     `);
 
-    // Both const char* helpers exist (previously only endsWith did).
-    expect(r.cpp).toMatch(/bool __tc_includes\(const char\* s, const char\* needle\)/);
-    expect(r.cpp).toMatch(/bool __tc_startsWith\(const char\* s, const char\* prefix\)/);
+    // Both helpers exist under the one string model (previously only
+    // endsWith did): std::string receivers, const char* needles.
+    expect(r.cpp).toMatch(/bool __tc_includes\(const std::string& s, const char\* needle\)/);
+    expect(r.cpp).toMatch(/bool __tc_startsWith\(const std::string& s, const char\* prefix\)/);
     expect(r.cpp).toMatch(/__tc_includes\(line, "wor"\)/);
   });
 });
@@ -233,7 +234,7 @@ describe('FIX 6: snprintf specifier classification', () => {
       UART0.writeLine(\`wave → \${w.describe()}\`);
     `);
 
-    expect(r.cpp).toMatch(/"wave → %s", w->describe\(\)/);
+    expect(r.cpp).toMatch(/"wave → %s", \(w->describe\(\)\)\.c_str\(\)/);
   });
 
   it('a string-array element in a template formats as %s', () => {
@@ -245,7 +246,7 @@ describe('FIX 6: snprintf specifier classification', () => {
       show(['x']);
     `);
 
-    expect(r.cpp).toMatch(/"first=%s", args\[0\]/);
+    expect(r.cpp).toMatch(/"first=%s", \(args\[0\]\)\.c_str\(\)/);
   });
 
   it('a Map value read (and a ternary over one) formats as %g', () => {
@@ -285,7 +286,7 @@ describe('FIX 6: snprintf specifier classification', () => {
 
     // `const char*& h` against a const vector's elements failed g++
     // (discards qualifiers); the pointer element is one word — by value.
-    expect(r.cpp).toMatch(/for \(const char\* h : HELP\)/);
+    expect(r.cpp).toMatch(/for \(const std::string& h : HELP\)/);
     expect(r.cpp).not.toMatch(/const char\*& h/);
   });
 });

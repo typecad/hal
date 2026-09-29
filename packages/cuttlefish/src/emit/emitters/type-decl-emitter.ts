@@ -269,11 +269,24 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
     let emitted = false;
     for (const statement of emittedTopLevelStatements) {
       if (statement.kind !== "var_decl") continue;
-      if (statement.initializer && isRuntimeExpression(statement.initializer)) continue;
+      const runtimeInit = !!(statement.initializer && isRuntimeExpression(statement.initializer));
+      if (runtimeInit && statement.cppType === "auto") continue; // no concrete type to extern
       let cppType = strategy.normalizeCppType(statement.cppType);
       if (cppType === "auto" && crossModuleVarTypes) {
         const resolved = crossModuleVarTypes.get(statement.name);
         if (resolved) cppType = strategy.normalizeCppType(resolved);
+      }
+      if (cppType === "auto") continue;
+      if (runtimeInit) {
+        // Extern for the runtime-initialized const's definition (it lives in
+        // this .cpp, after the include of this header — the prior extern
+        // declaration gives the definition external linkage, the same rule
+        // the literal consts rely on) so the header's inline class bodies
+        // can read the symbol.
+        const varName = escapeCppKeyword(statement.name, platformReservedNames);
+        appendHeaderLine(ctx, `extern const ${cppType} ${varName};`);
+        emitted = true;
+        continue;
       }
       const isConst = statement.storage === "const";
       // ISR-shared globals get `volatile` on their DEFINITION (renderVarDecl

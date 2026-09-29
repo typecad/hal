@@ -731,6 +731,18 @@ export function inferExprCppType(
       }
     }
     if (ts.isPropertyAccessExpression(expr.expression)) {
+      // String/number prototype methods lower to __tc_* helpers whose
+      // return types the shared registry classifies — a charCodeAt-
+      // initialized constant infers int (previously auto, which forced the
+      // runtime-initialized constant into the .cpp with internal linkage
+      // where inline header class bodies could not see it).
+      const protoMethod = expr.expression.name.text;
+      if (protoMethod === "charCodeAt" || protoMethod === "indexOf" || protoMethod === "lastIndexOf") {
+        return "int";
+      }
+      if (["toUpperCase", "toLowerCase", "trim", "replace", "charAt", "substring", "slice", "padStart", "padEnd", "repeat", "toFixed", "toString"].includes(protoMethod)) {
+        return "std::string";
+      }
       if (ts.isIdentifier(expr.expression.expression)) {
         const className = expr.expression.expression.text;
         if (className === "Math") {

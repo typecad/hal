@@ -183,17 +183,17 @@ export class Command {
   }
 }
 
-// ASCII codes as plain literals — a `charCodeAt` initializer is a runtime
-// expression, which currently forces the constant into the .cpp with
-// internal linkage where inline header class bodies cannot see it.
-const CR = 13;
-const LF = 10;
+// charCodeAt initializers are runtime expressions — the split-mode emitter
+// pairs them with a header extern (the prior-extern linkage rule), so the
+// inline class bodies below can read them.
+const CR = '\r'.charCodeAt(0);
+const LF = '\n'.charCodeAt(0);
 const BACKSPACE = 8;
 const DELETE = 127;
-const SPACE = 32;
-const DIGIT0 = 48;
-const MINUS = 45;
-const DOT = 46;
+const SPACE = ' '.charCodeAt(0);
+const DIGIT0 = '0'.charCodeAt(0);
+const MINUS = '-'.charCodeAt(0);
+const DOT = '.'.charCodeAt(0);
 
 /** Byte-stream command assembler: feed UART bytes, get parsed commands. */
 export class LineAssembler {

@@ -14,6 +14,7 @@ import { tryLowerRegisterRead } from "./transformers/register-assignment.js";
 import { tryLowerArrayAndStringMethods } from "./transformers/array-methods.js";
 import { collectReturns, inferExprCppType, typeNodeToCppType, type CppTypeHint } from "./type-resolution.js";
 import { castMapKeyIfNeeded } from "./map-key-cast.js";
+import { HELPER_RETURN_TYPES, helperNameFromText } from "../api/shared/helper-return-types.js";
 import { parseCppType, elementOf, renderCppType, isPointer, bareType, parsedIsPointer, parsedIsVector, parsedIsMap, parsedIsSet, parsedIsTuple, parsedIsStdString, parsedElementString, parsedBareString, isVector, isMap, isSet, isContainer } from "../api/shared/cpp-type-ir.js";
 import { hasSafetyHook, requireSafetyHook } from "../safety-hook.js";
 
@@ -396,11 +397,18 @@ function mapLookupForNullish(
 
 /** String→number argument shaping for the conversion globals (atoi/atof):
  *  an std::string arg needs `.c_str()`; a plain const char* or literal —
- *  the common embedded shape — must NOT grow one, and `.c_str()` on the
- *  const char* result of a `__tc_*` string helper is ill-formed. */
+ *  the common embedded shape — must NOT grow one. A `__tc_*` helper result
+ *  classifies through the helper-return registry: string-returning helpers
+ *  need the cast, int/bool ones pass through. */
 function cStrIfManaged(argNode: ts.Expression, argText: string): string {
   if (ts.isStringLiteral(argNode) || ts.isNoSubstitutionTemplateLiteral(argNode)) return argText;
-  if (/^__tc_[a-z]/.test(argText.trim())) return argText;
+  const trimmed = argText.trim();
+  const helperName = helperNameFromText(trimmed);
+  if (helperName) {
+    return HELPER_RETURN_TYPES[helperName] === "std::string"
+      ? `(${trimmed}).c_str()`
+      : trimmed;
+  }
   if (ts.isIdentifier(argNode)) {
     const t = getCurrentIrTypeScope()?.locals.get(argNode.text) ?? getCurrentIrTypeScope()?.globals.get(argNode.text);
     if (t === "std::string") return `(${argText}).c_str()`;

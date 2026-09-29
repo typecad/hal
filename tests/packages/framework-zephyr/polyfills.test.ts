@@ -43,24 +43,23 @@ describe('ZephyrStrategy no-STL polyfills', () => {
     expect(sm?.requiredIncludes).toEqual(['<cstring>', '<string>', '<vector>']);
   });
 
-  it('string helpers are const char*-primary (std::string overloads added)', () => {
+  it('string helpers are std::string-primary (one string model)', () => {
     const polys = s.generateNativePolyfills(undefined, undefined);
     const text = (polys.find((p) => p.id === 'string_methods')?.helperFunctions ?? []).join('\n');
-    expect(text).toContain('const char* __tc_toUpperCase(const char* s)');
-    // The std::string forms are OVERLOADS delegating to the C-string
-    // primaries — a std::string receiver (a split() element) compiles against
-    // the same lowering.
-    expect(text).toMatch(/inline std::string __tc_toUpperCase\(const std::string& s\)/);
+    expect(text).toContain('std::string __tc_toUpperCase(const std::string& s)');
+    expect(text).toContain('std::string __tc_toFixed(double val, int digits)');
+    // No rotating static result buffers remain — every producer returns an
+    // owned std::string, deleting the ring-aliasing bug class.
+    expect(text).not.toMatch(/static char buf\[/);
+    expect(text).not.toContain('CUTTLEFISH_STR_SLOTS');
   });
 
-  it('defines __tc_split and std::string receiver overloads', () => {
+  it('defines __tc_split over std::string', () => {
     // .split()'s call-path rewrite is not wired on Zephyr yet, but the
-    // definitions it will target already ship (bench-supervisor demo).
+    // definition it will target already ships (bench-supervisor demo).
     const polys = s.generateNativePolyfills(undefined, undefined);
     const text = (polys.find((p) => p.id === 'string_methods')?.helperFunctions ?? []).join('\n');
-    expect(text).toContain('__tc_split(const char* s, const char* delim)');
     expect(text).toContain('__tc_split(const std::string& s, const char* delim)');
-    expect(text).toContain('__tc_toUpperCase(const std::string& s)');
   });
 
   it('marks every polyfill function definition inline (multi-TU safe)', () => {
@@ -69,25 +68,19 @@ describe('ZephyrStrategy no-STL polyfills', () => {
     // (bench-supervisor demo finding).
     const polys = s.generateNativePolyfills(undefined, undefined);
     const text = (polys.find((p) => p.id === 'string_methods')?.helperFunctions ?? []).join('\n');
-    const defLines = text.split('\n').filter((l) => /^inline (bool|const char\*|int|std::vector<std::string>) __tc_/.test(l.trim()));
+    const defLines = text.split('\n').filter((l) => /^inline (bool|std::string|int|std::vector<std::string>) __tc_/.test(l.trim()));
     expect(defLines.length).toBeGreaterThanOrEqual(10);
-    for (const line of defLines) {
-      expect(line.trim().startsWith('inline ')).toBe(true);
-    }
   });
 
-  it('rotates enough result slots for one printf argument list', () => {
-    // The helpers return pointers into a rotating static ring. A status line
-    // like `t=${a.toFixed(2)} avg=${b.toFixed(2)} set=${c.toFixed(1)}`
-    // evaluates ALL its __tc_toFixed calls BEFORE snprintf runs — with two
-    // slots the third call overwrote the first result and the line printed
-    // setpoint for the temperature. The ring must span a full argument list
-    // (CUTTLEFISH_STR_SLOTS, power of two for the mask advance).
+  it('returns by value — no static result rings anywhere', () => {
+    // The historical invariant this replaces: helpers returned const char*
+    // into rotating static rings, which aliased when more results were live
+    // than slots. By-value std::string returns remove the ceiling entirely;
+    // this pins that no ring ever comes back.
     const polys = s.generateNativePolyfills(undefined, undefined);
     const text = (polys.find((p) => p.id === 'string_methods')?.helperFunctions ?? []).join('\n');
-    expect(text).toContain('#define CUTTLEFISH_STR_SLOTS 8');
-    expect(text).not.toContain('buf[2][CUTTLEFISH_STR_BUF_SIZE]');
-    expect(text).not.toContain('slot ^= 1');
+    expect(text).not.toMatch(/static char buf\[/);
+    expect(text).not.toMatch(/uint8_t slot/);
   });
 
   it('normalizeRawExpression lowers string methods to __tc_* helpers', () => {

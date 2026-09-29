@@ -105,7 +105,7 @@ describe('climate-fan demo findings', () => {
     `);
 
     // const char* return → %s, never %d (which printed the pointer value).
-    expect(r.cpp).toMatch(/"mode=%s", modeLabel\(0\)/);
+    expect(r.cpp).toMatch(/"mode=%s", \(modeLabel\(0\)\)\.c_str\(\)/);
   });
 
   it('keeps the enum type on a settings-backed variable and casts both boundaries', () => {
@@ -181,8 +181,10 @@ describe('climate-fan demo findings', () => {
     // A variable bool rode the op as `value === "true"` → literal false…
     expect(r.cpp).toMatch(/__tc_prefs_put_bool\("tc\/app\/f", flag\)/);
     expect(r.cpp).toMatch(/__tc_prefs_get_bool\("tc\/app\/f", flag\)/);
-    // …and a call-expression string default was stringified into a literal.
-    expect(r.cpp).toMatch(/__tc_prefs_get_string\("tc\/app\/n", fallbackName\(\)\)/);
+    // …and a call-expression string default rides the op as its C++ text —
+    // with .c_str() at the shim's const char* parameter now that string
+    // functions return owned std::string values (one string model).
+    expect(r.cpp).toMatch(/__tc_prefs_get_string\("tc\/app\/n", \(fallbackName\(\)\)\.c_str\(\)\)/);
     expect(r.cpp).not.toMatch(/"fallbackName\(\)"/);
   });
 

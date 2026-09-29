@@ -578,8 +578,10 @@ describe("string comparisons", () => {
       function go(a: string, b: string): boolean { return a === b; }
       while (true) {}
     `, { strategy: zephyr(), target: 'zephyr' });
-    expect(out.cpp).toMatch(/strcmp\(a, b\) == 0/);
-    expect(out.cpp).not.toMatch(/a == b/);
+    expect(out.cpp).toMatch(/a == b/);
+    // (a == b is now the NATIVE std::string comparison — correct JS
+    // semantics under the one string model; the old pointer-== hazard only
+    // existed for const char* locals.)
   });
 
   it("const char* relational uses strcmp, not pointer <", () => {
@@ -587,7 +589,7 @@ describe("string comparisons", () => {
       function go(a: string, b: string): boolean { return a < b; }
       while (true) {}
     `, { strategy: zephyr(), target: 'zephyr' });
-    expect(out.cpp).toMatch(/strcmp\(a, b\) < 0/);
+    expect(out.cpp).toMatch(/a < b/);
   });
 
   it("switch on a string parameter compares contents", () => {
@@ -656,7 +658,7 @@ describe("for-of over strings", () => {
       while (true) {}
     `, { strategy: zephyr(), target: 'zephyr' });
     expect(out.cpp).not.toMatch(/for \(const auto& ch : s\)/);
-    expect(out.cpp).toMatch(/__tc_str_it = s/);
+    expect(out.cpp).toMatch(/__tc_str_it = \(s\)\.c_str\(\)/);
     expect(out.cpp).toMatch(/ch = \*__tc_str_it/);
   });
 });

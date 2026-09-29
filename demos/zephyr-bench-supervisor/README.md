@@ -45,9 +45,10 @@ console to drive the command dispatcher; the KEY button dumps the log.
 
 ## Transpiler notes
 
-Two demo shapes are deliberately avoided (documented sharp edges, see the
+One demo shape is deliberately avoided (a documented sharp edge, see the
 changeset): a top-level variable named `log` (the emitter renames the
 declaration to dodge the libc collision but not the references — this demo
-uses `elog`), and `charCodeAt`-initialized module constants (runtime
-initializers force the constant into the .cpp with internal linkage where
-inline header class bodies cannot see it — ASCII literals are used instead).
+uses `elog`). The former `charCodeAt`-constant sharp edge is FIXED —
+runtime-initialized constants now get a header extern (the prior-extern
+linkage rule) and a concrete type, and this demo uses `charCodeAt(0)`
+initializers again.

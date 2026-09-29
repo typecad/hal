@@ -1843,22 +1843,15 @@ export class ZephyrStrategy implements PlatformStrategy {
   // ── Type normalisation ──────────────────────────────────────────────────
 
   normalizeCppType(typeName: string): string {
+    // ONE string model: std::string end to end (variables, container
+    // elements, helper returns). Zephyr links with REQUIRES_FULL_LIBCPP, so
+    // the hosted model applies unchanged — literals convert implicitly on
+    // the way in, and .c_str() appears only at C-varargs boundaries (the
+    // snprintf builders handle that via needsCStrForStringLike). The former
+    // const char* model (every value a ring-buffer pointer) aliased
+    // whenever more results were live than ring slots and is gone.
     if (typeName === 'auto') return 'auto';
-    if (typeName === 'std::string') return 'const char*';
-    // Container ELEMENT types on the const char* string model: every string
-    // VALUE the program produces (literals, __tc_* helper results) is
-    // const char*. Insertion into a std::string-element container converts
-    // implicitly, but EXTRACTION (arr[i] into a const char* context) does
-    // not — `const x = args[0]` failed g++ with "cannot convert
-    // std::string to const char*". Vectors/StaticArrays/map VALUES map to
-    // const char* elements. Map KEYS are deliberately exempt:
-    // std::map<const char*, V> orders by POINTER ADDRESS, silently breaking
-    // keyed lookups; a std::string key still accepts const char* probes via
-    // its implicit constructor.
-    return typeName
-      .replace(/std::vector<(\s*)std::string(\s*)>/g, 'std::vector<$1const char*$2>')
-      .replace(/__tc_StaticArray<(\s*)std::string(\s*),/g, '__tc_StaticArray<$1const char*$2,')
-      .replace(/std::map<([^<>]*),(\s*)std::string(\s*)>/g, 'std::map<$1,$2const char*$3>');
+    return typeName;
   }
 
   promoteDivisionToDouble(): boolean {
@@ -1904,13 +1897,10 @@ export class ZephyrStrategy implements PlatformStrategy {
       v = v.replace(/\bnull\b/g, 'CUTTLEFISH_UNDEFINED');
     }
     // String-method lowering is shared across targets (see string-method-
-    // registry). The __tc_* helpers take const char* AND a std::string
-    // overload (the polyfill block supplies both), so every method routes
-    // through a helper — the old inline strstr/strncmp forms could not
-    // accept a std::string receiver (a split() element) and failed g++.
-    v = applyStringMethodRewrites(v, {
-      wrapReceiverFor: new Set(['indexOf']),
-    });
+    // registry). Every helper takes `const std::string&` (a literal converts
+    // implicitly), so every method routes through a helper — no receiver
+    // wrapping and no inline strstr/strncmp forms.
+    v = applyStringMethodRewrites(v, {});
     return v;
   }
 
@@ -2419,70 +2409,47 @@ export class ZephyrStrategy implements PlatformStrategy {
         forwardDeclarations: [],
         helperStructs: [],
         helperFunctions: [`
-// TypeCAD string method polyfills (Zephyr, minimal-libc).
-#ifndef CUTTLEFISH_STR_BUF_SIZE
-#define CUTTLEFISH_STR_BUF_SIZE 64
-#endif
-// Result slots per polyfill. The helpers return pointers into a rotating
-// static ring; N live results within ONE printf argument list need N slots
-// (a status line like t=%s avg=%s set=%s duty=%s carries four __tc_toFixed
-// calls, and with 2 slots calls 3/4 overwrote calls 1/2 before snprintf
-// read them). Power of two so the advance stays a mask.
-#ifndef CUTTLEFISH_STR_SLOTS
-#define CUTTLEFISH_STR_SLOTS 8
-#endif
-inline bool __tc_endsWith(const char* s, const char* suffix) { int sl = strlen(s), tl = strlen(suffix); return sl >= tl && strcmp(s + sl - tl, suffix) == 0; }
-inline bool __tc_startsWith(const char* s, const char* prefix) { size_t tl = strlen(prefix); return strncmp(s, prefix, tl) == 0; }
-inline bool __tc_includes(const char* s, const char* needle) { return strstr(s, needle) != nullptr; }
+// TypeCAD string method polyfills (Zephyr, full libcpp).
+//
+// ONE string model: every helper takes "const std::string&" (a const char*
+// literal converts implicitly) and returns std::string BY VALUE. The old
+// const char* + rotating-static-ring model aliased whenever more results
+// were live than ring slots (a status line with four __tc_toFixed calls
+// printed the setpoint for the temperature) and self-read UB in (s += x) accumulators
+// accumulators; by-value returns delete that whole bug class. Zephyr links
+// with REQUIRES_FULL_LIBCPP, and short results ride std::string's SSO, so
+// typical fixed-point formatting never touches the heap.
+inline bool __tc_endsWith(const std::string& s, const char* suffix) { size_t n = strlen(suffix); return s.size() >= n && s.compare(s.size() - n, n, suffix) == 0; }
+inline bool __tc_startsWith(const std::string& s, const char* prefix) { size_t n = strlen(prefix); return s.size() >= n && s.compare(0, n, prefix) == 0; }
+inline bool __tc_includes(const std::string& s, const char* needle) { return s.find(needle) != std::string::npos; }
 // (3.14159).toFixed(2) → "3.14". %.*f needs CBPRINTF_FP_SUPPORT — the usage
 // scan flags __tc_toFixed( as a float-format site so the scaffold turns it
 // on. Digits are clamped so a bad input cannot balloon the fixed-point
-// expansion past the buffer.
-inline const char* __tc_toFixed(double val, int digits) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; if (digits < 0) digits = 0; if (digits > 20) digits = 20; snprintf(b, CUTTLEFISH_STR_BUF_SIZE, "%.*f", digits, val); return b; }
-inline const char* __tc_toUpperCase(const char* s) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) { if (*p >= 'a' && *p <= 'z') { *p = static_cast<char>(*p - 32); } } return b; }
-inline const char* __tc_toLowerCase(const char* s) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) { if (*p >= 'A' && *p <= 'Z') { *p = static_cast<char>(*p + 32); } } return b; }
-inline const char* __tc_trim(const char* s) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; while (*s == ' ' || *s == '\\t' || *s == '\\n' || *s == '\\r') s++; int len = strlen(s); while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\\t' || s[len-1] == '\\n' || s[len-1] == '\\r')) len--; int cplen = len < CUTTLEFISH_STR_BUF_SIZE - 1 ? len : CUTTLEFISH_STR_BUF_SIZE - 1; strncpy(b, s, cplen); b[cplen] = '\\0'; return b; }
-inline const char* __tc_substring2(const char* s, int start, int end) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; int slen = strlen(s); if (start < 0) start = 0; if (end > slen) end = slen; if (end < start) end = start; int len = end - start; if (len >= CUTTLEFISH_STR_BUF_SIZE) len = CUTTLEFISH_STR_BUF_SIZE - 1; strncpy(b, s + start, len); b[len] = '\\0'; return b; }
-inline const char* __tc_substring1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
-inline const char* __tc_slice2(const char* s, int start, int end) { return __tc_substring2(s, start, end); }
-inline const char* __tc_slice1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
-inline const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; const char* pos = strstr(s, old); if (!pos) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } int beforeLen = static_cast<int>(pos - s); int oldLen = static_cast<int>(strlen(old)); int replLen = static_cast<int>(strlen(repl)); if (beforeLen + replLen + static_cast<int>(strlen(pos + oldLen)) >= CUTTLEFISH_STR_BUF_SIZE) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } memcpy(b, s, beforeLen); memcpy(b + beforeLen, repl, replLen); strcpy(b + beforeLen + replLen, pos + oldLen); return b; }
-inline const char* __tc_charAt(const char* s, int idx) { static char buf[CUTTLEFISH_STR_SLOTS][2]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); buf[slot][0] = s[idx]; buf[slot][1] = '\\0'; return buf[slot]; }
-inline int __tc_charCodeAt(const char* s, int idx) { return static_cast<int>(static_cast<unsigned char>(s[idx])); }
-inline int __tc_indexOf(const char* s, const char* needle) { const char* p = strstr(s, needle); return p ? static_cast<int>(p - s) : -1; }
-inline int __tc_lastIndexOf(const char* s, const char* needle) { int slen = static_cast<int>(strlen(s)); if (strlen(needle) == 0U) { return slen; } int last = -1; const char* p = strstr(s, needle); while (p != nullptr) { last = static_cast<int>(p - s); p = strstr(p + 1, needle); } return last; }
-inline const char* __tc_padStart(const char* s, int len, const char* fill) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; int slen = static_cast<int>(strlen(s)); int flen = static_cast<int>(strlen(fill)); if (flen <= 0) { flen = 1; } if (len > CUTTLEFISH_STR_BUF_SIZE - 1) { len = CUTTLEFISH_STR_BUF_SIZE - 1; } if (len < 0 || slen >= len) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } int pad = len - slen; int i = 0; for (; i < pad; i++) { b[i] = fill[i % flen]; } for (int j = 0; j < slen; j++) { b[i + j] = s[j]; } b[i + slen] = '\\0'; return b; }
-inline const char* __tc_padStart_default(const char* s, int len) { return __tc_padStart(s, len, " "); }
-inline const char* __tc_padEnd(const char* s, int len, const char* fill) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; int slen = static_cast<int>(strlen(s)); int flen = static_cast<int>(strlen(fill)); if (flen <= 0) { flen = 1; } if (len > CUTTLEFISH_STR_BUF_SIZE - 1) { len = CUTTLEFISH_STR_BUF_SIZE - 1; } if (len < 0 || slen >= len) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } int i = 0; for (; i < slen; i++) { b[i] = s[i]; } for (int j = 0; i < len; j++, i++) { b[i] = fill[j % flen]; } b[i] = '\\0'; return b; }
-inline const char* __tc_padEnd_default(const char* s, int len) { return __tc_padEnd(s, len, " "); }
-inline const char* __tc_repeat(const char* s, int count) { static char buf[CUTTLEFISH_STR_SLOTS][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; int slen = static_cast<int>(strlen(s)); if (count < 0) { count = 0; } int i = 0; if (slen > 0) { for (int c = 0; c < count; c++) { for (int j = 0; j < slen && i < CUTTLEFISH_STR_BUF_SIZE - 1; j++, i++) { b[i] = s[j]; } } } b[i] = '\\0'; return b; }
-// std::string receiver overloads. The primary helpers return const char*;
-// these copy through the C-string form so a std::string receiver (a
-// split() element, a std::string-typed local) compiles against the same
-// lowering without the emitter tracking the receiver's string model.
-inline bool __tc_endsWith(const std::string& s, const char* suffix) { return __tc_endsWith(s.c_str(), suffix); }
-inline bool __tc_startsWith(const std::string& s, const char* prefix) { return __tc_startsWith(s.c_str(), prefix); }
-inline bool __tc_includes(const std::string& s, const char* needle) { return __tc_includes(s.c_str(), needle); }
-inline std::string __tc_toUpperCase(const std::string& s) { return std::string(__tc_toUpperCase(s.c_str())); }
-inline std::string __tc_toLowerCase(const std::string& s) { return std::string(__tc_toLowerCase(s.c_str())); }
-inline std::string __tc_trim(const std::string& s) { return std::string(__tc_trim(s.c_str())); }
-inline std::string __tc_charAt(const std::string& s, int idx) { return std::string(__tc_charAt(s.c_str(), idx)); }
-inline int __tc_charCodeAt(const std::string& s, int idx) { return __tc_charCodeAt(s.c_str(), idx); }
-inline std::string __tc_substring2(const std::string& s, int start, int end) { return std::string(__tc_substring2(s.c_str(), start, end)); }
-inline std::string __tc_substring1(const std::string& s, int start) { return std::string(__tc_substring1(s.c_str(), start)); }
-inline std::string __tc_slice2(const std::string& s, int start, int end) { return std::string(__tc_slice2(s.c_str(), start, end)); }
-inline std::string __tc_slice1(const std::string& s, int start) { return std::string(__tc_slice1(s.c_str(), start)); }
-inline std::string __tc_replace(const std::string& s, const char* old, const char* repl) { return std::string(__tc_replace(s.c_str(), old, repl)); }
-inline std::string __tc_padStart(const std::string& s, int len, const char* fill) { return std::string(__tc_padStart(s.c_str(), len, fill)); }
-inline std::string __tc_padEnd(const std::string& s, int len, const char* fill) { return std::string(__tc_padEnd(s.c_str(), len, fill)); }
-inline std::string __tc_repeat(const std::string& s, int count) { return std::string(__tc_repeat(s.c_str(), count)); }
-inline int __tc_indexOf(const std::string& s, const char* needle) { return __tc_indexOf(s.c_str(), needle); }
-inline int __tc_lastIndexOf(const std::string& s, const char* needle) { return __tc_lastIndexOf(s.c_str(), needle); }
-// Split a C string on a delimiter. JS semantics: an empty delimiter splits
-// into single characters; the trailing empty part is kept.
-inline std::vector<std::string> __tc_split(const char* s, const char* delim) { std::vector<std::string> parts; if (delim[0] == '\\0') { for (const char* p = s; *p != '\\0'; ++p) { parts.push_back(std::string(1, *p)); } return parts; } const char* start = s; const char* pos = strstr(s, delim); while (pos != nullptr) { parts.push_back(std::string(start, static_cast<size_t>(pos - start))); start = pos + strlen(delim); pos = strstr(start, delim); } parts.push_back(std::string(start)); return parts; }
-inline std::vector<std::string> __tc_split(const std::string& s, const char* delim) { return __tc_split(s.c_str(), delim); }
-inline const char* __tc_num_radix(long long v, int radix) { static char buf[CUTTLEFISH_STR_SLOTS][72]; static uint8_t slot = 0; slot = static_cast<uint8_t>((slot + 1U) & (CUTTLEFISH_STR_SLOTS - 1U)); char* b = buf[slot]; if (radix == 16) { snprintf(b, 72, "%llx", v); } else if (radix == 8) { snprintf(b, 72, "%llo", v); } else if (radix == 2) { unsigned long long u = static_cast<unsigned long long>(v); char tmp[72]; int i = 0; if (u == 0ULL) { b[0] = '0'; b[1] = '\\0'; return b; } while (u > 0ULL) { tmp[i++] = static_cast<char>('0' + static_cast<char>(u & 1ULL)); u >>= 1; } for (int j = 0; j < i; j++) { b[j] = tmp[i - 1 - j]; } b[i] = '\\0'; } else { snprintf(b, 72, "%lld", v); } return b; }
+// expansion past the stack buffer (snprintf truncates safely beyond it).
+inline std::string __tc_toFixed(double val, int digits) { if (digits < 0) { digits = 0; } if (digits > 20) { digits = 20; } char b[340]; snprintf(b, sizeof(b), "%.*f", digits, val); return std::string(b); }
+inline std::string __tc_toUpperCase(const std::string& s) { std::string r = s; for (char& c : r) { if (c >= 'a' && c <= 'z') { c = static_cast<char>(c - 32); } } return r; }
+inline std::string __tc_toLowerCase(const std::string& s) { std::string r = s; for (char& c : r) { if (c >= 'A' && c <= 'Z') { c = static_cast<char>(c + 32); } } return r; }
+inline std::string __tc_trim(const std::string& s) { const char* ws = " \\t\\n\\r" ; size_t b = s.find_first_not_of(ws); if (b == std::string::npos) { return std::string(); } size_t e = s.find_last_not_of(ws); return s.substr(b, (e - b) + 1U); }
+inline std::string __tc_substring2(const std::string& s, int start, int end) { int slen = static_cast<int>(s.size()); if (start < 0) { start = 0; } if (end > slen) { end = slen; } if (end < start) { end = start; } return s.substr(static_cast<size_t>(start), static_cast<size_t>(end - start)); }
+inline std::string __tc_substring1(const std::string& s, int start) { return __tc_substring2(s, start, static_cast<int>(s.size())); }
+inline std::string __tc_slice2(const std::string& s, int start, int end) { return __tc_substring2(s, start, end); }
+inline std::string __tc_slice1(const std::string& s, int start) { return __tc_substring2(s, start, static_cast<int>(s.size())); }
+// JS String.replace with two STRING args replaces the FIRST occurrence only.
+inline std::string __tc_replace(const std::string& s, const char* old, const char* repl) { size_t p = s.find(old); if (p == std::string::npos) { return s; } std::string r = s; r.replace(p, strlen(old), repl); return r; }
+inline std::string __tc_charAt(const std::string& s, int idx) { if (idx < 0 || static_cast<size_t>(idx) >= s.size()) { return std::string(); } return std::string(1U, s[static_cast<size_t>(idx)]); }
+inline int __tc_charCodeAt(const std::string& s, int idx) { if (idx < 0 || static_cast<size_t>(idx) >= s.size()) { return 0; } return static_cast<int>(static_cast<unsigned char>(s[static_cast<size_t>(idx)])); }
+inline int __tc_indexOf(const std::string& s, const char* needle) { size_t p = s.find(needle); return (p == std::string::npos) ? -1 : static_cast<int>(p); }
+inline int __tc_lastIndexOf(const std::string& s, const char* needle) { size_t p = s.rfind(needle); return (p == std::string::npos) ? -1 : static_cast<int>(p); }
+inline std::string __tc_padStart(const std::string& s, int len, const char* fill) { size_t flen = strlen(fill); if (flen == 0U) { flen = 1U; } int slen = static_cast<int>(s.size()); if (len <= slen) { return s; } std::string r; size_t pad = static_cast<size_t>(len - slen); for (size_t i = 0U; i < pad; i++) { r.push_back(fill[i % flen]); } r.append(s); return r; }
+inline std::string __tc_padStart_default(const std::string& s, int len) { return __tc_padStart(s, len, " "); }
+inline std::string __tc_padEnd(const std::string& s, int len, const char* fill) { size_t flen = strlen(fill); if (flen == 0U) { flen = 1U; } int slen = static_cast<int>(s.size()); if (len <= slen) { return s; } std::string r = s; size_t pad = static_cast<size_t>(len - slen); for (size_t i = 0U; i < pad; i++) { r.push_back(fill[i % flen]); } return r; }
+inline std::string __tc_padEnd_default(const std::string& s, int len) { return __tc_padEnd(s, len, " "); }
+inline std::string __tc_repeat(const std::string& s, int count) { std::string r; if (count > 0) { for (int i = 0; i < count; i++) { r.append(s); } } return r; }
+// Split on a delimiter. JS semantics: an empty delimiter splits into single
+// characters; the trailing empty part is kept.
+inline std::vector<std::string> __tc_split(const std::string& s, const char* delim) { std::vector<std::string> parts; if (delim[0] == '\\0') { for (size_t i = 0U; i < s.size(); i++) { parts.push_back(s.substr(i, 1U)); } return parts; } size_t dl = strlen(delim); size_t start = 0U; size_t p = s.find(delim, start); while (p != std::string::npos) { parts.push_back(s.substr(start, p - start)); start = p + dl; p = s.find(delim, start); } parts.push_back(s.substr(start)); return parts; }
+inline std::string __tc_num_radix(long long v, int radix) { char b[72]; if (radix == 16) { snprintf(b, sizeof(b), "%llx", static_cast<unsigned long long>(v)); } else if (radix == 8) { snprintf(b, sizeof(b), "%llo", static_cast<unsigned long long>(v)); } else if (radix == 2) { unsigned long long u = static_cast<unsigned long long>(v); char tmp[72]; int i = 0; if (u == 0ULL) { b[0] = '0'; b[1] = '\\0'; return std::string(b); } while (u > 0ULL) { tmp[i++] = static_cast<char>('0' + static_cast<char>(u & 1ULL)); u >>= 1U; } for (int j = 0; j < i; j++) { b[j] = tmp[i - 1 - j]; } b[i] = '\\0'; } else { snprintf(b, sizeof(b), "%lld", v); } return std::string(b); }
+
 `],
         shimMacros: [],
         dependencies: [],

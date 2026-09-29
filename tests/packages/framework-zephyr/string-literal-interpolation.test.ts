@@ -18,15 +18,16 @@ const _strategy = new ZephyrStrategy();
 const tr = (code: string) => transpile(code, { strategy: _strategy, target: 'zephyr' });
 
 describe('string-variable interpolation into HAL calls (Zephyr)', () => {
-  it('prints a string variable through the direct bus singleton without .c_str()', () => {
+  it('prints a string variable with .c_str() at the varargs boundary', () => {
     const result = tr(`
       import { UART0 } from '@typecad/hal';
       let s = "12";
       UART0.writeLine(\`\${s}34\`);
     `);
-    expectCppContains(result, ['const char* s = "12";']);
-    expect(result.cpp).toMatch(/snprintf\([\s\S]*?"%s34", s\);/);
-    expect(result.cpp).not.toContain('s.c_str()');
+    // One string model: `s` is an owned std::string; snprintf's %s takes
+    // its C-string view.
+    expectCppContains(result, ['std::string s = "12";']);
+    expect(result.cpp).toMatch(/snprintf\([\s\S]*?"%s34", s\.c_str\(\)\);/);
     expect(result.cpp).toMatch(/__tc_dev_put\(__tc_uart0_dev/);
   });
 
