@@ -33,8 +33,10 @@ import {
   getContext,
   activeStringEnumNames,
   requiredIncludes,
+  userDeclaredVarNames,
 } from "../build-ir-state.js";
 import { getCurrentIrTypeScope, setScopeLocalType } from "../symbol-types.js";
+import { escapeCppKeyword } from "../../utils/strings.js";
 import { renderExprAsText } from "../render-expr.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { buildInlineForLoop } from "./array-methods.js";
@@ -1284,10 +1286,28 @@ export function variableStatementToIR(
     // scope.locals (not localVariableTypes) and re-syncs from it.
     setScopeLocalType(declaration.name.text, varCppType as CppTypeHint);
 
+    // A reserved-named user variable (`log`) RENDERS under its escaped name
+    // (log_) everywhere — register the type under that alias too, so every
+    // by-rendered-name lookup (enum-arg casts, string boundaries, map
+    // receivers) still resolves.
+    if (userDeclaredVarNames.has(declaration.name.text)) {
+      const escapedName = escapeCppKeyword(declaration.name.text, getContext().activeStrategy?.reservedNames() ?? new Set<string>());
+      if (escapedName !== declaration.name.text) {
+        localVariableTypes.set(escapedName, varCppType as CppTypeHint);
+        setScopeLocalType(escapedName, varCppType as CppTypeHint);
+      }
+    }
+
     // Top-level (module-scope) declarations also go into the file-scoped globals
     // map so they resolve from any function in the file.
     if (!functionNameForDiagnostics || functionNameForDiagnostics === "") {
       getCurrentIrTypeScope()?.globals.set(declaration.name.text, varCppType as CppTypeHint);
+      if (userDeclaredVarNames.has(declaration.name.text)) {
+        const escapedName = escapeCppKeyword(declaration.name.text, getContext().activeStrategy?.reservedNames() ?? new Set<string>());
+        if (escapedName !== declaration.name.text) {
+          getCurrentIrTypeScope()?.globals.set(escapedName, varCppType as CppTypeHint);
+        }
+      }
     }
 
     // String-var detection via structured isStringLike rather than a string-equality ladder.

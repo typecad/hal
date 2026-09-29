@@ -14,6 +14,7 @@ import { describe, it, expect } from 'vitest';
 import { HELPER_RETURN_TYPES, helperReturnTypeForText, helperNameFromText } from '../../../packages/cuttlefish/src/api/shared/helper-return-types';
 import { POLYFILL_HELPER_MAP } from '../../../packages/cuttlefish/src/api/shared/polyfill-helper-registry';
 import { STRING_METHODS } from '../../../packages/cuttlefish/src/api/shared/string-method-registry';
+import { transpileZephyrStrategy } from '../../setup';
 import { findHeaderLinkageIssues } from '../../../packages/cuttlefish/src/emit/emitters/header-linkage-check';
 
 describe('helper-return-types registry', () => {
@@ -50,6 +51,42 @@ describe('helper-return-types registry', () => {
     expect(helperNameFromText('(not a helper)')).toBeUndefined();
   });
 });
+
+describe('reserved-name variable consistency', () => {
+  it('escapes declaration AND every reference identically', () => {
+    const r = transpileZephyrStrategy(`
+      class ELog { record(n: number): void { } get size(): number { return 1; } }
+      const log = new ELog();
+      log.record(1);
+      function use(): void { log.record(2); const n = log.size; }
+    `);
+    // The declaration escapes (log_) ...
+    expect(r.cpp).toMatch(/ELog\* log_/);
+    // ... and so does every reference — statement, function-body call,
+    // and getter access — never the raw libc name.
+    expect(r.cpp).toMatch(/log_->record\(1\)/);
+    expect(r.cpp).toMatch(/log_->record\(2\)/);
+    expect(r.cpp).toMatch(/log_->getSize\(\)/);
+    expect(r.cpp).not.toMatch(/[^\w_]log->/);
+  });
+
+  it.fails('a top-level instance declaration after a class declaration is captured into the class body (known bug)', () => {
+    // `new LocalCls()` AFTER the class declaration in the same file gets
+    // emitted as a MEMBER of that class instead of a top-level definition —
+    // proven pre-existing (fires on the committed baseline too). Pinned as
+    // it.fails until the class-emitter capture is fixed.
+    const r = transpileZephyrStrategy(`
+      class EventLog { record(n: number): void { } }
+      const elog = new EventLog(16);
+      const hist = 3;
+    `);
+    // The declaration must be a top-level definition, not a class member.
+    const inClass = r.cpp.split('class EventLog')[1]?.split('};')[0] ?? '';
+    expect(inClass).not.toContain('new EventLog');
+    expect(r.cpp).toMatch(/^EventLog\* elog = /m);
+  });
+});
+
 
 describe('header-linkage-check', () => {
   it('flags a non-inline free function definition in a header', () => {

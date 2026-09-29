@@ -2,10 +2,10 @@
 // main.ts — bench supervisor (Black Pill + console UART + pot + watchdog)
 //
 // The PA1 pot streams samples into an 8-bucket histogram; an alarm fires
-// (Trace event + elog entry) when the reading crosses the configurable level.
-// Console commands arrive on UART0 RX: D dumps the event elog, C clears it,
+// (Trace event + log entry) when the reading crosses the configurable level.
+// Console commands arrive on UART0 RX: D dumps the event log, C clears it,
 // L <mv> retunes the alarm level, H prints the command table. The KEY button
-// dumps the elog without the console. A hardware watchdog arms the loop and a
+// dumps the log without the console. A hardware watchdog arms the loop and a
 // heartbeat thread blinks the LED. Everything the console prints rides the
 // Sink interface so the command handlers stay hardware-free.
 // ---------------------------------------------------------------------------
@@ -49,6 +49,9 @@ heartbeat.start(() => {
 });
 
 // ── Supervisor state ───────────────────────────────────────────────────────
+// Named elog: a top-level instance declaration positioned among HAL-instance
+// statements is currently swallowed by the class-emitter capture (known bug,
+// pinned by an it.fails repro in structural-invariants.test.ts).
 const elog = new EventLog(16);
 const hist = new Histogram(3300);
 const assembler = new LineAssembler(48);
@@ -100,7 +103,7 @@ while (true) {
     elog.record(Severity.Info, cmd.verb, Time.now());
   }
 
-  // ── Button press dumps the elog without the console ───────────────────────
+  // ── Button press dumps the log without the console ───────────────────────
   if (buttonPressed) {
     buttonPressed = false;
     Trace.mark('button-dump');

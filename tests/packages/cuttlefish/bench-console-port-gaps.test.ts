@@ -196,13 +196,17 @@ describe("honest diagnostics for unlowerable methods on StaticArray targets", ()
     expect(diags.some((d: any) => d.code === 'array-join-unsupported')).toBe(true);
   });
 
-  it("string.split on a string var fails with the tokenizer hint", () => {
+  it("string.split lowers to __tc_split (one string model)", () => {
+    // The old "tokenize with a loop" hint is obsolete: under the one string
+    // model every vector-capable target lowers split to the helper, which
+    // returns std::vector<std::string>.
     const out = transpile(`
       const parts = 'a b'.split(' ');
       while (true) {}
     `, { strategy: zephyr(), target: 'zephyr' });
     const diags = (out.diagnostics ?? []).filter((d: any) => d.severity === 'error');
-    expect(diags.some((d: any) => d.code === 'array-split-unsupported')).toBe(true);
+    expect(diags.some((d: any) => d.code === 'array-split-unsupported')).toBe(false);
+    expect(out.cpp).toMatch(/__tc_split\("a b", " "\)/);
   });
 
   it("a user-class method with a same name is NOT flagged", () => {

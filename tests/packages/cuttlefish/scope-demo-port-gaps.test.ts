@@ -103,7 +103,7 @@ describe('FIX 1: unbounded-push array literals', () => {
 });
 
 describe('FIX 2: string compound assignment', () => {
-  it('lowers s += part to a snprintf rebind into a STATIC buffer', () => {
+  it('lowers s += part to the native std::string append (one string model)', () => {
     const r = transpileZephyrStrategy(`
       import { UART0 } from '@typecad/hal';
       function banner(n: number): void {
@@ -114,12 +114,11 @@ describe('FIX 2: string compound assignment', () => {
       banner(4);
     `);
 
-    // The accumulation buffer is static — `line` points at it after the
-    // loop exits, so a function-local char[] would dangle.
-    expect(r.cpp).toMatch(/static char __cuttlefish_str_\d+\[\d+\];\s*\n\s*snprintf\(__cuttlefish_str_\d+, sizeof\(__cuttlefish_str_\d+\), "%s%s"/);
-    expect(r.cpp).toMatch(/line = __cuttlefish_str_\d+;/);
-    // Never pointer arithmetic.
-    expect(r.cpp).not.toMatch(/line \+=/);
+    // The target is an owned std::string — a string append composes natively
+    // (unbounded, no intermediate buffer, no lifetime hazard). The snprintf
+    // accumulation path remains only for FORMATTED appends (%g/%d).
+    expect(r.cpp).toMatch(/line\.append\(" #"\)/);
+    expect(r.cpp).not.toMatch(/__cuttlefish_str_/);
   });
 
   it('classifies a char append as %c (string indexing receiver)', () => {
@@ -134,11 +133,9 @@ describe('FIX 2: string compound assignment', () => {
       UART0.writeLine(row(3));
     `);
 
-    // The %s arg rides a std::string temp: after the first rebind the target
-    // points at the previous static buffer, and snprintf(buf, "%s…", buf, …)
-    // reading its own output is UB (bench-supervisor finding). The char
-    // append still classifies %c; a double-typed index casts.
-    expect(r.cpp).toMatch(/"%s%c", std::string\(out\)\.c_str\(\), RAMP\[static_cast<int>\(level\)\]/);
+    // A char append composes natively under the one string model:
+    // append(1, char). A double-typed index still casts.
+    expect(r.cpp).toMatch(/out\.append\(1, RAMP\[static_cast<int>\(level\)\]\)/);
   });
 });
 

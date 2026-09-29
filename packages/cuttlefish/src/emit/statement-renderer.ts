@@ -370,6 +370,22 @@ export class StatementRenderer {
               this.expressionRenderer.pushPrelude(valueClass.preludeLines);
             }
             const fmt = valueClass ? valueClass.format : "%s";
+            // A string or char append (no formatting needed) lowers to the
+            // NATIVE std::string append — unbounded, no intermediate buffer.
+            // Formatted values (%g/%d numbers, interpolations) keep the
+            // bounded snprintf accumulation below.
+            if (fmt === "%s" && !valueClass?.preludeLines?.length) {
+              const raw = this.expressionRenderer.render(statement.value, undefined, knownVariableTypes);
+              return forHeader
+                ? `${target}.append(${raw})`
+                : `${target}.append(${raw});`;
+            }
+            if (fmt === "%c" && !valueClass?.preludeLines?.length) {
+              const raw = this.expressionRenderer.render(statement.value, undefined, knownVariableTypes);
+              return forHeader
+                ? `${target}.append(1, ${raw})`
+                : `${target}.append(1, ${raw});`;
+            }
             // Bounded accumulation: the target's current length is a runtime
             // fact, so budget generously (the engine's bounded-string model
             // truncates past the cap, same as __tc_* helpers).

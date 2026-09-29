@@ -2,7 +2,7 @@
 import { Diagnostic } from "../types.js";
 import { ExpressionIR, StatementIR, ClassIR } from "../api/index.js";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils.js";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, requiredIncludes, throwExpressionDepth, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, getActiveClassName, restParamFunctions, getContext, getCurrentBoardConstants, inConditionContext, enterConditionContext, exitConditionContext, mapEntryVarNames, crossModuleFunctionReturns } from "./build-ir-state.js";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, requiredIncludes, throwExpressionDepth, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, getActiveClassName, restParamFunctions, getContext, getCurrentBoardConstants, inConditionContext, enterConditionContext, exitConditionContext, mapEntryVarNames, crossModuleFunctionReturns, userDeclaredVarNames } from "./build-ir-state.js";
 import { getCurrentIrTypeScope, type IrTypeScope } from "./symbol-types.js";
 import { renderExprAsText } from "./render-expr.js";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir.js";
@@ -198,9 +198,14 @@ function tryGetterCallIR(
   if (!className) return undefined;
   const getter = findClassGetter(className, propName, false);
   if (!getter) return undefined;
+  // The receiver renders under its reserved-name escape when it is a user
+  // variable (references must match the escaped declaration).
+  const recvText = (ts.isIdentifier(receiverNode) && userDeclaredVarNames.has(receiverNode.text))
+    ? escapeCppKeyword(receiverNode.text, getContext().activeStrategy?.reservedNames() ?? new Set<string>())
+    : receiverNode.getText();
   return {
     kind: "method-call",
-    callee: `${receiverNode.text}->${getter.getterName}`,
+    callee: `${recvText}->${getter.getterName}`,
     args: [],
     isPointer: true,
     ...(getter.returnType && getter.returnType !== "auto" ? { cppType: getter.returnType } : {}),
@@ -2556,7 +2561,14 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     // (makeScaler__dbl). Without this, the reference emits the bare name and
     // g++ reports "'dbl' was not declared in scope" (demo #9 Finding B).
     const nestedAlias = nestedFunctionAliases.get(expr.text);
-    return { kind: "identifier", value: nestedAlias ?? expr.text };
+    // A user-declared variable named like a reserved name () must carry
+    // the SAME escape at every reference as at its declaration — the set is
+    // pre-scanned so lowering order cannot hide the declaration.
+    let identValue = nestedAlias ?? expr.text;
+    if (!nestedAlias && userDeclaredVarNames.has(expr.text)) {
+      identValue = escapeCppKeyword(expr.text, getContext().activeStrategy?.reservedNames() ?? new Set<string>());
+    }
+    return { kind: "identifier", value: identValue };
   }
 
   // Handle 'this' keyword

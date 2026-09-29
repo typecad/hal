@@ -931,8 +931,56 @@ export function buildEmitterContext(
     }
   }
 
+/** Collect EVERY user-declared variable name (top-level, function locals,
+ *  parameters) from the program IR — computed BEFORE any rendering so
+ *  renderIdentifier's reserved-name escape sees declarations that render
+ *  later than their first reference (a function body emitted before the
+ *  top-level statement that declares the variable). Without the complete
+ *  set, a user variable named like a reserved name (`log`) escaped at its
+ *  declaration but not at references — inconsistent, uncompilable output. */
+function collectUserVarNames(program: ProgramIR): Set<string> {
+  const names = new Set<string>();
+  const walkStatements = (stmts: (StatementIR | null | undefined)[]): void => {
+    for (const s of stmts) {
+      if (!s || typeof s !== "object" || !s.kind) continue;
+      const st = s as unknown as Record<string, unknown>;
+      if (s.kind === "var_decl" && typeof st.name === "string") {
+        names.add(st.name);
+      }
+      for (const key of ["body", "thenBranch", "elseBranch", "statements"]) {
+        const v = st[key];
+        if (Array.isArray(v)) walkStatements(v as StatementIR[]);
+      }
+      if (Array.isArray(st.cases)) {
+        for (const c of st.cases as Array<Record<string, unknown>>) {
+          if (Array.isArray(c.body)) walkStatements(c.body as StatementIR[]);
+        }
+      }
+    }
+  };
+  walkStatements((program as unknown as Record<string, unknown>).topLevelStatements as StatementIR[] ?? []);
+  for (const fn of program.functions ?? []) {
+    for (const param of fn.parameters ?? []) names.add(param.name);
+    walkStatements(fn.statements ?? []);
+  }
+  for (const cls of program.classes ?? []) {
+    if (cls.constructor) {
+      for (const param of cls.constructor.parameters ?? []) names.add(param.name);
+      walkStatements(cls.constructor.statements ?? []);
+    }
+    for (const m of cls.methods ?? []) {
+      for (const param of m.parameters ?? []) names.add(param.name);
+      walkStatements(m.statements ?? []);
+    }
+  }
+  return names;
+}
+
+  const userVarNames = collectUserVarNames(program);
+
   const exprRenderer = new ExpressionRenderer({
     strategy,
+    userVarNames,
     boardConstants: program.boardConstants,
     typeAccessorNames: classAccessorNames,
     classNameMap,

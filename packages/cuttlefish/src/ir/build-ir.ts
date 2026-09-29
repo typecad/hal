@@ -13,7 +13,7 @@ import { getCurrentIrTypeScope } from "./symbol-types.js";
 import { tryResolveBoardDefFile, findGeneratedBoard, readGeneratedBoardConstants, BoardConstants } from "./board-resolver.js";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage.js";
 import { runProgramValidations } from "./validation-orchestrator.js";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinForwardMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, isrHandlerFunctions, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers } from "./build-ir-state.js";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinForwardMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, isrHandlerFunctions, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers, userDeclaredVarNames } from "./build-ir-state.js";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir.js";
 import { registerUIModuleImport, registerElementValue, recordClickHandler, recordBinding } from "./transformers/ui-call-resolver.js";
 import { requireUIHook } from "../ui-hook.js";
@@ -227,6 +227,22 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
       }
     }
   }
+  // Pre-scan every user-declared VARIABLE name (top-level, function params
+  // and locals, for-of bindings) BEFORE lowering: reserved-name escaping at
+  // identifier-IR creation needs the complete set up front — a reference in
+  // a function body lowers before the top-level declaration that names it.
+  userDeclaredVarNames.clear();
+  const scanDeclarations = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      userDeclaredVarNames.add(node.name.text);
+    }
+    if (ts.isParameter(node) && ts.isIdentifier(node.name)) {
+      userDeclaredVarNames.add(node.name.text);
+    }
+    ts.forEachChild(node, scanDeclarations);
+  };
+  scanDeclarations(source);
+
   resetHALResolver();
   registerFieldMap.clear();
 

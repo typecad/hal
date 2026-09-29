@@ -20,8 +20,9 @@ import { callbackContextLabel, unsupportedStatementHint } from "./callback-conte
 import { tryLowerArrayAndStringMethods } from "./array-methods.js";
 import { expressionToIR, castEnumArgsForCallParams, resolveExprCppType } from "../expression-to-ir.js";
 import { castMapKeyIfNeeded } from "../map-key-cast.js";
-import { lowerStatementList } from "../statement-to-ir.js";
+import { userDeclaredVarNames } from "../build-ir-state.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
+import { lowerStatementList } from "../statement-to-ir.js";
 import { renderExprAsText, calleeToText } from "../render-expr.js";
 import { parsedIsPointer, parsedIsMap, parsedIsSet } from "../../api/shared/cpp-type-ir.js";
 
@@ -802,7 +803,12 @@ export function callToStatement(
     const objExpr = call.expression.expression;
     const methodName = escapeCppKeyword(call.expression.name.text);
     if (ts.isIdentifier(objExpr) && pointerVars.has(objExpr.text)) {
-      calleeText = `${objExpr.text}->${methodName}`;
+      // The receiver name may need the reserved-name escape (the declaration
+      // escapes; references must match — see userDeclaredVarNames).
+      const recvText = userDeclaredVarNames.has(objExpr.text)
+        ? escapeCppKeyword(objExpr.text, getContext().activeStrategy?.reservedNames() ?? new Set<string>())
+        : objExpr.text;
+      calleeText = `${recvText}->${methodName}`;
     } else if (ts.isCallExpression(objExpr) && ts.isPropertyAccessExpression(objExpr.expression)) {
       // Chained method call: obj.method1().method2()
       const innerReceiver = objExpr.expression.expression;

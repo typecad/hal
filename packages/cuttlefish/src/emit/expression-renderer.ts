@@ -50,6 +50,10 @@ interface ExpressionRendererContext {
   globalPointerVarTypes?: Map<string, string>;
   /** Set of variable names known to hold string values (for snprintf %s) */
   stringVarNames?: Set<string>;
+  /** EVERY user-declared variable name (top-level, locals, parameters),
+   *  collected up front — the complete isUserVar signal for reserved-name
+   *  escaping, immune to render-order (see collectUserVarNames). */
+  userVarNames?: Set<string>;
   /** Set of variable names known to be emitted as C arrays */
   cArrayVarNames?: Set<string>;
   /** Set of namespace names for scoped access (::) instead of (.) */
@@ -104,6 +108,7 @@ export class ExpressionRenderer {
   private readonly pointerVarTypes?: Map<string, string>;
   private readonly globalPointerVarTypes?: Map<string, string>;
   private readonly stringVarNames?: Set<string>;
+  private readonly userVarNames?: Set<string>;
   private readonly cArrayVarNames?: Set<string>;
   private readonly namespaceNames: Set<string>;
   private readonly varAccessorNames: Map<string, Map<string, "getter" | "setter" | "both">>;
@@ -130,6 +135,7 @@ export class ExpressionRenderer {
     this.pointerVarTypes = context.pointerVarTypes;
     this.globalPointerVarTypes = context.globalPointerVarTypes;
     this.stringVarNames = context.stringVarNames;
+    this.userVarNames = context.userVarNames;
     this.cArrayVarNames = context.cArrayVarNames;
     this.namespaceNames = context.namespaceNames ?? new Set();
     this.varAccessorNames = context.varAccessorNames ?? new Map();
@@ -399,7 +405,11 @@ export class ExpressionRenderer {
     // body references must escape to match.
     const reservedNames = this.strategy.reservedNames();
     if (reservedNames.has(value)) {
-      const isUserVar = (this.knownVariableTypes !== undefined && this.knownVariableTypes.has(value)) ||
+      // The up-front declared-names set is the complete signal (immune to
+      // render order); the per-scope maps remain as fallbacks for direct
+      // construction without the set.
+      const isUserVar = (this.userVarNames !== undefined && this.userVarNames.has(value)) ||
+        (this.knownVariableTypes !== undefined && this.knownVariableTypes.has(value)) ||
         (scopeKnownVariableTypes !== undefined && scopeKnownVariableTypes.has(value)) ||
         (this.pointerVarTypes !== undefined && this.pointerVarTypes.has(value)) ||
         (this.globalPointerVarTypes !== undefined && this.globalPointerVarTypes.has(value)) ||
@@ -429,8 +439,13 @@ export class ExpressionRenderer {
       for (const [propName, kind] of accessors) {
         if (kind === "getter" || kind === "both") {
           const getterName = accessorGetterName(propName);
-          const pattern = new RegExp(`\\b${varName}->${propName}\\b(?!\\()`, "g");
-          result = result.replace(pattern, `${varName}->${getterName}()`);
+          // A reserved-named user variable renders under its ESCAPED name —
+          // match either spelling and rebuild with the escaped one.
+          const escaped = escapeCppKeyword(varName, this.strategy.reservedNames());
+          for (const spelling of escaped === varName ? [varName] : [varName, escaped]) {
+            const pattern = new RegExp(`\\b${spelling}->${propName}\\b(?!\\()`, "g");
+            result = result.replace(pattern, `${escaped}->${getterName}()`);
+          }
         }
       }
     }

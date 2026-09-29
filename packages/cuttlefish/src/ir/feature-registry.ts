@@ -747,11 +747,20 @@ export function checkContextSensitive(node: ts.Node, sourceText: string): Diagno
     }
 
     if (opKind === ts.SyntaxKind.QuestionQuestionToken) {
-      return {
-        message: "Nullish coalescing (??) is approximated with a polyfill helper in C++.",
-        hint: "Consider using an explicit null check: (x !== null && x !== undefined) ? x : fallback.",
-        code: "TS2CPP_APPROXIMATE",
-      };
+      // map.get(k) ?? d lowers EXACTLY (the count-guarded presence lookup) —
+      // no approximation to warn about. Other ?? shapes ride the nullish
+      // helper and keep the warning.
+      const isContainerLookup = ts.isCallExpression(node.left)
+        && ts.isPropertyAccessExpression(node.left.expression)
+        && (node.left.expression.name.text === "get" || node.left.expression.name.text === "at");
+      if (!isContainerLookup) {
+        return {
+          message: "Nullish coalescing (??) is approximated with a polyfill helper in C++.",
+          hint: "Consider using an explicit null check: (x !== null && x !== undefined) ? x : fallback, or a Map .get() ?? default (lowered exactly).",
+          code: "TS2CPP_APPROXIMATE",
+        };
+      }
+      return null;
     }
 
     if (opKind === ts.SyntaxKind.InKeyword) {

@@ -446,18 +446,17 @@ export function tryLowerArrayAndStringMethods(
       "join", "filter", "map", "reduce", "find", "findIndex",
       "every", "some", "sort", "slice", "concat", "splice", "reverse",
     ]);
+    // (split is NOT gated: under the one string model every target with
+    // vectors lowers it to __tc_split, which returns std::vector<std::string>.)
     if (
       ts.isPropertyAccessExpression(expr.expression)
       && !hosted0
-      && (STATIC_ARRAY_TARGET_METHODS.has(expr.expression.name.text) || expr.expression.name.text === "split")
+      && STATIC_ARRAY_TARGET_METHODS.has(expr.expression.name.text)
     ) {
       const methodName = expr.expression.name.text;
       const recvNode = expr.expression.expression;
       let receiverMatches = false;
       if (ts.isArrayLiteralExpression(recvNode)) {
-        receiverMatches = expr.expression.name.text !== "split";
-      } else if (methodName === "split"
-        && (ts.isStringLiteral(recvNode) || ts.isNoSubstitutionTemplateLiteral(recvNode))) {
         receiverMatches = true;
       } else if (ts.isIdentifier(recvNode)) {
         const vt = getCurrentIrTypeScope()?.locals.get(recvNode.text)
@@ -476,14 +475,11 @@ export function tryLowerArrayAndStringMethods(
           const arrayish = !vectorHandled && (parsedIsVector(trimmed) || parsedIsStaticArray(trimmed)
             || trimmed.endsWith("[]") || mutableArrayVars.has(recvNode.text)
             || activeCArrayVars.has(recvNode.text));
-          const stringish = trimmed === "const char*" || trimmed === "char*" || trimmed === "std::string";
-          receiverMatches = methodName === "split" ? stringish : arrayish;
+          receiverMatches = arrayish;
         }
       }
       if (receiverMatches) {
-        const message = methodName === "split"
-          ? "string.split() has no lowering on this target (the result would need dynamically-sized string storage) — tokenize with an indexOf/substring loop instead."
-          : methodName === "join"
+        const message = methodName === "join"
             ? `array.${methodName}() has no lowering on this target (the folded result exceeds the fixed-size string model) — emit the elements in a loop instead.`
             : `array.${methodName}() has no lowering on this target (no STL containers in the fixed-size array model) — replace it with an explicit loop over the elements.`;
         diagnostics.push(makeDiagnostic(

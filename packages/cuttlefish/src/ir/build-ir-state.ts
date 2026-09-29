@@ -97,6 +97,10 @@ export class CompilationContext {
   topLevelInterfaceNames = new Set<string>();
   classTypeNames = new Set<string>();
   activeEnumNames = new Set<string>();
+  // Every user-declared VARIABLE name in the current file (top-level, function
+  // locals, parameters) — pre-scanned before lowering so reserved-name
+  // escaping applies to references regardless of lowering order.
+  userDeclaredVarNames = new Set<string>();
   activeStringEnumNames = new Set<string>();
 
   activePinUsage = new Map<string, { pinNumber: string; source: string }>();
@@ -306,6 +310,7 @@ export const topLevelClassNames = createSetProxy(ctx => ctx.topLevelClassNames);
 export const topLevelInterfaceNames = createSetProxy(ctx => ctx.topLevelInterfaceNames);
 export const classTypeNames = createSetProxy(ctx => ctx.classTypeNames);
 export const activeEnumNames = createSetProxy(ctx => ctx.activeEnumNames);
+export const userDeclaredVarNames = createSetProxy(ctx => ctx.userDeclaredVarNames);
 export const activeStringEnumNames = createSetProxy(ctx => ctx.activeStringEnumNames);
 
 export const activePinUsage = createMapProxy(ctx => ctx.activePinUsage);
