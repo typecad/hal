@@ -6,7 +6,7 @@
 
 import type { StatementIR, ExpressionIR } from "../../api/index.js";
 import type { HALOpIR, PlatformStrategy } from "../../api/shared/index.js";
-import { escapeCppStringLiteral } from "../../utils/strings.js";
+import { escapeCppStringLiteral, escapeCppKeyword } from "../../utils/strings.js";
 import { routeHALOp } from "../route-hal-op.js";
 import { cppTypeForHalOp } from "./hal-op-cpp-type.js";
 
@@ -534,8 +534,20 @@ export function generateAsyncTaskClass(
   // name inside quotes is text, not a reference. Shadowing (a local sharing
   // a global's name, with raw text referring to the global) is the accepted
   // gap: it fails the C++ compile loudly rather than silently misbehaving.
-  const hoistRenames: Array<[RegExp, string]> = Array.from(hoisted.entries())
-    .map(([name, local]) => [new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), local.member] as [RegExp, string]);
+  const hoistRenames: Array<[RegExp, string]> = [];
+  for (const [name, local] of hoisted.entries()) {
+    const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    hoistRenames.push([new RegExp(`\\b${esc}\\b`, "g"), local.member]);
+    // A reserved-named local (`const auto = ...`) renders under its ESCAPED
+    // spelling in pre-rendered raw text — identifier lowering applies
+    // escapeCppKeyword at IR build — while the hoist maps the ORIGINAL name.
+    // Without the second rule, template fragments kept `auto_` while the
+    // member became `_v_auto` ("'auto_' was not declared").
+    const escaped = escapeCppKeyword(name);
+    if (escaped !== name) {
+      hoistRenames.push([new RegExp(`\\b${escaped.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), local.member]);
+    }
+  }
   // Pointer members: user code writes `obj.method()` / `obj.field` on the TS
   // instance; the hoisted member is a C++ POINTER, so member accesses arrow.
   // The renderer's own arrow fallback only sees global pointer types, and the

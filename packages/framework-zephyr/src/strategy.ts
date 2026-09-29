@@ -1058,8 +1058,13 @@ export class ZephyrStrategy implements PlatformStrategy {
     // (numbers/booleans) so a single __tc_dev_put(dev, value) call site formats
     // any writable scalar — the same overload contract __tc_print uses. Emitted
     // when the program writes a UART or USB port (both include uart.h).
+    // Carries the UART hardware markers so it is hoisted OUT of the TU-wide
+    // shim guard with the other driver definitions — a module header that
+    // defines CUTTLEFISH_SHIM_DEFINED first would otherwise hide these from
+    // the entry TU.
     if (uses('usesUart') || uses('usesUsb')) {
       guardBody.push(
+        '// CUTTLEFISH_UART_BEGIN',
         'static inline void __tc_dev_put(const struct device* dev, const char* s) {',
         '    for (; *s != \'\\0\'; ++s) { uart_poll_out(dev, *s); }',
         '}',
@@ -1067,6 +1072,7 @@ export class ZephyrStrategy implements PlatformStrategy {
         '    char __b[32];',
         '    __tc_dev_put(dev, __tc_fmt_num_buf(v, __b, sizeof(__b)));',
         '}',
+        '// CUTTLEFISH_UART_END',
       );
     }
 
@@ -1335,17 +1341,56 @@ export class ZephyrStrategy implements PlatformStrategy {
 
     const lines: string[] = [];
     if (guardBody.length > 0) {
+      // Hardware peripheral blocks (`// CUTTLEFISH_*_BEGIN … _END`, the
+      // UART/GPIO/ADC/I2C driver shims) must NOT sit inside the TU-wide
+      // guard. A module header included before the entry's own shim carries
+      // the generic shim for its inline class bodies and defines
+      // CUTTLEFISH_SHIM_DEFINED first — the entire guarded region,
+      // including the ENTRY-ONLY hardware definitions, was then skipped and
+      // every __tc_uart0_* / __tc_int_* reference failed to resolve. Same
+      // hazard the DT-spec blocks below document; same cure: per-symbol
+      // guards outside the shared guard. Relative order is preserved
+      // (generic helpers → hardware blocks → DT specs).
+      const hardwareMarker = /^\/\/ CUTTLEFISH_([A-Z0-9_]+)_BEGIN$/;
+      const hardwareBlocks = new Map<string, string[]>();
+      const genericBody: string[] = [];
+      for (let i = 0; i < guardBody.length; i += 1) {
+        const m = hardwareMarker.exec(guardBody[i]);
+        if (m) {
+          const endMarker = `// CUTTLEFISH_${m[1]}_END`;
+          const endIdx = guardBody.indexOf(endMarker, i);
+          const stop = endIdx === -1 ? guardBody.length : endIdx + 1;
+          // Several lowerings share one marker family (the UART write helper
+          // and the per-controller state both ride CUTTLEFISH_UART_BEGIN/END)
+          // — merge every occurrence under the single per-symbol guard so the
+          // second block is not swallowed by the first's #define.
+          const guardName = `__TC_HW_${m[1]}_DEFINED`;
+          const existing = hardwareBlocks.get(guardName);
+          if (existing) {
+            existing.push(...guardBody.slice(i + 1, stop - 1));
+          } else {
+            hardwareBlocks.set(guardName, guardBody.slice(i, stop));
+          }
+          i = stop - 1;
+        } else {
+          genericBody.push(guardBody[i]);
+        }
+      }
       lines.push(
         '// cuttlefish runtime shim. Wrapped in a single include guard so the',
         '// block is safe to emit into multiple headers and .cpp files within',
         '// one translation unit (a .cpp may #include several headers that each',
         '// carry the shim). The guard ensures the definitions are seen exactly',
-        '// once per TU.',
+        '// once per TU. Hardware peripheral blocks are hoisted OUT of this',
+        '// guard (see the note below the DT specs).',
         '#ifndef CUTTLEFISH_SHIM_DEFINED',
         '#define CUTTLEFISH_SHIM_DEFINED',
-        ...guardBody,
+        ...genericBody,
         '#endif // CUTTLEFISH_SHIM_DEFINED',
       );
+      for (const [guardName, body] of hardwareBlocks) {
+        lines.push(`#ifndef ${guardName}`, `#define ${guardName}`, ...body, `#endif // ${guardName}`);
+      }
     }
 
     // Devicetree specs — one per board-defined GPIO pin, but ONLY for pins the
@@ -2449,25 +2494,35 @@ inline std::string __tc_repeat(const std::string& s, int count) { std::string r;
 // characters; the trailing empty part is kept.
 inline std::vector<std::string> __tc_split(const std::string& s, const char* delim) { std::vector<std::string> parts; if (delim[0] == '\\0') { for (size_t i = 0U; i < s.size(); i++) { parts.push_back(s.substr(i, 1U)); } return parts; } size_t dl = strlen(delim); size_t start = 0U; size_t p = s.find(delim, start); while (p != std::string::npos) { parts.push_back(s.substr(start, p - start)); start = p + dl; p = s.find(delim, start); } parts.push_back(s.substr(start)); return parts; }
 inline std::string __tc_num_radix(long long v, int radix) { char b[72]; if (radix == 16) { snprintf(b, sizeof(b), "%llx", static_cast<unsigned long long>(v)); } else if (radix == 8) { snprintf(b, sizeof(b), "%llo", static_cast<unsigned long long>(v)); } else if (radix == 2) { unsigned long long u = static_cast<unsigned long long>(v); char tmp[72]; int i = 0; if (u == 0ULL) { b[0] = '0'; b[1] = '\\0'; return std::string(b); } while (u > 0ULL) { tmp[i++] = static_cast<char>('0' + static_cast<char>(u & 1ULL)); u >>= 1U; } for (int j = 0; j < i; j++) { b[j] = tmp[i - 1 - j]; } b[i] = '\\0'; } else { snprintf(b, sizeof(b), "%lld", v); } return std::string(b); }
+// JS String(v) for a template interpolation flattened at IR time (a template
+// literal used as a map key): integers bare, fraction trimmed — the same
+// number rendering as the runtime shim's __tc_fmt_num_buf, INLINED here so
+// the helper is self-contained (the string_methods polyfill can be emitted
+// into a header TU that does not carry the runtime shim).
+inline std::string __tc_numToStr_js(double v) { char b[32]; if (v != v) { snprintf(b, sizeof(b), "nan"); return std::string(b); } double a = v < 0 ? -v : v; long long ip = static_cast<long long>(a); long long fr = static_cast<long long>((a - static_cast<double>(ip)) * 1000000.0 + 0.5); if (fr >= 1000000LL) { ip += 1LL; fr = 0LL; } int used = 0; if (v < 0 && (ip != 0LL || fr != 0LL)) { b[used++] = '-'; } if (fr == 0LL) { b[used] = '\\0'; snprintf(b + used, sizeof(b) - static_cast<size_t>(used), "%lld", ip); return std::string(b); } char fbuf[8]; int len = snprintf(fbuf, sizeof(fbuf), "%06lld", fr); while (len > 0 && fbuf[len - 1] == '0') { fbuf[--len] = '\\0'; } b[used] = '\\0'; snprintf(b + used, sizeof(b) - static_cast<size_t>(used), "%lld.%s", ip, fbuf); return std::string(b); }
 
 `],
         shimMacros: [],
         dependencies: [],
       },
       {
-        // STL-free fixed-size array wrapper. Mutated/struct-element array
-        // literals and array methods (.push/.pop/.map/.filter) lower to
-        // __tc_StaticArray<T,N>; this supplies the template. Idempotent guard
-        // so a redefinition is a no-op. Mirrors framework-arduino.
+        // Fixed-size array wrapper. Mutated/struct-element array literals and
+        // array methods (.push/.pop/.map/.filter) lower to __tc_StaticArray<T,N>;
+        // this supplies the template. Idempotent guard so a redefinition is a
+        // no-op. `join` returns std::string (the one string model) — hence the
+        // <string> include.
         kind: 'polyfill',
         id: 'static_array',
         domain: 'embedded' as const,
-        requiredIncludes: [],
+        requiredIncludes: ['<string>'],
         forwardDeclarations: [],
         helperStructs: [],
         helperFunctions: [`
 #ifndef __TC_STATIC_ARRAY_DEFINED
 #define __TC_STATIC_ARRAY_DEFINED
+inline std::string __tc_join_elem(const std::string& v) { return v; }
+inline std::string __tc_join_elem(const char* v) { return std::string(v); }
+inline std::string __tc_join_elem(double v) { char b[32]; (void)snprintf(b, sizeof(b), "%g", v); return std::string(b); }
 template<typename T, int N>
 struct __tc_StaticArray {
     T data[N];
@@ -2484,6 +2539,7 @@ struct __tc_StaticArray {
     int unshift(T val) { if (_size < N) { for (int i = _size; i > 0; i--) data[i] = data[i - 1]; data[0] = val; _size++; } return _size; }
     bool includes(T val) const { return indexOf(val) != -1; }
     int lastIndexOf(T val) const { for (int i = _size - 1; i >= 0; i--) if (data[i] == val) return i; return -1; }
+    std::string join(const std::string& delim) const { std::string out; for (int i = 0; i < _size; i++) { if (i > 0) { out += delim; } out += __tc_join_elem(data[i]); } return out; }
     T& operator[](int i) { return data[i]; }
     const T& operator[](int i) const { return data[i]; }
     T* begin() { return &data[0]; }
@@ -2501,6 +2557,10 @@ struct __tc_StaticArray {
         // declarations lower to std::vector on Zephyr — only array literals
         // become __tc_StaticArray). `.includes`/`.indexOf` on those lower to
         // these template overloads (`.push` inlines to push_back at IR time).
+        // `__tc_join` folds elements into a std::string (the one string
+        // model) — loop-pushed arrays route here because their capacity is
+        // unbounded, so they stay std::vector rather than promoting to
+        // __tc_StaticArray (whose join member is the bounded twin).
         // Separate polyfill so the <vector> include only follows actual
         // vector-helper use. AUTOSAR: fixed-form templates, no dynamic
         // allocation — a bounded linear scan, same shape as __tc_StaticArray's
@@ -2508,16 +2568,40 @@ struct __tc_StaticArray {
         kind: 'polyfill',
         id: 'vector_methods',
         domain: 'embedded' as const,
-        requiredIncludes: ['<vector>'],
+        requiredIncludes: ['<vector>', '<string>'],
         forwardDeclarations: [],
         helperStructs: [],
         helperFunctions: [`
 #ifndef __TC_VECTOR_METHODS_DEFINED
 #define __TC_VECTOR_METHODS_DEFINED
+inline std::string __tc_join_vecelem(const std::string& v) { return v; }
+inline std::string __tc_join_vecelem(const char* v) { return std::string(v); }
+inline std::string __tc_join_vecelem(double v) { char b[32]; (void)snprintf(b, sizeof(b), "%g", v); return std::string(b); }
 template <typename T>
 int __tc_indexOf(const std::vector<T>& v, const T& val) { for (size_t i = 0; i < v.size(); i++) { if (v[i] == val) { return static_cast<int>(i); } } return -1; }
 template <typename T>
 bool __tc_includes(const std::vector<T>& v, const T& val) { for (size_t i = 0; i < v.size(); i++) { if (v[i] == val) { return true; } } return false; }
+template <typename T>
+std::string __tc_join(const std::vector<T>& v, const std::string& delim) { std::string out; for (size_t i = 0; i < v.size(); i++) { if (i > 0U) { out += delim; } out += __tc_join_vecelem(v[i]); } return out; }
+// JS slice on a vector: negative start counts from the end, start beyond the
+// size yields an empty vector (a fresh vector each call — JS value
+// semantics).
+template <typename T>
+std::vector<T> __tc_slice1(const std::vector<T>& v, int start) { int n = static_cast<int>(v.size()); if (start < 0) { start += n; } if (start < 0) { start = 0; } if (start > n) { start = n; } return std::vector<T>(v.begin() + start, v.end()); }
+template <typename T>
+std::vector<T> __tc_slice2(const std::vector<T>& v, int start, int end) { int n = static_cast<int>(v.size()); if (start < 0) { start += n; } if (end < 0) { end += n; } if (start < 0) { start = 0; } if (end > n) { end = n; } if (end < start) { end = start; } return std::vector<T>(v.begin() + start, v.begin() + end); }
+// JS Array mutators with JS return contracts (pop/shift return the removed
+// element, unshift the new length) — std::vector has pop_back/push_back but
+// no shift/unshift/reverse members, and a bare .pop() returns void.
+// Bounded scans/swaps, no allocation beyond the vector's own growth.
+template <typename T>
+T __tc_pop(std::vector<T>& v) { if (v.empty()) { return T(); } T val = v.back(); v.pop_back(); return val; }
+template <typename T>
+T __tc_shift(std::vector<T>& v) { if (v.empty()) { return T(); } T val = v.front(); v.erase(v.begin()); return val; }
+template <typename T>
+int __tc_unshift(std::vector<T>& v, const T& val) { v.insert(v.begin(), val); return static_cast<int>(v.size()); }
+template <typename T>
+void __tc_reverse(std::vector<T>& v) { size_t i = 0U; size_t j = v.size(); while (j > (i + 1U)) { j -= 1U; T tmp = v[i]; v[i] = v[j]; v[j] = tmp; i += 1U; } }
 #endif
 `],
         shimMacros: [],

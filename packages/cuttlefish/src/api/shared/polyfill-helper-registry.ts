@@ -35,6 +35,10 @@ export const POLYFILL_HELPER_MAP: Record<string, string[]> = {
   '.includes(':     ['__tc_includes'],
   '.indexOf(':      ['__tc_indexOf'],
   '.slice(':        ['__tc_slice2', '__tc_slice1'],
+  // JS String(v) for IR-flattened template interpolations (`${x}` in map-key
+  // position). Keyed on the lowered name — the TS shape is a template
+  // literal, not a member call, so there is no method-name pattern.
+  '__tc_numToStr_js(': ['__tc_numToStr_js'],
 
   // Math methods
   'Math.random(':   ['__tc_random'],

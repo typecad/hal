@@ -754,6 +754,27 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     }
   }
   contextStorage.run(prebuildContext, () => {
+    // String enums must be known BEFORE the class pre-scan in THIS context
+    // too: classDeclarationToIR maps a string-enum-typed annotation to
+    // std::string via activeStringEnumNames, and this prebuilt registry is
+    // what OTHER files' local-type inference consults. A stale raw `Phase`
+    // return typed a consuming local `const char* p = s->phase()` against a
+    // std::string return (g++: "cannot convert std::string to const char*").
+    for (const { sourceText } of classSources) {
+      const enumScan = ts.createSourceFile("enum-pre.ts", sourceText, ts.ScriptTarget.Latest, true);
+      for (const statement of enumScan.statements) {
+        if (!ts.isEnumDeclaration(statement) || !statement.name) continue;
+        let any = false;
+        let all = true;
+        for (const member of statement.members) {
+          if (member.initializer && ts.isStringLiteral(member.initializer)) any = true;
+          else all = false;
+        }
+        if (any && all) {
+          prebuildContext.activeStringEnumNames.add(statement.name.text);
+        }
+      }
+    }
     for (const { filePath, sourceText, declarations } of classSources) {
       for (const declaration of declarations) {
         const classIR = classDeclarationToIR(

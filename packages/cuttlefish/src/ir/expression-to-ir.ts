@@ -2,7 +2,7 @@
 import { Diagnostic } from "../types.js";
 import { ExpressionIR, StatementIR, ClassIR } from "../api/index.js";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils.js";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, requiredIncludes, throwExpressionDepth, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, getActiveClassName, restParamFunctions, getContext, getCurrentBoardConstants, inConditionContext, enterConditionContext, exitConditionContext, mapEntryVarNames, crossModuleFunctionReturns, userDeclaredVarNames } from "./build-ir-state.js";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, requiredIncludes, throwExpressionDepth, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, objectTypeAliasNames, classTypeNames, topLevelClasses, getActiveExtendsClass, getActiveClassName, restParamFunctions, getContext, getCurrentBoardConstants, inConditionContext, enterConditionContext, exitConditionContext, mapEntryVarNames, crossModuleFunctionReturns, userDeclaredVarNames } from "./build-ir-state.js";
 import { getCurrentIrTypeScope, type IrTypeScope } from "./symbol-types.js";
 import { renderExprAsText } from "./render-expr.js";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir.js";
@@ -14,7 +14,7 @@ import { tryLowerRegisterRead } from "./transformers/register-assignment.js";
 import { tryLowerArrayAndStringMethods } from "./transformers/array-methods.js";
 import { collectReturns, inferExprCppType, typeNodeToCppType, type CppTypeHint } from "./type-resolution.js";
 import { castMapKeyIfNeeded } from "./map-key-cast.js";
-import { HELPER_RETURN_TYPES, helperNameFromText } from "../api/shared/helper-return-types.js";
+import { HELPER_RETURN_TYPES, helperNameFromText, helperReturnTypeForText } from "../api/shared/helper-return-types.js";
 import { parseCppType, elementOf, renderCppType, isPointer, bareType, parsedIsPointer, parsedIsVector, parsedIsMap, parsedIsSet, parsedIsTuple, parsedIsStdString, parsedElementString, parsedBareString, isVector, isMap, isSet, isContainer } from "../api/shared/cpp-type-ir.js";
 import { hasSafetyHook, requireSafetyHook } from "../safety-hook.js";
 
@@ -916,6 +916,14 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       return `${receiverNode.text}::${escapedName}`;
     }
     const objectText = formatExpressionText(receiverNode);
+    // A `new X(...)` receiver is a POINTER, and the chain must parenthesize
+    // it: `new X(...).m()` is not valid C++ (the trailing member parses as
+    // part of the new-type-id). `new Line(a,b).text()` used to emit verbatim
+    // with a dot — g++: "expected ')' before '.' token".
+    if (receiverNode.kind === ts.SyntaxKind.NewExpression
+      || (ts.isParenthesizedExpression(receiverNode) && receiverNode.expression.kind === ts.SyntaxKind.NewExpression)) {
+      return `(${objectText})->${escapedName}`;
+    }
     // Detect if receiver is a method call that returns a pointer (for chaining)
     if (ts.isCallExpression(receiverNode) && ts.isPropertyAccessExpression(receiverNode.expression)) {
       const innerReceiver = receiverNode.expression.expression;
@@ -1358,13 +1366,16 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       }
       // A "value type" for null-comparison purposes: a container, std::string,
       // or a value-typed interface/class name. Pointers are excluded (they
-      // compare against nullptr, not {}).
+      // compare against nullptr, not {}). Object-literal TYPE ALIASES are
+      // concrete value structs too (`type Reading = {...}` — see the Phase 0b
+      // registration).
       const isValueType = vt && !parsedIsPointer(vt) && (
         parsedIsVector(vt)
         || parsedIsMap(vt)
         || parsedIsSet(vt)
         || parsedIsStdString(vt)
         || topLevelInterfaceNames.has(parsedBareString(vt))
+        || objectTypeAliasNames.has(parsedBareString(vt))
         || topLevelClassNames.has(parsedBareString(vt))
       );
       if (isValueType) {
@@ -1959,6 +1970,24 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       // final callee text for the generic path.
       const methodName = rawMethodName;
 
+      // --- super.method(args) → Base::method(args) ---------------------------
+      // JS `super.m()` invokes the BASE implementation of m on `this`. The C++
+      // equivalent is the base-qualified implicit-object call `Base::m(args)`.
+      // activeExtendsClass carries the enclosing member's base (declaration-
+      // builders sets it around each member body; resetFunctionScopeState
+      // preserves it through the body). A dot form (`Base.m(args)`) would be a
+      // static-member access and fail to compile.
+      if (receiver.kind === ts.SyntaxKind.SuperKeyword) {
+        const base = getActiveExtendsClass();
+        if (!base) {
+          return emitUnsupportedExpression("super keyword outside of class method");
+        }
+        const superArgsText = expr.arguments
+          .map(a => renderExprAsText(expressionToIR(a, sourceText, diagnostics, pointerVars)))
+          .join(", ");
+        return { kind: "raw", value: `${base}::${escapeCppKeyword(methodName)}(${superArgsText})` };
+      }
+
       // --- /regex/.test(s) → std::regex_search(s, re). std::regex has no
       // .test member — the generic path emitted `std::regex(...).test(s)`.
       if (
@@ -2009,20 +2038,22 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       // --- .toFixed(digits) on numeric values ---
       if (methodName === "toFixed" && expr.arguments.length >= 1) {
         const receiverIR = expressionToIR(receiver, sourceText, diagnostics, pointerVars);
-        const digitsArg = expr.arguments[0];
-        let digits: number;
-        if (ts.isNumericLiteral(digitsArg)) {
-          digits = parseInt(digitsArg.text, 10);
-        } else {
-          const digitsIR = expressionToIR(digitsArg, sourceText, diagnostics, pointerVars);
-          if (digitsIR.kind === "number" && Number.isInteger(digitsIR.value)) {
-            digits = digitsIR.value;
-          } else {
-            digits = 0;
-          }
-        }
         const receiverText = renderExprAsText(receiverIR);
-        return { kind: "raw", value: `__tc_toFixed(${receiverText}, ${digits})` };
+        const digitsArg = expr.arguments[0];
+        if (ts.isNumericLiteral(digitsArg)) {
+          const digits = parseInt(digitsArg.text, 10);
+          return { kind: "raw", value: `__tc_toFixed(${receiverText}, ${digits})` };
+        }
+        const digitsIR = expressionToIR(digitsArg, sourceText, diagnostics, pointerVars);
+        if (digitsIR.kind === "number" && Number.isInteger(digitsIR.value)) {
+          return { kind: "raw", value: `__tc_toFixed(${receiverText}, ${digitsIR.value})` };
+        }
+        // Non-literal precision (a parameter, a variable): pass the
+        // EXPRESSION through. This used to fall back to a baked 0 —
+        // `v.toFixed(digits)` silently printed 0 decimals whatever the
+        // caller passed (silent wrong-code; event-journal demo finding).
+        const digitsText = renderExprAsText(digitsIR);
+        return { kind: "raw", value: `__tc_toFixed(${receiverText}, static_cast<int>(${digitsText}))` };
       }
 
       // --- Number.prototype.toString(radix?) on a numeric receiver ---
@@ -2218,6 +2249,13 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       } else {
         const objText = renderExprAsText(expressionToIR(receiver, sourceText, diagnostics, pointerVars));
         let accessor = ".";
+        // A `new X(...)` receiver is a pointer, and the chain must
+        // parenthesize it: `new X(...).m()` is not valid C++ (the member
+        // parses as part of the new-type-id — g++: "expected ')' before
+        // '.' token"). `lines.push(new Line(a,b).text())` lowered to exactly
+        // that.
+        const isNewReceiver = receiver.kind === ts.SyntaxKind.NewExpression
+          || (ts.isParenthesizedExpression(receiver) && receiver.expression.kind === ts.SyntaxKind.NewExpression);
         if (ts.isIdentifier(receiver) && (pointerVars.has(receiver.text) || parsedIsPointer(getCurrentIrTypeScope()?.locals.get(receiver.text) ?? "") || parsedIsPointer(getCurrentIrTypeScope()?.globals.get(receiver.text) ?? ""))) {
           accessor = "->";
         } else if (ts.isPropertyAccessExpression(receiver)
@@ -2260,7 +2298,9 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
             accessor = "->";
           }
         }
-        calleeText = `${objText}${accessor}${escapeCppKeyword(methodName)}`;
+        calleeText = isNewReceiver
+          ? `(${objText})->${escapeCppKeyword(methodName)}`
+          : `${objText}${accessor}${escapeCppKeyword(methodName)}`;
       }
     } else {
       const rawText = expr.expression.getText();
@@ -2689,6 +2729,35 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       }
     }
 
+    // `super.prop` (a non-call read) — JS resolves the inherited property (or
+    // accessor) with this-binding. Lower to the this-qualified form: the
+    // accessor call when the base chain declares a getter (mirroring the
+    // `this.getter` arm in tryGetterCallIR), else the plain field — C++ name
+    // lookup through `this->` finds the base's member. Method CALLS
+    // (`super.m(...)`) are intercepted earlier and base-qualified.
+    if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {
+      const base = getActiveExtendsClass();
+      if (!base) {
+        return emitUnsupportedExpression("super keyword outside of class method");
+      }
+      const superGetter = findClassGetter(base, propName, false);
+      if (superGetter) {
+        return {
+          kind: "method-call",
+          callee: `this->${superGetter.getterName}`,
+          args: [],
+          isPointer: true,
+          ...(superGetter.returnType && superGetter.returnType !== "auto" ? { cppType: superGetter.returnType } : {}),
+        };
+      }
+      return {
+        kind: "property-access",
+        object: { kind: "raw", value: "this" },
+        property: propName,
+        isPointer: true,
+      };
+    }
+
     // Getter access (`pid.integral`, `this.alive`, `Counter.total`) lowers to
     // the accessor call the emitted class declares (`pid->getIntegral()`).
     // Must run BEFORE the pointer property-access returns below — they would
@@ -2796,6 +2865,35 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   if (ts.isElementAccessExpression(expr)) {
     const object = expressionToIR(expr.expression, sourceText, diagnostics, pointerVars);
     const index = expressionToIR(expr.argumentExpression, sourceText, diagnostics, pointerVars);
+    // A template-literal key on a STRING-keyed map must render as a string:
+    // `NAMES[`${code}`]` flattened its index to the raw expression, giving a
+    // DOUBLE key into std::map<std::string,...> (g++: no matching operator[]).
+    // Convert numeric inner expressions through the JS number→string helper
+    // at this edge; string-typed inners pass through.
+    if (index.kind === "template_string") {
+      let objType: string | undefined;
+      if (ts.isIdentifier(expr.expression)) {
+        objType = getCurrentIrTypeScope()?.locals.get(expr.expression.text) ?? getCurrentIrTypeScope()?.globals.get(expr.expression.text);
+      }
+      if (objType && parsedIsMap(objType)) {
+        const keyIr = parseCppType(objType);
+        const keyIsString = keyIr.kind === "map" && renderCppType(keyIr.key) === "std::string";
+        if (keyIsString) {
+          const inner = index.expression;
+          if (inner.kind === "number") {
+            return { kind: "element-access", object, index: { kind: "string", value: String(inner.value) } };
+          }
+          if (inner.kind !== "string" && inner.kind !== "string_concat" && inner.kind !== "template_string") {
+            const innerText = renderExprAsText(inner);
+            const helperRet = helperReturnTypeForText(innerText);
+            if (helperRet !== "std::string") {
+              return { kind: "element-access", object, index: { kind: "raw", value: `__tc_numToStr_js(${innerText})` } };
+            }
+            return { kind: "element-access", object, index: { kind: "raw", value: innerText } };
+          }
+        }
+      }
+    }
     if (index.kind === "number" && Number.isInteger(index.value)) {
       let objectType: string | undefined;
       let elementType: string | undefined;
@@ -2907,9 +3005,17 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   if (ts.isObjectLiteralExpression(expr)) {
     const fields: { name: string; value: ExpressionIR }[] = [];
     const spreadSources: ExpressionIR[] = [];
+    // A quoted property key ('3', "dump") contributes its UNQUOTED text —
+    // getText() on a StringLiteral name includes the quotes, which flowed
+    // into Record initializers as the double-quoted key `NAMES["'3'"]` (a
+    // key that no lookup can ever hit).
+    const propertyNameText = (name: ts.PropertyName): string =>
+      ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name)
+        ? name.text
+        : name.getText();
     for (const prop of expr.properties) {
       if (ts.isPropertyAssignment(prop)) {
-        const name = ts.isIdentifier(prop.name) ? prop.name.text : prop.name.getText();
+        const name = propertyNameText(prop.name);
         fields.push({
           name,
           value: expressionToIR(prop.initializer, sourceText, diagnostics, pointerVars),
@@ -2920,13 +3026,13 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           value: { kind: "identifier", value: prop.name.text },
         });
       } else if (ts.isMethodDeclaration(prop)) {
-        const name = ts.isIdentifier(prop.name) ? prop.name.text : prop.name.getText();
+        const name = propertyNameText(prop.name);
         fields.push({
           name,
           value: { kind: "raw", value: "/* method stub */" },
         });
       } else if (ts.isAccessor(prop)) {
-        const name = ts.isIdentifier(prop.name) ? prop.name.text : prop.name.getText();
+        const name = propertyNameText(prop.name);
         fields.push({
           name,
           value: { kind: "raw", value: "/* accessor stub */" },

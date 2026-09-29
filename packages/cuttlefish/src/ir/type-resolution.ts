@@ -1,6 +1,6 @@
 ﻿import ts from "typescript";
 import { CppType } from "../api/index.js";
-import { classTypeNames, topLevelClasses, discriminatedUnionVariantNames, activeEnumNames, topLevelInterfaceNames } from "./build-ir-state.js";
+import { classTypeNames, topLevelClasses, discriminatedUnionVariantNames, activeEnumNames, activeStringEnumNames, topLevelInterfaceNames, typeAliasNodes } from "./build-ir-state.js";
 import { getCurrentIrTypeScope } from "./symbol-types.js";
 import {
   type CppTypeIR,
@@ -357,6 +357,17 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
 
   if (ts.isTypeReferenceNode(resolvedNode) && ts.isIdentifier(resolvedNode.typeName)) {
     const typeName = resolvedNode.typeName.text;
+    // A STRING-valued enum used as a TYPE (return type, param, field, local
+    // annotation) is NOT a C++ type: string enums lower to a namespace of
+    // `constexpr const char*` members, so the name in type position would
+    // emit `FieldKind kind()` — g++: "'FieldKind' does not name a type".
+    // The value model is a string; annotate std::string. (Numeric enums keep
+    // their real enum type.) Statement-order note: enum declarations lower
+    // before later class statements, so the set is populated by the time a
+    // class member's annotations resolve.
+    if (activeStringEnumNames.has(typeName)) {
+      return "std::string";
+    }
     const directCppType = getDirectCppType(typeName);
     if (directCppType) {
       return directCppType;
@@ -892,6 +903,12 @@ export function inferExprCppType(
           const field = classDef.fields.find(f => f.name === expr.name.text);
           if (field && field.cppType !== "auto") return field.cppType as CppTypeHint;
         }
+        // An object-literal TYPE ALIAS record (`s.laps` on `s: Session`):
+        // aliases are not classes, so the class lookup missed and the field
+        // degraded to auto — the for-of var over it then lost its element
+        // type (lap/index widened wrong, accumulators truncated through int).
+        const aliasField = inferAliasFieldType(className, expr.name.text);
+        if (aliasField && aliasField !== "auto") return aliasField as CppTypeHint;
       }
     }
     // Handle chained property access: s.player.weaponName
@@ -907,6 +924,8 @@ export function inferExprCppType(
           const field = classDef.fields.find(f => f.name === expr.name.text);
           if (field && field.cppType !== "auto") return field.cppType as CppTypeHint;
         }
+        const aliasField = inferAliasFieldType(className, expr.name.text);
+        if (aliasField && aliasField !== "auto") return aliasField as CppTypeHint;
       }
     }
     return "auto";
@@ -942,6 +961,22 @@ export function inferExprCppType(
 
     if (operator === ts.SyntaxKind.PlusToken && (leftType === "std::string" || rightType === "std::string")) {
       return "std::string";
+    }
+
+    // JS bitwise operators (& | ^ << >> >>>) coerce to int32 and YIELD an
+    // int regardless of operand types — `crc & 0xFF` on doubles is still an
+    // int in JS (the lowering casts the operands). Without this, the result
+    // inferred double and a compound `crc ^= byte` stamped the variable
+    // double, making every later `^`/`<<` a hard C++ operand error.
+    if (
+      operator === ts.SyntaxKind.AmpersandToken ||
+      operator === ts.SyntaxKind.BarToken ||
+      operator === ts.SyntaxKind.CaretToken ||
+      operator === ts.SyntaxKind.LessThanLessThanToken ||
+      operator === ts.SyntaxKind.GreaterThanGreaterThanToken ||
+      operator === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken
+    ) {
+      return "int";
     }
 
     if (leftType === "float" || rightType === "float" || leftType === "double" || rightType === "double") {
@@ -1161,8 +1196,25 @@ export function collectReturns(block: ts.Block): ts.ReturnStatement[] {
   return returns;
 }
 
-export function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, CppTypeHint> {
-  const result = new Map<string, CppTypeHint>();
+/**
+ * Field type on an OBJECT-LITERAL TYPE ALIAS record (`laps` on `type Session
+ * = { laps: Lap[] }`). Aliases are not classes, so the class-IR lookup misses
+ * and the field degraded to auto — for-of vars over alias fields then lost
+ * their element type and every downstream inference (widening, snprintf
+ * classification) followed. The alias node rides the context snapshot set by
+ * build-ir's Phase 0c collection.
+ */
+export function inferAliasFieldType(typeName: string, fieldName: string): CppTypeHint | undefined {
+  const aliasNode = typeAliasNodes.get(typeName);
+  if (aliasNode === undefined || !ts.isTypeLiteralNode(aliasNode as ts.TypeNode)) return undefined;
+  const member = (aliasNode as ts.TypeLiteralNode).members
+    .filter(ts.isPropertySignature)
+    .find(m => ts.isIdentifier(m.name!) && (m.name as ts.Identifier).text === fieldName);
+  if (!member || member.type === undefined) return undefined;
+  return typeNodeToCppType(member.type, typeAliasNodes.snapshot());
+}
+
+export function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, CppTypeHint> {  const result = new Map<string, CppTypeHint>();
   const sourceText = source.text;
   const functions = source.statements.filter(ts.isFunctionDeclaration);
 

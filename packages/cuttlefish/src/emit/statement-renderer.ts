@@ -409,9 +409,16 @@ export class StatementRenderer {
         // `renderValueForTarget` inserts the required `static_cast`. Falls
         // through to plain rendering when the target type is unknown. Demo #32 A.
         const assignTargetType = this.expressionRenderer.inferLvalueCppType(statement.target, knownVariableTypes);
-        const renderedAssignValue = assignTargetType
-          ? this.expressionRenderer.renderValueForTarget(statement.value, assignTargetType, knownVariableTypes)
-          : this.expressionRenderer.render(statement.value, undefined, knownVariableTypes);
+        // A BITWISE compound assignment (`crc ^= byte`, `flags |= mode`):
+        // JS coerces the RHS to int32; C++ `int ^= double` is a hard error
+        // ("invalid operands to binary ^"). Cast a floating RHS to int —
+        // the same JS-bitwise boundary the binary rendering implements.
+        const bitwiseCompound = /^(?:\|=|&=|\^=|<<=|>>=|>>>=$)/.test(statement.operator);
+        const renderedAssignValue = bitwiseCompound
+          ? `static_cast<int>(${this.expressionRenderer.render(statement.value, undefined, knownVariableTypes)})`
+          : assignTargetType
+            ? this.expressionRenderer.renderValueForTarget(statement.value, assignTargetType, knownVariableTypes)
+            : this.expressionRenderer.render(statement.value, undefined, knownVariableTypes);
         return forHeader
           ? `${target} ${statement.operator} ${renderedAssignValue}`
           : `${target} ${statement.operator} ${renderedAssignValue};`;
@@ -443,6 +450,14 @@ export class StatementRenderer {
           retType && this.enumNames.has(retType)
             ? this.expressionRenderer.render(statement.value, undefined, knownVariableTypes)
             : this.expressionRenderer.renderEnumSafeValue(statement.value, knownVariableTypes);
+        // A char-typed value returned from a std::string function
+        // (`return PRINTABLE[i]` — JS string indexing yields a one-char
+        // STRING; the C++ element is a bare char with no implicit
+        // conversion) wraps in std::string(1, c).
+        if (retType === "std::string"
+          && this.expressionRenderer.inferExpressionCppType(statement.value, knownVariableTypes) === "char") {
+          return `return std::string(1, ${renderedValue});`;
+        }
         return `return ${renderedValue};`;
       }
 

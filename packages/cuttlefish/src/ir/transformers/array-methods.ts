@@ -1,13 +1,14 @@
 ﻿import ts from "typescript";
 import { Diagnostic } from "../../types.js";
 import { StatementIR, ExpressionIR } from "../../api/index.js";
-import { arrayLiteralSizes, mutableArrayVars, arrayPushCounts, unboundedArrayVars, moduleArrayLiteralVars, functionScopeMutatedArrays, activeCArrayVars, getContext, activeEnumNames, activeStringEnumNames, requiredIncludes } from "../build-ir-state.js";
+import { arrayLiteralSizes, mutableArrayVars, arrayPushCounts, unboundedArrayVars, moduleArrayLiteralVars, functionScopeMutatedArrays, activeCArrayVars, getContext, activeEnumNames, activeStringEnumNames, requiredIncludes, getActiveClassName, topLevelClasses, hoistedNestedClasses, typeAliasNodes } from "../build-ir-state.js";
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { expressionToIR } from "../expression-to-ir.js";
+import { typeNodeToCppType } from "../type-resolution.js";
 import { renderExprAsText } from "../render-expr.js";
 import { assignmentOperatorToString } from "./variables.js";
 import { STRING_METHODS, STRING_METHOD_NAMES, StringMethodSpec, StringMethodArgForm } from "../../api/shared/string-method-registry.js";
-import { parsedElementString, parsedIsVector, parsedIsStaticArray } from "../../api/shared/cpp-type-ir.js";
+import { parsedElementString, parsedIsVector, parsedIsStaticArray, parsedBareString } from "../../api/shared/cpp-type-ir.js";
 import { INTEGRAL_CPP_TYPE_RE } from "../../emit/utils/cpp-helpers.js";
 import { makeDiagnostic } from "../ast-node-utils.js";
 
@@ -48,6 +49,16 @@ function prescanArrayUsageIn(statement: ts.Statement, inLoop: boolean, moduleSco
     prescanArrayUsageBlock(statement.statement, true, moduleScope);
   } else if (ts.isForOfStatement(statement) || ts.isForInStatement(statement)) {
     prescanArrayUsageBlock(statement.statement, true, moduleScope);
+  } else if (ts.isSwitchStatement(statement)) {
+    // A switch's case bodies are plain statement lists at the SAME loop
+    // depth — a push inside `case X:` of a `while` runs per-iteration. The
+    // scan used to stop at the switch: mutation facts (mutableArrayVars,
+    // unboundedArrayVars) were lost, the declaration promoted to a
+    // StaticArray sized from nothing, and the call sites routed through the
+    // vector path — declaration and uses disagreed.
+    for (const clause of statement.caseBlock.clauses) {
+      for (const s of clause.statements) prescanArrayUsageIn(s, inLoop, moduleScope);
+    }
   } else if (ts.isBlock(statement)) {
     for (const s of statement.statements) prescanArrayUsageIn(s, inLoop, moduleScope);
   }
@@ -271,30 +282,62 @@ export function tryLowerArrayAndStringMethods(
   diagnostics: Diagnostic[],
   pointerVars: any,
 ): ExpressionIR | null {
-  // ── push/pop on NON-identifier receivers (a class field: `this._buf.pop()`)
-  // ── The identifier branches below cover locals/globals (including the
+  // ── push/pop/shift/unshift/reverse on NON-identifier receivers (a class
+  // field: `this.data.shift()`, or an object record's field:
+  // `current.laps.push(lap)`) ────────────────────────────────────────────────
+  // The identifier branches below cover locals/globals (including the
   // StaticArray promotion prediction); a property-access receiver fell
-  // through VERBATIM (`this->_buf.pop()` — std::vector has no .pop/.push;
-  // they are pop_back/push_back). Rewrite when the receiver resolves to a
-  // plain std::vector (a __tc_StaticArray DOES expose .push). Identifier
-  // receivers are intentionally NOT handled here — their type can be stale
-  // (pre-promotion) and the StaticArray prediction below owns them.
+  // through VERBATIM (`this->data.shift()` — std::vector has no shift
+  // member). Rewrite when the receiver resolves to a plain std::vector (a
+  // __tc_StaticArray DOES expose .push/.pop). Identifier receivers are
+  // intentionally NOT handled here — their type can be stale (pre-promotion)
+  // and the StaticArray prediction below owns them.
   if (ts.isPropertyAccessExpression(expr.expression)) {
     const paReceiver = expr.expression.expression;
     const paMethod = expr.expression.name.text;
-    if ((paMethod === "pop" || paMethod === "push")
-        && ts.isPropertyAccessExpression(paReceiver)
-        && paReceiver.expression.kind === ts.SyntaxKind.ThisKeyword) {
-      const recvNodeType = getCurrentIrTypeScope()?.locals.get(`this->${paReceiver.name.text}`)
-        ?? getCurrentIrTypeScope()?.classFields.get(`this->${paReceiver.name.text}`);
+    if (paMethod === "pop" || paMethod === "push" || paMethod === "shift" || paMethod === "unshift" || paMethod === "reverse") {
+      // Resolve the receiver field's type: `this.field` via the class-field
+      // maps, `obj.field` via the base's recorded type + the class IR's
+      // field list (the base may be a struct VALUE or a pointer).
+      let recvNodeType: string | undefined;
+      if (ts.isPropertyAccessExpression(paReceiver) && paReceiver.expression.kind === ts.SyntaxKind.ThisKeyword) {
+        recvNodeType = getCurrentIrTypeScope()?.locals.get(`this->${paReceiver.name.text}`)
+          ?? getCurrentIrTypeScope()?.classFields.get(`this->${paReceiver.name.text}`);
+      } else if (ts.isPropertyAccessExpression(paReceiver) && ts.isIdentifier(paReceiver.expression)) {
+        const baseType = getCurrentIrTypeScope()?.locals.get(paReceiver.expression.text)
+          ?? getCurrentIrTypeScope()?.globals.get(paReceiver.expression.text);
+        if (baseType) {
+          const bareBase = parsedBareString(baseType);
+          // The base may be a CLASS instance or an object-literal TYPE ALIAS
+          // (a record struct). Resolve the field through whichever IR exists.
+          const classField = topLevelClasses.get(bareBase)?.fields.find(f => f.name === paReceiver.name.text);
+          const field = (classField?.cppType as string | undefined)
+            ?? aliasStructFieldType(bareBase, paReceiver.name.text);
+          if (field) {
+            recvNodeType = field;
+          }
+        }
+      }
       if (recvNodeType !== undefined && recvNodeType.startsWith("std::vector<")) {
         const recvIR = expressionToIR(paReceiver, sourceText, diagnostics, pointerVars);
         const recvText = renderExprAsText(recvIR);
         if (paMethod === "pop") {
           return { kind: "raw", value: `${recvText}.pop_back()` };
         }
-        const args = expr.arguments.map(a => renderExprAsText(expressionToIR(a, sourceText, diagnostics, pointerVars)));
-        return { kind: "raw", value: `${recvText}.push_back(${args.join(", ")})` };
+        if (paMethod === "push") {
+          const args = expr.arguments.map(a => renderExprAsText(expressionToIR(a, sourceText, diagnostics, pointerVars)));
+          return { kind: "raw", value: `${recvText}.push_back(${args.join(", ")})` };
+        }
+        // shift/unshift/reverse ride the JS-semantics helpers (a bare
+        // .erase(begin()) drops the removed element the TS caller may use).
+        if (paMethod === "shift") {
+          return { kind: "raw", value: `__tc_shift(${recvText})` };
+        }
+        if (paMethod === "reverse") {
+          return { kind: "raw", value: `__tc_reverse(${recvText})` };
+        }
+        const unshiftArgs = expr.arguments.map(a => renderExprAsText(expressionToIR(a, sourceText, diagnostics, pointerVars)));
+        return { kind: "raw", value: `__tc_unshift(${recvText}, ${unshiftArgs.join(", ")})` };
       }
     }
   }
@@ -372,8 +415,11 @@ export function tryLowerArrayAndStringMethods(
       if (methodName === "fill") {
         return asWrapperMethodCall("fill");
       }
-      // Wrapper-native members: shift/unshift/includes/lastIndexOf.
-      if (methodName === "shift" || methodName === "unshift" || methodName === "includes" || methodName === "lastIndexOf") {
+      // Wrapper-native members: shift/unshift/includes/lastIndexOf. `join`
+      // too — the wrapper folds its elements into a std::string (the one
+      // string model), so the old "folded result exceeds the fixed-size
+      // string model" diagnostic no longer applies to this receiver shape.
+      if (methodName === "shift" || methodName === "unshift" || methodName === "includes" || methodName === "lastIndexOf" || methodName === "join") {
         return asWrapperMethodCall(methodName);
       }
       }
@@ -463,16 +509,32 @@ export function tryLowerArrayAndStringMethods(
           ?? getCurrentIrTypeScope()?.globals.get(recvNode.text);
         if (vt) {
           const trimmed = vt.trim();
+          // A STRING-typed receiver is never this gate's business, whatever
+          // the prescan says: mutableArrayVars is SYNTACTIC (any receiver of
+          // .indexOf/.lastIndexOf/.push/... is added with no type info), so a
+          // string local that happens to call lastIndexOf — `t.lastIndexOf('*')`
+          // before `t.slice(1, star)` — lands in the set and used to trip this
+          // gate, emitting `0 /* array.slice unsupported */` for a plain string
+          // slice. shouldLowerAsStringMethod guards the same poison on the
+          // string side; this is the mirror guard on the array side. The
+          // string-method path below (which runs later) owns these receivers.
+          const isStringLikeType = trimmed === "std::string" || trimmed === "const char*" || trimmed === "char*";
           // A std::vector receiver on a vector-capable target is NOT an
           // error: the vector-receiver lowering below handles push/includes/
           // indexOf natively (annotated `T[]` declarations lower to
           // std::vector on Zephyr too — only array LITERALS become
-          // __tc_StaticArray there). Only flag when the target genuinely
-          // cannot grow the container.
+          // __tc_StaticArray there). `join` too — every in-tree target that
+          // ships vectors also ships the __tc_join vector helper (Zephyr:
+          // vector_methods polyfill; native: hosted-shim), so the fold has a
+          // real lowering. The JS mutators (pop/shift/unshift/reverse) ride
+          // the same helpers. Only flag when the target genuinely cannot
+          // grow the container.
           const vectorHandled = parsedIsVector(trimmed)
             && (getContext().activeStrategy?.getStdLibSupport?.().hasVector ?? true)
-            && (methodName === "push" || methodName === "includes" || methodName === "indexOf");
-          const arrayish = !vectorHandled && (parsedIsVector(trimmed) || parsedIsStaticArray(trimmed)
+            && (methodName === "push" || methodName === "includes" || methodName === "indexOf" || methodName === "join"
+              || methodName === "pop" || methodName === "shift" || methodName === "unshift" || methodName === "reverse"
+              || methodName === "slice");
+          const arrayish = !vectorHandled && !isStringLikeType && (parsedIsVector(trimmed) || parsedIsStaticArray(trimmed)
             || trimmed.endsWith("[]") || mutableArrayVars.has(recvNode.text)
             || activeCArrayVars.has(recvNode.text));
           receiverMatches = arrayish;
@@ -550,18 +612,65 @@ export function tryLowerArrayAndStringMethods(
     const isVectorReceiver = receiverType !== undefined
       && (parsedIsVector(receiverType.trim()) || receiverType === "std::vector<auto>");
     if (isVectorReceiver
-      && (methodName === "push" || methodName === "includes" || methodName === "indexOf")) {
+      && (methodName === "push" || methodName === "includes" || methodName === "indexOf" || methodName === "join"
+        || methodName === "pop" || methodName === "shift" || methodName === "unshift" || methodName === "reverse"
+        || methodName === "slice")) {
       const receiverText = renderExprAsText(expressionToIR(receiverNode, sourceText, diagnostics, pointerVars));
       if (methodName === "push") {
         const argsText = expr.arguments.map(arg => renderPushArgForElement(arg, receiverNode, sourceText, diagnostics, pointerVars)).join(", ");
         return { kind: "raw", value: `${receiverText}.push_back(${argsText})` };
       }
+      if (methodName === "includes") {
+        const argText = expr.arguments.length > 0
+          ? renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars))
+          : "";
+        return { kind: "raw", value: `__tc_includes(${receiverText}, ${argText})` };
+      }
+      if (methodName === "join") {
+        // `.join(sep)` folds the elements into one std::string — the one
+        // string model made the old "exceeds the fixed-size string model"
+        // objection stale. The helper ships in the framework's vector
+        // polyfills (Zephyr: vector_methods; native: hosted-shim) and in
+        // __tc_StaticArray's own join member for promoted literals.
+        const joinSep = expr.arguments.length > 0
+          ? renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars))
+          : '""';
+        return { kind: "raw", value: `__tc_join(${receiverText}, ${joinSep})` };
+      }
+      // JS mutators with JS return contracts (pop/shift return the removed
+      // element, unshift the new length): a bare .pop_back() returns void and
+      // std::vector has no shift/unshift/reverse members at all.
+      if (methodName === "pop") {
+        return { kind: "raw", value: `__tc_pop(${receiverText})` };
+      }
+      if (methodName === "shift") {
+        return { kind: "raw", value: `__tc_shift(${receiverText})` };
+      }
+      if (methodName === "reverse") {
+        return { kind: "raw", value: `__tc_reverse(${receiverText})` };
+      }
+      if (methodName === "unshift") {
+        const unshiftArg = expr.arguments.length > 0
+          ? renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars))
+          : "";
+        return { kind: "raw", value: `__tc_unshift(${receiverText}, ${unshiftArg})` };
+      }
+      // slice: JS value semantics — a fresh vector each call. The helpers
+      // ship in the framework's vector polyfills (Zephyr: vector_methods;
+      // native: hosted array_methods).
+      if (methodName === "slice") {
+        const sliceArgs = expr.arguments.map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars)));
+        if (expr.arguments.length >= 2) {
+          return { kind: "raw", value: `__tc_slice2(${receiverText}, ${sliceArgs[0]}, ${sliceArgs[1]})` };
+        }
+        if (expr.arguments.length === 1) {
+          return { kind: "raw", value: `__tc_slice1(${receiverText}, ${sliceArgs[0]})` };
+        }
+        return { kind: "raw", value: `std::vector(${receiverText})` };
+      }
       const argText = expr.arguments.length > 0
         ? renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars))
         : "";
-      if (methodName === "includes") {
-        return { kind: "raw", value: `__tc_includes(${receiverText}, ${argText})` };
-      }
       return { kind: "raw", value: `__tc_indexOf(${receiverText}, ${argText})` };
     }
   }
@@ -766,7 +875,50 @@ function resolveReceiverCppType(receiverNode: ts.Expression): string | undefined
     }
     return undefined;
   }
+  // A method-call receiver (`this.lastOf(k).slice(0, 12)`, `stats.render()...`):
+  // resolve the receiver class (this → active class, identifier → scope type)
+  // and read the method's DECLARED return type from the class IR. Without this
+  // arm the call-result receiver resolved to undefined and ambiguous
+  // string/array methods on it fell through verbatim (g++: "no member named
+  // 'slice'").
+  if (ts.isCallExpression(receiverNode) && ts.isPropertyAccessExpression(receiverNode.expression)) {
+    const methodName = receiverNode.expression.name.text;
+    const recv = receiverNode.expression.expression;
+    let className: string | undefined;
+    if (recv.kind === ts.SyntaxKind.ThisKeyword) {
+      className = getActiveClassName();
+    } else if (ts.isIdentifier(recv)) {
+      const recvType = scope.locals.get(recv.text) ?? scope.globals.get(recv.text);
+      if (recvType) className = parsedBareString(recvType);
+    }
+    if (className) {
+      const cls = topLevelClasses.get(className) ?? hoistedNestedClasses.find(c => c.name === className);
+      const method = cls?.methods.find(m => m.name === methodName);
+      const declared = method?.returnType as string | undefined;
+      if (declared && declared !== "auto" && declared !== "void") {
+        return declared;
+      }
+    }
+    return undefined;
+  }
   return undefined;
+}
+
+/**
+ * Field type of an OBJECT-LITERAL TYPE ALIAS struct (`type Session = { laps:
+ * Lap[] }`) — the struct fields ride the alias node in the context snapshot
+ * (set by build-ir's Phase 0c alias collection). Class instances resolve
+ * through topLevelClasses; alias RECORDS resolve here. Returns undefined for
+ * unknown names / non-struct aliases.
+ */
+function aliasStructFieldType(aliasName: string, fieldName: string): string | undefined {
+  const aliasNode = typeAliasNodes.get(aliasName);
+  if (aliasNode === undefined || !ts.isTypeLiteralNode(aliasNode as ts.TypeNode)) return undefined;
+  const member = (aliasNode as ts.TypeLiteralNode).members
+    .filter(ts.isPropertySignature)
+    .find(m => ts.isIdentifier(m.name!) && (m.name as ts.Identifier).text === fieldName);
+  if (!member || member.type === undefined) return undefined;
+  return typeNodeToCppType(member.type, typeAliasNodes.snapshot());
 }
 
 /**

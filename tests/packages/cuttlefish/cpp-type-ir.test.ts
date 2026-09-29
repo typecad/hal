@@ -27,7 +27,7 @@ import {
   isPrimitive,
   bareType,
   elementOf,
-  formatKindOf,
+  snprintfTypeFormat,
   CppTypeIR,
 } from "../../../packages/cuttlefish/src/api/shared/cpp-type-ir";
 
@@ -263,15 +263,28 @@ describe("predicates", () => {
     expect(elementOf(parseCppType("int"))).toBeUndefined();
   });
 
-  it("formatKindOf buckets for snprintf dispatch", () => {
-    expect(formatKindOf(parseCppType("int"))).toBe("int");
-    expect(formatKindOf(parseCppType("uint8_t"))).toBe("uint");
-    expect(formatKindOf(parseCppType("long long"))).toBe("ulong");
-    expect(formatKindOf(parseCppType("double"))).toBe("float");
-    expect(formatKindOf(parseCppType("bool"))).toBe("bool");
-    expect(formatKindOf(parseCppType("std::string"))).toBe("string");
-    expect(formatKindOf(parseCppType("const char*"))).toBe("string");
-    expect(formatKindOf(parseCppType("Foo*"))).toBe("pointer");
+  it("snprintfTypeFormat — the ONE printf decision table", () => {
+    // The canonical mapping every snprintf-building site delegates to (the
+    // emit renderer and the HAL message ladder used to carry drifting
+    // copies; this test is the drift guard).
+    expect(snprintfTypeFormat("int").format).toBe("%d");
+    expect(snprintfTypeFormat("int32_t").format).toBe("%d");
+    expect(snprintfTypeFormat("uint8_t").format).toBe("%u");
+    expect(snprintfTypeFormat("uint32_t").format).toBe("%u");
+    expect(snprintfTypeFormat("long").format).toBe("%ld");
+    expect(snprintfTypeFormat("unsigned long").format).toBe("%lu");
+    expect(snprintfTypeFormat("long long").format).toBe("%lld");
+    expect(snprintfTypeFormat("int64_t").format).toBe("%lld");
+    expect(snprintfTypeFormat("double").format).toBe("%.15g");
+    expect(snprintfTypeFormat("bool").format).toBe("%s");
+    expect(snprintfTypeFormat("bool").isBool).toBe(true);
+    expect(snprintfTypeFormat("std::string").format).toBe("%s");
+    expect(snprintfTypeFormat("std::string").needsCStr).toBe(true);
+    expect(snprintfTypeFormat("const char*").format).toBe("%s");
+    expect(snprintfTypeFormat("const char*").needsCStr).toBe(false);
+    expect(snprintfTypeFormat("char").format).toBe("%c");
+    expect(snprintfTypeFormat("SomeStruct").recognized).toBe(false);
+    expect(snprintfTypeFormat("SomeStruct").format).toBe("%d");
   });
 });
 

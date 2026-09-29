@@ -633,6 +633,26 @@ export function callToStatement(
     };
   }
 
+  // ── super.method(args) as a statement — mirror the expression lowering ──
+  // `Base::method(args)` is a complete C++ expression statement (the base
+  // implementation invoked on `this`). Without this arm a statement-position
+  // call fell through to the generic method-call builder, which rendered the
+  // callee from the `super` node text.
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    call.expression.expression.kind === ts.SyntaxKind.SuperKeyword
+  ) {
+    const exprIR = expressionToIR(call, sourceText, diagnostics, pointerVars);
+    return {
+      kind: "call",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      callee: "__EXPR_STMT__",
+      args: [exprIR],
+    };
+  }
+
   // ── include() — compile-time C++ header registration ─────────────────────
   if (ts.isIdentifier(call.expression) && call.expression.text === "include") {
     const firstArg = call.arguments[0];

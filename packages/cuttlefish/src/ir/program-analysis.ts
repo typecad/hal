@@ -1045,6 +1045,14 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     if (typeName.includes("std::map<")) {
       result.usesStdMap = true;
     }
+    // A `new Set<string>()` declaration lowers to std::set<std::string> —
+    // the same declared-type channel maps flow through. The raw-text scan
+    // for usesSet only sees lowered helper text, so without this the <set>
+    // include never shipped (g++: "'set' in namespace 'std' does not name
+    // a template type").
+    if (typeName.includes("std::set<")) {
+      result.usesSet = true;
+    }
   }
 
   // Analyze UI callback bodies that live outside program.functions

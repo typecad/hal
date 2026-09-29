@@ -2,15 +2,16 @@
 import { Diagnostic } from "../../types.js";
 import { StatementIR, ExpressionIR, CppType } from "../../api/index.js";
 import { makeSourceSpan, extractNodeComments, makeDiagnostic } from "../ast-node-utils.js";
-import { PointerTracker, arrayLiteralSizes } from "../build-ir-state.js";
+import { PointerTracker, arrayLiteralSizes, objectTypeAliasNames, topLevelInterfaceNames } from "../build-ir-state.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
 import { CppTypeHint, inferExprCppType } from "../type-resolution.js";
+import { bareType, parseCppType } from "../../api/shared/cpp-type-ir.js";
 import { tryLowerRegisterWrite } from "./register-assignment.js";
-import { 
-  assignmentOperatorToString, 
-  updateLocalTypeFromAssignment, 
-  callToStatement 
+import {
+  assignmentOperatorToString,
+  updateLocalTypeFromAssignment,
+  callToStatement
 } from "../statement-to-ir.js";
 
 export { expressionToIR } from "../expression-to-ir.js";
@@ -115,6 +116,37 @@ export function expressionStatementToIR(
       "length-assign-unsupported",
     ));
     return undefined;
+  }
+
+  // `x = null` / `x = undefined` where x is a VALUE STRUCT (an object-literal
+  // type alias, `T | null` erased): null lowers to the nullptr identifier and
+  // the assignment emitted `current = CUTTLEFISH_UNDEFINED` — invalid against
+  // a non-scalar. Mirror the return-statement rule (demo #14 Finding A): the
+  // union strips to the struct, so "null" is the value-initialized `{}`.
+  if (
+    ts.isBinaryExpression(expr)
+    && expr.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    && (expr.right.kind === ts.SyntaxKind.NullKeyword || expr.right.kind === ts.SyntaxKind.UndefinedKeyword)
+    && (ts.isIdentifier(expr.left) || ts.isPropertyAccessExpression(expr.left))
+  ) {
+    const targetType = inferExprCppType(expr.left, functionReturnTypes, localVariableTypes, sourceText);
+    const bareTarget = targetType ? bareType(parseCppType(targetType)) : undefined;
+    const isValueStruct = !!bareTarget && bareTarget.kind === "named"
+      && !targetType!.includes("*")
+      && (objectTypeAliasNames.has(bareTarget.name) || topLevelInterfaceNames.has(bareTarget.name));
+    if (isValueStruct) {
+      const comments = extractNodeComments(statement, sourceText);
+      const targetIR = expressionToIR(expr.left, sourceText, diagnostics, pointerVars);
+      return {
+        kind: "assign",
+        sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        target: renderExprAsText(targetIR),
+        operator: "=",
+        value: { kind: "raw", value: "{}" },
+      };
+    }
   }
 
   // Handle this.field = value, obj.field = value, and compound assignments (+=, -=, etc.)

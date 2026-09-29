@@ -4,6 +4,7 @@ import { appendSourceLine, appendHeaderLine, appendRenderedStatement } from "./l
 import { createChildEmissionScope } from "../snprintf-helpers.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import { accessorGetterName, accessorSetterName } from "../utils/cpp-helpers.js";
+import { stampMutableRecordParams } from "../utils/param-mutation.js";
 import type { EmitterContext } from "./emitter-context.js";
 import { parseCppType, parsedIsPointer, parsedIsVector, parsedIsStringLike, isStaticArray } from "../../api/shared/cpp-type-ir.js";
 
@@ -440,7 +441,7 @@ export function emitClasses(ctx: EmitterContext): void {
       if (publicFields.length > 0) appendSourceLine(ctx, "");
 
       for (const method of publicMethods) {
-        const methodParams = renderParameters(method.parameters, true);
+        const methodParams = renderParameters(stampMutableRecordParams(method.parameters, method.statements), true);
         const staticPrefix = method.isStatic ? "static " : "";
         const returnType = normalizeCppTypeForTarget(method.returnType);
         if (method.isAbstract) {
@@ -536,7 +537,7 @@ export function emitClasses(ctx: EmitterContext): void {
       }
       if (privateFields.length > 0) appendSourceLine(ctx, "");
       for (const method of privateMethods) {
-        const methodParams = renderParameters(method.parameters, true);
+        const methodParams = renderParameters(stampMutableRecordParams(method.parameters, method.statements), true);
         const staticPrefix = method.isStatic ? "static " : "";
         const virtualSet = virtualMethodNames.get(classDef.name);
         const isVirtual = !method.isStatic && virtualSet?.has(method.name);
@@ -615,7 +616,7 @@ export function emitClasses(ctx: EmitterContext): void {
       }
       if (protectedFields.length > 0) appendSourceLine(ctx, "");
       for (const method of protectedMethods) {
-        const methodParams = renderParameters(method.parameters, true);
+        const methodParams = renderParameters(stampMutableRecordParams(method.parameters, method.statements), true);
         const staticPrefix = method.isStatic ? "static " : "";
         const virtualSet = virtualMethodNames.get(classDef.name);
         const isVirtual = !method.isStatic && virtualSet?.has(method.name);

@@ -151,6 +151,10 @@ export function hostedPolyfillIRs(): RuntimePolyfillIR[] {
         helperFunctions: [
           // ── Core array methods (existing) ───────────────────────────────
           'template<typename T> std::string __tc_join(const std::vector<T>& v, const std::string& delim) { std::ostringstream oss; for (size_t i = 0; i < v.size(); i++) { if (i > 0) oss << delim; oss << v[i]; } return oss.str(); }',
+          // JS String(v) for a template interpolation flattened at IR time
+          // (`${x}` as a map key). %.15g matches JS shortest-repr closely
+          // (integers bare, fraction without trailing zeros).
+          'inline std::string __tc_numToStr_js(double v) { char b[32]; (void)snprintf(b, sizeof(b), "%.15g", v); return std::string(b); }',
           'template<typename T> std::vector<T> __tc_slice2(const std::vector<T>& v, int start, int end) { if (end > static_cast<int>(v.size())) end = static_cast<int>(v.size()); return std::vector<T>(v.begin() + start, v.begin() + end); }',
           'template<typename T> std::vector<T> __tc_slice1(const std::vector<T>& v, int start) { return std::vector<T>(v.begin() + start, v.end()); }',
           'template<typename T> std::vector<T> __tc_reverse(std::vector<T> v) { std::reverse(v.begin(), v.end()); return v; }',

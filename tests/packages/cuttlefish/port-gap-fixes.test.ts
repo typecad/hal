@@ -389,14 +389,19 @@ describe("StaticArray wrapper methods round 2", () => {
     expect(out.cpp).toMatch(/int lastIndexOf\(T val\) const/);
   });
 
-  it("array.join fails loudly on a no-STL target", () => {
+  it("array.join lowers on every receiver shape (one string model)", () => {
+    // Zephyr carries full libstdc++ + std::string by value, so the fold has
+    // a real lowering on both shapes: array literals take __tc_StaticArray's
+    // join member, annotated/loop-pushed locals take the __tc_join vector
+    // helper. The old "fails loudly" contract is obsolete (sentence-router
+    // demo finding).
     const out = transpile(`
       const a = [1, 2, 3];
       const s = a.join("-");
       while (true) {}
     `, { strategy: zephyr(), target: 'zephyr' });
     const errs = (out.diagnostics ?? []).filter(d => d.severity === "error");
-    expect(errs.some(d => d.code === "array-join-unsupported")).toBe(true);
+    expect(errs.some(d => d.code === "array-join-unsupported")).toBe(false);
   });
 
   it("Map.keys() fails loudly instead of emitting m->keys()", () => {

@@ -545,33 +545,74 @@ export function elementOf(ir: CppTypeIR): CppTypeIR | undefined {
   }
 }
 
-/** Coarse kind bucket for the snprintf format-specifier dispatcher
- *  (`emit/snprintf-helpers.ts`). Replaces the `cppType === "int" || ...` ladder. */
-export type CppFormatKind = "bool" | "int" | "uint" | "long" | "ulong" | "float" | "string" | "char" | "pointer" | "other";
+// ---------------------------------------------------------------------------
+// THE printf-specifier decision.
+//
+// There are several snprintf-building sites (the emit renderer's
+// inferFormatSpecifier for expression-position concat/templates, the HAL
+// emitter's IR-time message-buffer ladder, …). Each used to carry its own
+// `cppType === "int" || …` chain, and the chains DRIFTED — a type shape one
+// ladder learned (a struct string field, a 64-bit cast) stayed %d in the
+// others, printing pointers as ints or truncating doubles. This function is
+// the single source of truth: given a C++ type, what conversion does snprintf
+// need? Callers keep their own RESOLUTION logic (how they discover the type);
+// the DECISION lives here only.
+// ---------------------------------------------------------------------------
 
-export function formatKindOf(ir: CppTypeIR): CppFormatKind {
-  // `char*` / `const char*` are C-strings (%s), not single chars (%c).
-  // Must be checked BEFORE the generic pointer branch.
-  if (isCharPointer(ir)) return "string";
-  // Any other pointer → %p-ish dispatch bucket. Checked before bareType()
-  // strips the pointer.
-  if (ir.kind === "pointer") return "pointer";
+export interface SnprintfTypeFormat {
+  /** The conversion specifier ("%s", "%.15g", "%d", …). */
+  format: string;
+  /** Append `.c_str()` to the argument (std::string-like types only). */
+  needsCStr: boolean;
+  /** Render booleans as `(x ? "true" : "false")` with `format` = "%s". */
+  isBool: boolean;
+  /**budget for the buffer-size estimate. */
+  estimatedLength: number;
+  /** False for types this classifier does not know (structs, enums, auto) —
+   *  callers with type-specific follow-ups (enum casts, fall-through
+   *  classification) branch on it; the default decision is still correct. */
+  recognized: boolean;
+}
+
+export function snprintfTypeFormat(cppType: string): SnprintfTypeFormat {
+  const UNRECOGNIZED: SnprintfTypeFormat = { format: "%d", needsCStr: false, isBool: false, estimatedLength: 12, recognized: false };
+  const ir = parseCppType(cppType);
+  // C-strings first: `char*`/`const char*` format %s WITHOUT .c_str() (they
+  // already are char buffers); std::string/strPtr format %s WITH it.
+  if (isCharPointer(ir)) {
+    return { format: "%s", needsCStr: false, isBool: false, estimatedLength: 128, recognized: true };
+  }
   const bare = bareType(ir);
-  if (bare.kind === "string" || bare.kind === "strPtr") return "string";
+  if (bare.kind === "string" || bare.kind === "strPtr") {
+    return { format: "%s", needsCStr: true, isBool: false, estimatedLength: 128, recognized: true };
+  }
   if (bare.kind === "primitive") {
     switch (bare.name) {
-      case "bool": return "bool";
-      case "char": case "signed char": case "unsigned char": return "char";
-      case "float": case "double": case "long double": return "float";
-      case "int": case "short": return "int";
-      case "unsigned int": case "unsigned short": case "uint8_t": case "uint16_t": return "uint";
-      case "long": case "int32_t": case "int64_t": return "long";
-      case "unsigned long": case "unsigned long long": case "long long":
-      case "uint32_t": case "uint64_t": case "size_t": case "uintptr_t": return "ulong";
-      default: return "other";
+      case "bool":
+        return { format: "%s", needsCStr: false, isBool: true, estimatedLength: 5, recognized: true };
+      case "float": case "double": case "long double":
+        // %.15g (not %g) so large integer-valued doubles don't collapse to
+        // scientific notation — matches JS Number.toString() more closely.
+        return { format: "%.15g", needsCStr: false, isBool: false, estimatedLength: 24, recognized: true };
+      case "char": case "signed char": case "unsigned char":
+        return { format: "%c", needsCStr: false, isBool: false, estimatedLength: 1, recognized: true };
+      case "long":
+        return { format: "%ld", needsCStr: false, isBool: false, estimatedLength: 12, recognized: true };
+      case "unsigned long":
+        return { format: "%lu", needsCStr: false, isBool: false, estimatedLength: 12, recognized: true };
+      case "long long": case "int64_t": case "uint64_t": case "unsigned long long":
+        return { format: "%lld", needsCStr: false, isBool: false, estimatedLength: 20, recognized: true };
+      case "unsigned int": case "unsigned short": case "uint8_t": case "uint16_t": case "uint32_t": case "size_t":
+        // Unsigned int-sized family → %u (int32_t/uint32_t are int/unsigned
+        // int typedefs on every supported target; %ld/%lu would trip -Wformat=).
+        return { format: "%u", needsCStr: false, isBool: false, estimatedLength: 12, recognized: true };
+      case "int": case "short": case "int8_t": case "int16_t": case "int32_t":
+        return { format: "%d", needsCStr: false, isBool: false, estimatedLength: 12, recognized: true };
+      default:
+        return UNRECOGNIZED;
     }
   }
-  return "other";
+  return UNRECOGNIZED;
 }
 
 /** True for `char*`, `const char*`, `signed char*`, etc. — C-strings, not

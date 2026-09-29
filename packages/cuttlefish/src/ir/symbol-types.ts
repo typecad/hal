@@ -86,7 +86,16 @@ export function bindIrTypeScopeLocals(
   locals: Map<string, CppTypeHint>,
 ): void {
   // Fold the threaded map's current entries into the already-re-seeded locals.
+  // `auto` entries are SKIPPED entirely: auto is the weakest inference (a
+  // pre-scan stub, an unannotated-object-literal guess) and several threaded
+  // maps carry stale copies of it. Propagating it let a stub SHADOW the
+  // concrete type the declaration recorded — the null-comparison guard then
+  // saw auto and emitted `current != CUTTLEFISH_UNDEFINED` against a struct
+  // value. Concrete types propagate; auto never travels through a fold.
   for (const [key, value] of locals) {
+    if (value === "auto") {
+      continue;
+    }
     scope.locals.set(key, value);
   }
 }

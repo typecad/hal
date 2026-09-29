@@ -1,0 +1,19 @@
+{
+  "name": "zephyr-crc-link",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload",
+    "monitor": "typecad-hal build --compile --upload --monitor",
+    "dev": "typecad-hal build --watch"
+  },
+  "dependencies": {
+    "@typecad/cuttlefish": "*",
+    "@typecad/hal": "*",
+    "@typecad/framework-zephyr": "*"
+  },
+  "description": "STM32 Black Pill CRC link — bit-banged frame encoding, CRC-8 checksums and hex-dump console reports via @typecad/framework-zephyr"
+}

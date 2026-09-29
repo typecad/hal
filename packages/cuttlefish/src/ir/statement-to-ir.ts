@@ -6,8 +6,10 @@ import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-
 import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName } from "./compile-time-only.js";
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveAliasedTypeNode } from "./type-resolution.js";
 import { escapeCppKeyword } from "../utils/strings.js";
-import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeEnumNames, activeStringEnumNames, resetFunctionScopeState, topLevelClassNames, topLevelClasses, requiredIncludes, mapEntryVarNames } from "./build-ir-state.js";
+import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeEnumNames, activeStringEnumNames, doubleWidenedVars, resetFunctionScopeState, topLevelClassNames, topLevelClasses, requiredIncludes, mapEntryVarNames } from "./build-ir-state.js";
 import { getCurrentIrTypeScope, bindIrTypeScopeLocals } from "./symbol-types.js";
+import { parsedElementString } from "../api/shared/cpp-type-ir.js";
+import { inferAliasFieldType } from "./type-resolution.js";
 import { calleeToText, renderExprAsText } from "./render-expr.js";
 import { expressionToIR } from "./expression-to-ir.js";
 import { enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders.js";
@@ -475,6 +477,112 @@ export function lowerStatementList(
     prescanArrayUsage(statement, !functionNameForDiagnostics);
   }
 
+  // Phase 2.7b: numeric-widening prescan. An unannotated `let sum = 0`
+  // infers `int` from the literal, but a later `sum += v` with a double v
+  // truncates EVERY accumulation step in C++ (JS numbers are f64 —
+  // 0 + 22.7 is 22.7; a thermostat's avg() silently rounded through int).
+  // Record int-literal-initialized, unannotated locals whose assigned RHS
+  // infers double; the declaration lowering widens them to double.
+  // Save/restore: if/for BRANCHES lower through nested lowerStatementList
+  // calls (control-flow.ts), each running this same prescan — without the
+  // restore, the nested call's reset+repopulate wiped the OUTER list's
+  // findings before its own `let sum = 0` lowered (an early `return` inside
+  // an if-branch was enough to lose the widening).
+  const prevDoubleWidened = new Set(doubleWidenedVars);
+  doubleWidenedVars.clear();
+  {
+    // For-of loop vars are declared during Phase 3 (after this prescan), so
+    // `sum += v` cannot see v's type yet. Pre-resolve them from the iterable
+    // through inferExprCppType — which now resolves property-field iterables
+    // through object-literal type aliases (`s.laps` on `s: Session`), so a
+    // record-typed parameter's field drives the element type too.
+    const forOfVarTypes = new Map<string, string>();
+    const collectForOfVars = (n: ts.Node): void => {
+      if (ts.isForOfStatement(n) && ts.isVariableDeclarationList(n.initializer)
+        && n.initializer.declarations.length === 1) {
+        const d = n.initializer.declarations[0];
+        if (ts.isIdentifier(d.name)) {
+          try {
+            const elem = inferExprCppType(n.expression, functionReturnTypes, localVariableTypes, sourceText);
+            const iterType = elem !== "auto" ? elem : undefined;
+            const elemType = iterType ? parsedElementString(iterType) : undefined;
+            if (elemType) forOfVarTypes.set(d.name.text, elemType);
+          } catch {
+            // best-effort prescan
+          }
+        }
+      }
+      ts.forEachChild(n, collectForOfVars);
+    };
+    for (const s of statements) collectForOfVars(s);
+    const exprIsDouble = (e: ts.Expression | undefined): boolean => {
+      if (!e) return false;
+      // "auto"/undefined for a not-yet-lowered identifier (a for-of loop
+      // var) is UNRESOLVED, not int — consult the pre-resolved element map.
+      const inferred = inferExprCppType(e, functionReturnTypes, localVariableTypes, sourceText);
+      // A field read on a for-of loop var (`lap.ms` — lap not yet typed at
+      // prescan time): resolve the field through the loop var's pre-resolved
+      // element type's alias record.
+      if ((inferred === undefined || inferred === "auto")
+        && ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.expression)
+        && forOfVarTypes.has(e.expression.text)) {
+        const fieldType = inferAliasFieldType(forOfVarTypes.get(e.expression.text)!, e.name.text);
+        if (fieldType === "double" || fieldType === "float") return true;
+        if (fieldType !== undefined && fieldType !== "auto") return false;
+      }
+      const t = (inferred === undefined || inferred === "auto") && ts.isIdentifier(e)
+        ? (forOfVarTypes.get(e.text) ?? inferred)
+        : inferred;
+      if (t === "double" || t === "float") return true;
+      if (t !== undefined && t !== "auto") return false;
+      // Unresolved (auto): a binary whose either side is double is double.
+      if (ts.isBinaryExpression(e)) {
+        return exprIsDouble(e.left) || exprIsDouble(e.right);
+      }
+      if (ts.isParenthesizedExpression(e)) return exprIsDouble(e.expression);
+      return false;
+    };
+    const eligibleNames = new Set<string>();
+    const collectEligible = (stmt: ts.Statement): void => {
+      if (ts.isVariableStatement(stmt)) {
+        for (const d of stmt.declarationList.declarations) {
+          // Only the int-literal-initialized, UNANNOTATED shape widens — an
+          // annotation is the user's explicit contract.
+          if (ts.isIdentifier(d.name) && d.type === undefined
+            && d.initializer && ts.isNumericLiteral(d.initializer) && Number.isInteger(Number(d.initializer.text))) {
+            eligibleNames.add(d.name.text);
+          }
+        }
+      }
+      ts.forEachChild(stmt, (c) => { if (ts.isStatement(c)) collectEligible(c); });
+    };
+    for (const s of statements) collectEligible(s);
+    const assignCarriesDouble = (name: string, root: ts.Node): boolean => {
+      let found = false;
+      const walk = (n: ts.Node): void => {
+        if (found) return;
+        if (ts.isBinaryExpression(n)
+          && (n.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken || n.operatorToken.kind === ts.SyntaxKind.EqualsToken)
+          && ts.isIdentifier(n.left) && n.left.text === name
+          && exprIsDouble(n.right)) {
+          found = true;
+          return;
+        }
+        ts.forEachChild(n, walk);
+      };
+      walk(root);
+      return found;
+    };
+    for (const name of eligibleNames) {
+      for (const s of statements) {
+        if (assignCarriesDouble(name, s)) {
+          doubleWidenedVars.add(name);
+          break;
+        }
+      }
+    }
+  }
+
   // Phase 3: Process remaining (non-function, non-class) statements.
   for (const statement of statements) {
     if (ts.isFunctionDeclaration(statement)) {
@@ -508,6 +616,13 @@ export function lowerStatementList(
   }
   for (const name of nestedClassNames) {
     nestedClassAliases.delete(name);
+  }
+
+  // Restore the enclosing statement list's widening findings (see the
+  // save at the Phase 2.7b prescan — nested branch lowerings replaced them).
+  doubleWidenedVars.clear();
+  for (const n of prevDoubleWidened) {
+    doubleWidenedVars.add(n);
   }
 
   if (isFunctionBodyCtx) {

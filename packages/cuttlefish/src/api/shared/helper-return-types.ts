@@ -38,6 +38,7 @@ export const HELPER_RETURN_TYPES: Readonly<Record<string, string>> = {
   __tc_toFixed: 'std::string',
   __tc_num_radix: 'std::string',
   __tc_join: 'std::string',
+  __tc_numToStr_js: 'std::string',
 
   // Boolean predicates.
   __tc_startsWith: 'bool',

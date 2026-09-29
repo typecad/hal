@@ -1,6 +1,7 @@
 ﻿import ts from "typescript";
 import { ExpressionIR } from "../api/index.js";
-import { nestedFunctionAliases, getContext } from "./build-ir-state.js";
+import { nestedFunctionAliases, getContext, activeEnumNames, activeStringEnumNames } from "./build-ir-state.js";
+import { getCurrentIrTypeScope } from "./symbol-types.js";
 import { escapeCppKeyword, escapeCppStringLiteral } from "../utils/strings.js";
 import { routeHALOp } from "../emit/route-hal-op.js";
 
@@ -70,7 +71,7 @@ export function renderExprAsText(expr: ExpressionIR): string {
     case "object":
       const fieldValues = expr.fields.map((f) => `${renderExprAsText(f.value)}`).join(", ");
       return `{ ${fieldValues} }`;
-    case "binary":
+    case "binary": {
       // JS `/` is real division even for int operands. Text rendered on the
       // IR side (string-method helper args, e.g. `__tc_toFixed(sum / n, 2)`)
       // previously baked integer division into the raw text — the emit-side
@@ -81,7 +82,56 @@ export function renderExprAsText(expr: ExpressionIR): string {
         const r = renderExprAsText(expr.right);
         return `static_cast<double>(${l}) / static_cast<double>(${r})`;
       }
+      // JS bitwise coercion (IR-flattened twin of the emit renderer's arm):
+      // `& | ^ << >>` coerce operands to int32; `>>>` also when the LEFT is
+      // floating. C++ `^`/`<<` on doubles is a hard error; helper args
+      // flattened here (`hexByte((v >> 4) & 0xF)` into a template part)
+      // never reach the emit-side cast. Only identifiers need the type
+      // lookup — literals are ints, and a recorded double/auto type means
+      // the operand must truncate through static_cast<int>.
+      if (["&", "|", "^", "<<", ">>", ">>>"].includes(expr.operator)) {
+        const floatText = (e: ExpressionIR): string | undefined => {
+          if (e.kind !== "identifier") return undefined;
+          const t = getCurrentIrTypeScope()?.locals.get(e.value) ?? getCurrentIrTypeScope()?.globals.get(e.value);
+          if (t === undefined || t === "auto" || t === "double" || t === "float") {
+            return renderExprAsText(e);
+          }
+          return undefined;
+        };
+        const lFloat = floatText(expr.left);
+        const rFloat = floatText(expr.right);
+        const l = lFloat !== undefined ? `static_cast<int>(${lFloat})` : renderExprAsText(expr.left);
+        const r = rFloat !== undefined ? `static_cast<int>(${rFloat})` : renderExprAsText(expr.right);
+        if (expr.operator === ">>>") {
+          return `(static_cast<unsigned int>(${lFloat ?? renderExprAsText(expr.left)}) >> ${r})`;
+        }
+        return `(${l} ${expr.operator} ${r})`;
+      }
+      // Numeric-enum operands in arithmetic/bitwise position: C++ enum class
+      // has NO implicit int conversion, so `mode + 1` flattened to raw text
+      // fails g++ ("no match for operator+ (Mode and int)"). The emit layer
+      // (renderBinary → castEnumOperandsForOperator) handles structured
+      // binaries; IR-flattened contexts (an `as Enum` wrapper flattens its
+      // inner expression) never reach it — mirror the cast here.
+      if (["+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>"].includes(expr.operator)) {
+        const leftIsStr = expr.left.kind === "string" || expr.left.kind === "string_concat" || expr.left.kind === "template_string";
+        const rightIsStr = expr.right.kind === "string" || expr.right.kind === "string_concat" || expr.right.kind === "template_string";
+        if (expr.operator !== "+" || (!leftIsStr && !rightIsStr)) {
+          const enumSafe = (e: ExpressionIR, text: string): string => {
+            if (e.kind !== "identifier") return text;
+            const t = getCurrentIrTypeScope()?.locals.get(e.value) ?? getCurrentIrTypeScope()?.globals.get(e.value);
+            if (t && activeEnumNames.has(t) && !activeStringEnumNames.has(t)) {
+              return `static_cast<int>(${text})`;
+            }
+            return text;
+          };
+          const l = renderExprAsText(expr.left);
+          const r = renderExprAsText(expr.right);
+          return `${enumSafe(expr.left, l)} ${expr.operator} ${enumSafe(expr.right, r)}`;
+        }
+      }
       return `${renderExprAsText(expr.left)} ${expr.operator} ${renderExprAsText(expr.right)}`;
+    }
     case "unary":
       return `${expr.operator}${renderExprAsText(expr.operand)}`;
     case "property-access": {
@@ -112,9 +162,25 @@ export function renderExprAsText(expr: ExpressionIR): string {
         return `${renderExprAsText(receiverExpr)}.${methodName}(${argsText})`;
       }
       const argsText = expr.args.map(a => renderExprAsText(a)).join(", ");
-      return `${expr.callee}(${argsText})`;
+      // Rest-parameter functions take ONE vector — collect plain args into
+      // the braced init, mirroring renderMethodCall. IR-flattened contexts
+      // (a call interpolated into a template literal) used to emit
+      // `sum(1, 2, 3)` bare against a `const std::vector<double>&` param.
+      const restElementType = (expr as { restElementType?: string }).restElementType;
+      const restHasSpread = (expr as { restHasSpread?: boolean }).restHasSpread;
+      const finalArgs = restElementType && !restHasSpread
+        ? `std::vector<${restElementType}>{${argsText}}`
+        : argsText;
+      return `${expr.callee}(${finalArgs})`;
     }
     case "template_string":
+      // NOTE: deliberately a passthrough. A template string is JS's
+      // toString(), but this flattener feeds BOTH pure-IR consumers (map
+      // keys — see the element-access conversion in expression-to-ir) and
+      // emit-side snprintf part builders that classify and format the text
+      // themselves. Wrapping here broke the latter (a part pre-wrapped in a
+      // string helper hit a %d/%g slot as std::string). The map-key sites
+      // that genuinely need a string convert at their own edge.
       return renderExprAsText(expr.expression);
     case "string_concat":
       return expr.parts.map(p => renderExprAsText(p)).join(" + ");

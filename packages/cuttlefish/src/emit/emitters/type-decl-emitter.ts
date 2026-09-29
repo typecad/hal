@@ -253,6 +253,17 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
     if (statement.kind === "var_decl" && statement.initializer && isRuntimeExpression(statement.initializer)) {
       continue;
     }
+    // Split-mode object-literal vars are owned by emitPostClassDeclarations
+    // (phase 8): it synthesizes the `_name_t` struct into the HEADER and the
+    // definition after the classes. Rendering the var here TOO emitted a
+    // second definition (g++ "redefinition of 'struct _bounds_t'") and put
+    // this phase's header extern BEFORE the phase-8 struct definition
+    // ("'_bounds_t' does not name a type").
+    if (statement.kind === "var_decl"
+      && effectiveEmitMode === "split"
+      && statement.initializer?.kind === "object") {
+      continue;
+    }
     appendRenderedStatement(ctx, statement, "", topLevelScope);
   }
   if (emittedTopLevelStatements.some(s =>
@@ -269,6 +280,10 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
     let emitted = false;
     for (const statement of emittedTopLevelStatements) {
       if (statement.kind !== "var_decl") continue;
+      // Object-literal vars: emitPostClassDeclarations (phase 8) owns the
+      // struct definition AND its extern — an extern here would precede the
+      // struct definition it names ("'_bounds_t' does not name a type").
+      if (statement.initializer?.kind === "object") continue;
       const runtimeInit = !!(statement.initializer && isRuntimeExpression(statement.initializer));
       if (runtimeInit && statement.cppType === "auto") continue; // no concrete type to extern
       let cppType = strategy.normalizeCppType(statement.cppType);

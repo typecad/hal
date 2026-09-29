@@ -255,8 +255,8 @@ describe('FIX 6: snprintf specifier classification', () => {
       UART0.writeLine(\`t=\${counts.has('a') ? counts.get('a') : 0}\`);
     `);
 
-    expect(r.cpp).toMatch(/"v=%g", counts\.at\("a"\)/);
-    expect(r.cpp).toMatch(/%g", \(\(counts\.count\("a"\) > 0\) \? counts\.at\("a"\) : 0\)/);
+    expect(r.cpp).toMatch(/"v=%.15g", counts\.at\("a"\)/);
+    expect(r.cpp).toMatch(/%.15g", \(\(counts\.count\("a"\) > 0\) \? counts\.at\("a"\) : 0\)/);
   });
 
   it('Math.PI keeps double precision (no float-demoting f suffix)', () => {

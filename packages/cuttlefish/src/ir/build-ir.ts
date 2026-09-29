@@ -7,13 +7,13 @@ import type { HALOpIR } from "../api/shared/hal-op-ir.js";
 import { EnumIR, ClassIR, FunctionIR, ImportIR, InterfaceIR, NamespaceIR, ProgramIR, ReExportIR, RegisterClassIR, StatementIR, TypeAliasIR } from "../api/index.js";
 import { isStringEnum } from "../api/shared/index.js";
 import type { ParameterIR } from "../api/shared/ir-core.js";
-import { makeDiagnostic } from "./ast-node-utils.js";
+import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils.js";
 import { buildFunctionReturnTypeMap, CppTypeHint, typeNodeToCppType } from "./type-resolution.js";
 import { getCurrentIrTypeScope } from "./symbol-types.js";
 import { tryResolveBoardDefFile, findGeneratedBoard, readGeneratedBoardConstants, BoardConstants } from "./board-resolver.js";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage.js";
 import { runProgramValidations } from "./validation-orchestrator.js";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinForwardMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, isrHandlerFunctions, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers, userDeclaredVarNames } from "./build-ir-state.js";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, arrayPushCounts, peripheralAliasMap, pinAliasMap, mcuPinForwardMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, objectTypeAliasNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, isrHandlerFunctions, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers, userDeclaredVarNames } from "./build-ir-state.js";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir.js";
 import { registerUIModuleImport, registerElementValue, recordClickHandler, recordBinding } from "./transformers/ui-call-resolver.js";
 import { requireUIHook } from "../ui-hook.js";
@@ -272,10 +272,39 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
   // structs (value types), so a variable of an interface type is a value —
   // never null. Registering the names here (before any statement lowering)
   // lets the null-comparison guard in expression-to-ir recognise such values
-  // as value types. Demo #18 Finding A.
+  // as value types. Demo #18 Finding A. Object-literal TYPE ALIASES
+  // (`type Reading = { mv: number }`) lower to concrete value structs the
+  // same way and register alongside — without this, `let r: Reading | null
+  // = null; r === null` emitted `r == 0` against a struct (g++: no match
+  // for operator==).
   for (const statement of source.statements) {
     if (ts.isInterfaceDeclaration(statement) && statement.name) {
       topLevelInterfaceNames.add(statement.name.text);
+    }
+    if (ts.isTypeAliasDeclaration(statement) && statement.name
+      && ts.isTypeLiteralNode(statement.type)) {
+      objectTypeAliasNames.add(statement.name.text);
+    }
+  }
+  // Phase 0a-2: register this file's STRING enums BEFORE the class pre-scan
+  // below. classDeclarationToIR resolves every member's annotated types, and
+  // a string enum used as a type (`kind(): FieldKind`) maps to std::string
+  // only when activeStringEnumNames already knows it — the pre-scan used to
+  // run first, baking the raw enum name into method return types (and via
+  // the "enum stress test" var branch, `const char*` locals) even though the
+  // real pass re-lowered them correctly; the stale pre-scan IR answered
+  // inferExprCppType for locals in OTHER files.
+  for (const statement of source.statements) {
+    if (!ts.isEnumDeclaration(statement) || !statement.name) continue;
+    let any = false;
+    let all = true;
+    for (const member of statement.members) {
+      if (member.initializer && ts.isStringLiteral(member.initializer)) any = true;
+      else all = false;
+    }
+    if (any && all) {
+      activeStringEnumNames.add(statement.name.text);
+      activeEnumNames.add(statement.name.text);
     }
   }
   for (const statement of localClassDeclarations) {
@@ -297,13 +326,28 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
   // a for-of loop var over a late-declared array). The real declaration
   // lowering later overwrites the entry with its final type (variables.ts
   // writes globals.set unconditionally), so a coarse pre-scan type is safe.
+  // Collect the file's type-alias nodes FIRST: the pre-scan must resolve
+  // alias-annotated declarations (`let current: Session | null`) through
+  // them. With an empty map the union resolved to a stale `auto` stub, and
+  // the while-body's locals fold wrote that stub OVER the declaration's
+  // correct entry — the null-comparison guard then saw auto and emitted
+  // `current != CUTTLEFISH_UNDEFINED` against a struct value.
+  for (const statement of source.statements) {
+    if (ts.isTypeAliasDeclaration(statement)) {
+      typeAliasNodes.set(statement.name.text, statement.type);
+      if (ts.isUnionTypeNode(statement.type) && statement.type.types.every(ts.isTypeLiteralNode)) {
+        const variantNames = statement.type.types.map((_, i) => `_${statement.name.text}_Variant_${i}`);
+        discriminatedUnionVariantNames.set(statement.name.text, variantNames);
+      }
+    }
+  }
   for (const statement of source.statements) {
     if (!ts.isVariableStatement(statement)) continue;
     for (const decl of statement.declarationList.declarations) {
       if (!ts.isIdentifier(decl.name) || decl.type === undefined && decl.initializer === undefined) continue;
       let hinted: CppTypeHint | undefined;
       if (decl.type) {
-        hinted = typeNodeToCppType(decl.type, undefined);
+        hinted = typeNodeToCppType(decl.type, typeAliasNodes);
       } else if (decl.initializer) {
         const init = decl.initializer;
         if (ts.isNewExpression(init) && ts.isIdentifier(init.expression)) {
@@ -330,6 +374,40 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
   }
 
   const functionReturnTypes = buildFunctionReturnTypeMap(source);
+  // Inline TYPE-LITERAL return annotations (`function f(): { a: number }`)
+  // have no C++ name — typeNodeToCppType emits junk for them and the function
+  // lowered to void ("return-statement with a value, in function returning
+  // 'void'"). Synthesize a named struct alias per such function — the same
+  // mechanism that gives object-literal vars a `_name_t` — register it in the
+  // alias IR list (the type-decl emitter renders the struct) and override the
+  // return-type map entry.
+  for (const statement of source.statements) {
+    if (!ts.isFunctionDeclaration(statement) || !statement.name || !statement.type) continue;
+    // Only a GENUINELY INLINE annotation synthesizes. Resolving aliases here
+    // (`: Reading` unwraps to Reading's type literal) made every alias-returning
+    // function shadow its real return type with a synthetic struct — call
+    // sites then passed _makeReading_ret_t where Reading was expected.
+    if (!ts.isTypeLiteralNode(statement.type)) continue;
+    const returnTypeNode = statement.type;
+    const structName = `_${statement.name.text}_ret_t`;
+    const structFields = returnTypeNode.members
+      .filter(ts.isPropertySignature)
+      .filter(m => ts.isIdentifier(m.name!))
+      .map(m => ({
+        name: (m.name as ts.Identifier).text,
+        cppType: typeNodeToCppType(m.type, typeAliasNodes),
+      }));
+    if (structFields.length === 0) continue;
+    typeAliases.push({
+      name: structName,
+      sourceSpan: makeSourceSpan(statement, fileName, sourceText),
+      leadingComments: [],
+      trailingComments: [],
+      cppType: structName,
+      structFields,
+    });
+    functionReturnTypes.set(statement.name.text, structName as CppTypeHint);
+  }
   // Expose return types on the compilation context so UI callbacks / timers
   // can resolve helper types without every call site threading the map.
   getContext().activeFunctionReturnTypes.clear();
@@ -357,13 +435,35 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
     if (!resolvedPath) continue;
     try {
       const importedSource = fs.readFileSync(resolvedPath, "utf8");
+      const importedParsed = parseSource(resolvedPath, importedSource);
       const importedEnumNames = scanSourceForEnumNames(importedSource);
+      // String-ness must travel with the name: an IMPORTED string enum used
+      // as a type annotation (`get phase(): Phase`) maps to std::string at
+      // typeNodeToCppType, which consults activeStringEnumNames — without
+      // this registration the importing file's context didn't know Phase is
+      // a string enum and emitted `Phase getPhase()` (a namespace, not a
+      // type: g++ "'Phase' does not name a type").
+      const collectImportedStringEnums = (node: ts.Node): void => {
+        if (ts.isEnumDeclaration(node) && node.name) {
+          let any = false;
+          let all = true;
+          for (const member of node.members) {
+            if (member.initializer && ts.isStringLiteral(member.initializer)) any = true;
+            else all = false;
+          }
+          if (any && all) importedEnumNames.add(`__string__:${node.name.text}`);
+        }
+        ts.forEachChild(node, collectImportedStringEnums);
+      };
+      collectImportedStringEnums(importedParsed);
       for (const name of imp.namedImports) {
         if (importedEnumNames.has(name)) {
           activeEnumNames.add(name);
         }
+        if (importedEnumNames.has(`__string__:${name}`)) {
+          activeStringEnumNames.add(name);
+        }
       }
-      const importedParsed = parseSource(resolvedPath, importedSource);
       const importedFnReturnTypes = buildFunctionReturnTypeMap(importedParsed);
       for (const [fnName, returnType] of importedFnReturnTypes) {
         if (imp.namedImports.includes(fnName) && returnType !== "auto") {
@@ -381,7 +481,11 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
 
   for (const statement of source.statements) {
     if (ts.isTypeAliasDeclaration(statement)) {
-      typeAliasNodes.set(statement.name.text, statement.type);
+      // Mirror into the context snapshot — IR-side consumers without the
+      // threaded map (the HAL snprintf ladder's struct-field resolution)
+      // read it from there. (The threaded typeAliasNodes map was already
+      // populated before Phase 0c — see the union-stub fix there.)
+      getContext().typeAliasNodes.set(statement.name.text, statement.type);
       if (ts.isUnionTypeNode(statement.type) && statement.type.types.every(ts.isTypeLiteralNode)) {
         const variantNames = statement.type.types.map((_, i) => `_${statement.name.text}_Variant_${i}`);
         discriminatedUnionVariantNames.set(statement.name.text, variantNames);
@@ -394,6 +498,43 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
   // module-level (cross-call accumulators; see moduleArrayLiteralVars).
   for (const statement of source.statements) {
     prescanArrayUsage(statement, true);
+  }
+  // …AND inside function/class bodies, BEFORE any module statement lowers.
+  // A module-level array mutated from a function body (`journal.push(...)` in
+  // logReading) used to register its mutation only when the FUNCTION lowered —
+  // by then the module declaration had already promoted the array to
+  // __tc_StaticArray (with a capacity counted from static push sites), while
+  // every function-body access lowered through the std::vector path —
+  // declaration and uses disagreed ("could not convert journal from
+  // __tc_StaticArray<Reading,2> to std::vector<Reading>"). Scanning the bodies
+  // here with function-scope semantics (moduleScope=false) completes
+  // functionScopeMutatedArrays/moduleArrayLiteralVars in time: the array
+  // stays std::vector everywhere.
+  // Push COUNTS are restored after: each body re-scans (and re-counts) when
+  // its own lowerStatementList runs — double-counting shifted bounded
+  // StaticArray capacities (2 elements + 1 push + 2 slack = 5 became 6).
+  {
+    const savedPushCounts = new Map(arrayPushCounts);
+    for (const statement of source.statements) {
+      if (ts.isFunctionDeclaration(statement) && statement.body) {
+        for (const s of statement.body.statements) {
+          prescanArrayUsage(s, false);
+        }
+      } else if (ts.isClassDeclaration(statement)) {
+        for (const member of statement.members) {
+          const body = (member as { body?: ts.Block }).body;
+          if (body) {
+            for (const s of body.statements) {
+              prescanArrayUsage(s, false);
+            }
+          }
+        }
+      }
+    }
+    arrayPushCounts.clear();
+    for (const [k, v] of savedPushCounts) {
+      arrayPushCounts.set(k, v);
+    }
   }
 
   // Resolve board-definition constants BEFORE IR building so the HAL resolver

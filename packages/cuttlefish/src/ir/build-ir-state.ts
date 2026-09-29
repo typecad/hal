@@ -1,6 +1,7 @@
 ﻿import type { FunctionIR, ClassIR, EnumIR, InterfaceIR, TypeAliasIR, ExpressionIR } from "../api/index.js";
 import type { HALOpIR } from "../api/shared/hal-op-ir.js";
 import type { PlatformStrategy } from "../api/shared/index.js";
+import type ts from "typescript";
 import type { Diagnostic } from "../types.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { BoardConstants, getDefaultBoardConstants } from "./board-resolver.js";
@@ -95,6 +96,11 @@ export class CompilationContext {
   // reference types / pointers) so the null-comparison guard in
   // expression-to-ir can recognize an interface-typed value as a value type.
   topLevelInterfaceNames = new Set<string>();
+  /** Type aliases of object-literal types (`type Reading = { mv: number }`) —
+   *  they lower to CONCRETE value structs (unlike interfaces, which are
+   *  abstract and pointer-typed). Consumed by the null-comparison guard: a
+   *  local of such a type is a value and never null. */
+  objectTypeAliasNames = new Set<string>();
   classTypeNames = new Set<string>();
   activeEnumNames = new Set<string>();
   // Every user-declared VARIABLE name in the current file (top-level, function
@@ -136,6 +142,19 @@ export class CompilationContext {
    *  accesses can resolve the enclosing class's getters. */
   activeClassName: string | undefined = undefined;
   contextId = Math.random().toString(36).slice(2, 8);
+
+  /** Statement-list-scoped: int-literal-initialized, unannotated locals that
+   *  a later `+=`/`=` assigns a double RHS (JS numbers are f64; keeping the
+   *  inferred int truncated every accumulation step). Populated by the
+   *  numeric-widening prescan in statement-to-ir; consumed by the var-decl
+   *  lowering. */
+  doubleWidenedVars = new Set<string>();
+
+  /** File-scoped snapshot of the current file's type-alias → type-node map
+   *  (the threaded map is per-function; IR-side consumers that classify
+   *  struct-field reads — the HAL snprintf ladder — read this snapshot).
+   *  Set by buildProgramIR right after the threaded map is created. */
+  typeAliasNodes = new Map<string, unknown>();
 
   halInstances = new Map<string, HALInstance>();
   /**
@@ -308,6 +327,7 @@ export const filteredArrayLengthVars = createMapProxy(ctx => ctx.filteredArrayLe
 export const activeNamespaceNames = createSetProxy(ctx => ctx.activeNamespaceNames);
 export const topLevelClassNames = createSetProxy(ctx => ctx.topLevelClassNames);
 export const topLevelInterfaceNames = createSetProxy(ctx => ctx.topLevelInterfaceNames);
+export const objectTypeAliasNames = createSetProxy(ctx => ctx.objectTypeAliasNames);
 export const classTypeNames = createSetProxy(ctx => ctx.classTypeNames);
 export const activeEnumNames = createSetProxy(ctx => ctx.activeEnumNames);
 export const userDeclaredVarNames = createSetProxy(ctx => ctx.userDeclaredVarNames);
@@ -342,6 +362,13 @@ export function enterThrowExpression(): void { throwExpressionDepth += 1; }
 export function exitThrowExpression(): void { throwExpressionDepth -= 1; }
 export const restParamFunctions = createMapProxy(ctx => ctx.restParamFunctions);
 export const activeFunctionReturnTypes = createMapProxy(ctx => ctx.activeFunctionReturnTypes);
+export const doubleWidenedVars = createSetProxy(ctx => ctx.doubleWidenedVars);
+export const typeAliasNodes = {
+  clear(): void { getContext().typeAliasNodes.clear(); },
+  get(name: string): unknown | undefined { return getContext().typeAliasNodes.get(name); },
+  /** A real Map copy — typeNodeToCppType wants a genuine Map<string, ts.TypeNode>. */
+  snapshot(): Map<string, ts.TypeNode> { return new Map(getContext().typeAliasNodes as Map<string, ts.TypeNode>); },
+};
 
 export function getActiveExtendsClass(): string | undefined { return getContext().activeExtendsClass; }
 export function getActiveClassName(): string | undefined { return getContext().activeClassName; }
@@ -466,6 +493,8 @@ export function resetBuildState(): void {
   activeNamespaceNames.clear();
   topLevelClassNames.clear();
   topLevelInterfaceNames.clear();
+  objectTypeAliasNames.clear();
+  typeAliasNodes.clear();
   classTypeNames.clear();
   activeEnumNames.clear();
   activeStringEnumNames.clear();
@@ -539,6 +568,12 @@ export function resetFunctionScopeState(): void {
   // sizing facts, and cross-function staleness only ever over-sizes or routes
   // to std::vector, both safe.)
   mapEntryVarNames.clear();
+  // NOTE: doubleWidenedVars is deliberately NOT cleared here. It is managed
+  // by the numeric-widening prescan's save/clear/restore discipline in
+  // lowerStatementList — clearing in this reset (which runs at Phase 2.7,
+  // BEFORE the prescan's save at 2.7b) made a nested branch lowering wipe
+  // the OUTER list's findings after the save had already captured an empty
+  // set.
   // Clear the function-scoped portion of the current IrTypeScope (locals) and
   // re-seed it from classFields so `this->field` lookups keep resolving in the
   // next method. Mirrors the old behavior where resetFunctionScopeState copied
@@ -548,6 +583,14 @@ export function resetFunctionScopeState(): void {
   if (scope) {
     resetIrTypeScopeFunctionState(scope);
   }
-  getContext().activeExtendsClass = undefined;
-  getContext().activeClassName = undefined;
+  // activeClassName / activeExtendsClass are deliberately NOT cleared here.
+  // They are CLASS-member-scoped, not function-scoped: declaration-builders
+  // sets them around each member body (and clears extends per member, name at
+  // the class end). Clearing them in this reset used to wipe the values
+  // between that set and the first lowered statement of every method body —
+  // so `super.method()` / `super.prop` inside a method evaluated as "outside
+  // of class method", and the `this.getter` accessor path read
+  // getActiveClassName() === undefined (falling back to a plain field read).
+  // Nested lowerStatementList calls (arrow callbacks inside a method) keep
+  // the enclosing class visible, which is exactly JS `super` semantics.
 }

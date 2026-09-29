@@ -1,6 +1,6 @@
 ﻿import ts from "typescript";
 import { ExpressionIR, HALOpIR } from "../../api/index.js";
-import { requiredIncludes, registeredCallbacks, isrHandlerFunctions, activeStringVars, TYPED_ARRAY_ELEMENT_MAP, getContext, floatVariables, halInstances, getCurrentBoardConstants, markHalOpResolved, topLevelClasses, crossModuleFunctionReturns, activeEnumNames, activeStringEnumNames } from "../build-ir-state.js";
+import { requiredIncludes, registeredCallbacks, isrHandlerFunctions, activeStringVars, TYPED_ARRAY_ELEMENT_MAP, getContext, floatVariables, halInstances, getCurrentBoardConstants, markHalOpResolved, topLevelClasses, crossModuleFunctionReturns, activeEnumNames, activeStringEnumNames, typeAliasNodes } from "../build-ir-state.js";
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { parsedElementString, parseCppType, renderCppType } from "../../api/shared/cpp-type-ir.js";
 import { HELPER_RETURN_TYPES, helperNameFromText } from "../../api/shared/helper-return-types.js";import { renderExprAsText } from "../render-expr.js";
@@ -8,6 +8,8 @@ import { escapeCppKeyword, escapeCppStringLiteral } from "../../utils/strings.js
 import { HALInstance, halClassRegistry, halGlobalFunctions, HALMethodEntry } from "./hal-parser.js";
 import { tryResolveSemanticCall, tryResolveBoardResolveArg, tryResolveCompoundSemanticReturn, resolveConcatPath } from "./hal-plugins.js";
 import { cppTypeForHalOp } from "../../emit/utils/hal-op-cpp-type.js";
+import { snprintfTypeFormat } from "../../api/shared/cpp-type-ir.js";
+import { typeNodeToCppType } from "../type-resolution.js";
 
 /** Escape C++ keywords in resolved text, but only when the text looks like a
  *  variable reference (not a literal like "false", "true", "42", or a string). */
@@ -948,6 +950,23 @@ export function buildSnprintfFromConcat(
   const args: string[] = [];
   let estimatedLength = 1;
   const prelude: string[] = [];
+  // THE shared type→conversion decision (api/shared/cpp-type-ir.ts). Each arm
+  // below only RESOLVES a type (from the class IR, the alias snapshot, the
+  // scope maps, …); what format that type needs lives in one place. Before
+  // this helper every arm carried its own if-chain and the chains drifted
+  // (a shape one arm learned stayed %d in the others).
+  const pushTyped = (type: string | undefined, argText: string): void => {
+    const f = snprintfTypeFormat(type ?? "");
+    if (f.isBool) {
+      formatString += f.format;
+      args.push(`(${argText} ? "true" : "false")`);
+      estimatedLength += f.estimatedLength;
+      return;
+    }
+    formatString += f.format;
+    args.push(f.needsCStr ? cstrForVarargs(argText, type!) : argText);
+    estimatedLength += f.estimatedLength;
+  };
 
   requiredIncludes.add("<stdio.h>");
 
@@ -1110,10 +1129,8 @@ export function buildSnprintfFromConcat(
             ? getCurrentIrTypeScope()?.locals.get(baseName) ?? getCurrentIrTypeScope()?.globals.get(baseName)
             : undefined;
           const elemType = baseType ? parsedElementString(baseType) : undefined;
-          if (elemType && (elemType === "const char*" || elemType === "char*" || elemType === "std::string")) {
-            formatString += "%s";
-            args.push(cstrForVarargs(text, elemType));
-            estimatedLength += 32;
+          if (elemType) {
+            pushTyped(elemType, text);
           } else {
             formatString += "%g";
             args.push(text);
@@ -1145,18 +1162,8 @@ export function buildSnprintfFromConcat(
               if (gAcc) { methodReturn = gAcc.returnType; break; }
             }
           }
-          if (methodReturn === "const char*" || methodReturn === "char*" || methodReturn === "std::string") {
-            formatString += "%s";
-            args.push(cstrForVarargs(text, methodReturn));
-            estimatedLength += 128;
-          } else if (methodReturn === "float" || methodReturn === "double") {
-            formatString += "%g";
-            args.push(text);
-            estimatedLength += 16;
-          } else if (methodReturn === "bool") {
-            formatString += "%s";
-            args.push(`(${text} ? "true" : "false")`);
-            estimatedLength += 5;
+          if (methodReturn) {
+            pushTyped(methodReturn, text);
           } else {
             formatString += "%d";
             args.push(text);
@@ -1170,23 +1177,7 @@ export function buildSnprintfFromConcat(
           // Method-call IR carrying its resolved return type (getter-access
           // lowering attaches cppType) — classify directly from it.
           const callType = (part.expression as { cppType?: string }).cppType;
-          if (callType === "const char*" || callType === "char*" || callType === "std::string") {
-            formatString += "%s";
-            args.push(cstrForVarargs(text, callType));
-            estimatedLength += 128;
-          } else if (callType === "float" || callType === "double") {
-            formatString += "%g";
-            args.push(text);
-            estimatedLength += 16;
-          } else if (callType === "bool") {
-            formatString += "%s";
-            args.push(`(${text} ? "true" : "false")`);
-            estimatedLength += 5;
-          } else {
-            formatString += "%d";
-            args.push(text);
-            estimatedLength += 12;
-          }
+          pushTyped(callType, text);
         } else if (
           part.kind === "template_string"
           && part.expression.kind === "call"
@@ -1198,18 +1189,8 @@ export function buildSnprintfFromConcat(
           // default and printed a POINTER VALUE on device.
           const callExpr = part.expression as { callee: string };
           const fnReturn = crossModuleFunctionReturns.get(callExpr.callee);
-          if (fnReturn === "const char*" || fnReturn === "char*" || fnReturn === "std::string") {
-            formatString += "%s";
-            args.push(cstrForVarargs(text, fnReturn));
-            estimatedLength += 128;
-          } else if (fnReturn === "float" || fnReturn === "double") {
-            formatString += "%g";
-            args.push(text);
-            estimatedLength += 16;
-          } else if (fnReturn === "bool") {
-            formatString += "%s";
-            args.push(`(${text} ? "true" : "false")`);
-            estimatedLength += 5;
+          if (fnReturn) {
+            pushTyped(fnReturn, text);
           } else {
             formatString += "%d";
             args.push(text);
@@ -1230,23 +1211,7 @@ export function buildSnprintfFromConcat(
             const field = cls?.fields.find(f => f.name === staticMatch[2]);
             staticType = field?.cppType as string | undefined;
           }
-          if (staticType === "float" || staticType === "double") {
-            formatString += "%g";
-            args.push(text);
-            estimatedLength += 16;
-          } else if (staticType === "bool") {
-            formatString += "%s";
-            args.push(`(${text} ? "true" : "false")`);
-            estimatedLength += 5;
-          } else if (staticType === "const char*" || staticType === "char*" || staticType === "std::string") {
-            formatString += "%s";
-            args.push(cstrForVarargs(text, staticType));
-            estimatedLength += 128;
-          } else {
-            formatString += "%d";
-            args.push(text);
-            estimatedLength += 12;
-          }
+          pushTyped(staticType, text);
         } else if (/[.>](?:at|get)\(/.test(text)) {
           // A std::map value read (`m.get(k)` lowers to `m.at(k)` / `m[k]`),
           // including a ternary over one (`m.has(k) ? m.get(k) : 0`): resolve
@@ -1259,14 +1224,50 @@ export function buildSnprintfFromConcat(
             : undefined;
           const mapIr = mapType !== undefined ? parseCppType(mapType) : undefined;
           const valueType = mapIr?.kind === "map" ? renderCppType(mapIr.value) : undefined;
-          if (valueType === "const char*" || valueType === "char*" || valueType === "std::string") {
-            formatString += "%s";
-            args.push(cstrForVarargs(text, valueType));
-            estimatedLength += 32;
-          } else if (valueType !== undefined) {
-            formatString += "%g";
+          if (valueType) {
+            pushTyped(valueType, text);
+          } else {
+            formatString += "%d";
             args.push(text);
-            estimatedLength += 16;
+            estimatedLength += 12;
+          }
+        } else if (
+          part.kind === "template_string"
+          && part.expression.kind === "property-access"
+          && /^([A-Za-z_]\w*)\.([A-Za-z_]\w*)$/.test(text.trim())
+        ) {
+          // A struct FIELD read interpolated into a HAL message
+          // (`UART0.writeLine(\`tag=${p.tag}\`)` — including an async task's
+          // hoisted local). Resolve the base's type from the IR scope, then
+          // the field: class instances via the class IR's field list, object
+          // -literal type aliases via the context's alias-node snapshot. A
+          // string field must take %s with .c_str() — the %d default printed
+          // the pointer as an int.
+          const fieldMatch = text.trim().match(/^([A-Za-z_]\w*)\.([A-Za-z_]\w*)$/)!;
+          const baseName = fieldMatch[1];
+          const fieldName = fieldMatch[2];
+          const baseType = getCurrentIrTypeScope()?.locals.get(baseName)
+            ?? getCurrentIrTypeScope()?.globals.get(baseName);
+          let fieldType: string | undefined;
+          if (baseType) {
+            const classFields = topLevelClasses.get(baseType)?.fields;
+            const classField = classFields?.find(f => f.name === fieldName);
+            if (classField) {
+              fieldType = classField.cppType as string;
+            } else {
+              const aliasNode = typeAliasNodes.get(baseType);
+              if (aliasNode !== undefined && ts.isTypeLiteralNode(aliasNode as ts.TypeNode)) {
+                const member = (aliasNode as ts.TypeLiteralNode).members
+                  .filter(ts.isPropertySignature)
+                  .find(m => ts.isIdentifier(m.name!) && (m.name as ts.Identifier).text === fieldName);
+                if (member) {
+                  fieldType = typeNodeToCppType(member.type, undefined);
+                }
+              }
+            }
+          }
+          if (fieldType) {
+            pushTyped(fieldType, text);
           } else {
             formatString += "%d";
             args.push(text);

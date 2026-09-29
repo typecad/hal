@@ -186,14 +186,17 @@ describe("honest diagnostics for unlowerable methods on StaticArray targets", ()
     expect(diags.some((d: any) => d.code === 'array-filter-unsupported')).toBe(true);
   });
 
-  it("array.join keeps its diagnostic", () => {
+  it("array.join lowers instead of diagnosing (one string model)", () => {
+    // The old "folded result exceeds the fixed-size string model" diagnostic
+    // is obsolete: std::string by value carries the fold, and the
+    // __tc_StaticArray wrapper grew a join member (sentence-router demo).
     const out = transpile(`
       const a = [1, 2, 3];
       const s = a.join('-');
       while (true) {}
     `, { strategy: zephyr(), target: 'zephyr' });
     const diags = (out.diagnostics ?? []).filter((d: any) => d.severity === 'error');
-    expect(diags.some((d: any) => d.code === 'array-join-unsupported')).toBe(true);
+    expect(diags.some((d: any) => d.code === 'array-join-unsupported')).toBe(false);
   });
 
   it("string.split lowers to __tc_split (one string model)", () => {

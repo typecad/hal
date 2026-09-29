@@ -9,7 +9,7 @@
 export { buildProgramIR } from "./ir/build-ir.js";
 export { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter.js";
 export { analyzePeripheralUsage, createEmptyPeripheralUsage } from "./ir/peripheral-usage.js";
-export { inferSnprintfArg, createEmissionScopeState, escapeCppStringLiteral } from "./emit/snprintf-helpers.js";
+export { createEmissionScopeState, escapeCppStringLiteral } from "./emit/snprintf-helpers.js";
 export { setLoadedFramework } from "./framework-registry.js";
 export { registerPlatformStrategy, resolveStrategy, clearAllProfileCaches } from "./platform/registry.js";
 export type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "./types.js";

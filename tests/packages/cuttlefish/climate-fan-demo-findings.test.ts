@@ -74,7 +74,7 @@ describe('climate-fan demo findings', () => {
     // The accessor call, not the (private) field read…
     expect(r.cpp).toMatch(/box->getV\(\)/);
     // …and %g for the number-returning getter, never the %d default.
-    expect(r.cpp).toMatch(/"v=%g", box->getV\(\)/);
+    expect(r.cpp).toMatch(/"v=%.15g", box->getV\(\)/);
   });
 
   it('resolves an inherited getter through the extends chain', () => {

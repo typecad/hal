@@ -309,6 +309,12 @@ function collectIdentifierNames(statements: StatementIR[]): Set<string> {
     }
     if (stmt.kind === "assign") { names.add(stmt.target); }
     if ("body" in stmt && Array.isArray(stmt.body)) { for (const s of stmt.body) scanStmt(s); }
+    // An if/while/for CONDITION is an expression position — `if (b == CR || b == LF)`
+    // references CR/LF only there, and without this scan the identifiers stayed
+    // unpromoted (main()-locals) while the class method in the header failed.
+    if ("condition" in stmt && stmt.condition && typeof stmt.condition === "object") {
+      scanExpr(stmt.condition as ExpressionIR);
+    }
     if ("thenBranch" in stmt && Array.isArray(stmt.thenBranch)) { for (const s of stmt.thenBranch) scanStmt(s); }
     if ("elseBranch" in stmt && Array.isArray(stmt.elseBranch)) { for (const s of stmt.elseBranch) scanStmt(s); }
     if ("cases" in stmt && Array.isArray(stmt.cases)) { for (const c of stmt.cases) for (const s of c.body) scanStmt(s); }
@@ -629,11 +635,45 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
       allFuncIdentifiers.add(id);
     }
   }
+  // …and, in the ENTRY TU only, by CLASS bodies: a top-level executable var
+  // referenced only from a method (`const CR = '\r'.charCodeAt(0)` read by
+  // LineAssembler::feed) needs the same promotion — split mode inlines the
+  // method into the HEADER, and a function-local const inside the entry
+  // main() is not visible there ("'CR' was not declared in this scope").
+  // Non-entry modules keep their module-level extern machinery for runtime
+  // consts (file-scope definition + header extern); promoting there too
+  // emitted a SECOND `extern int DOLLAR;` beside the module's
+  // `extern const int DOLLAR;` — a conflicting declaration.
+  if (isEntryFile) {
+    for (const cls of program.classes) {
+      const memberBodies: StatementIR[][] = [
+        ...cls.methods.map(m => m.statements),
+        ...cls.getters.map(g => g.statements),
+        ...cls.setters.map(s => s.statements),
+        ...(cls.constructor ? [cls.constructor.statements] : []),
+      ];
+      for (const body of memberBodies) {
+        for (const id of collectIdentifierNames(body)) {
+          allFuncIdentifiers.add(id);
+        }
+      }
+    }
+  }
   if (allFuncIdentifiers.size > 0 && filteredTopLevelExecutables.length > 0) {
     for (let i = 0; i < filteredTopLevelExecutables.length; i++) {
       const stmt = filteredTopLevelExecutables[i];
       if (stmt.kind === "var_decl" && allFuncIdentifiers.has(stmt.name)) {
         if (globalVarNames.has(stmt.name)) {
+          continue;
+        }
+        // A generated-struct-typed object literal (`const bounds = { low: 3300 }`
+        // → `_bounds_t`) is already fully emitted by the declaration stream
+        // (struct definition + header extern + file-scope definition).
+        // Promoting it on top of that re-defined the variable and landed its
+        // promoted extern BEFORE the struct definition in the header
+        // ("'_bounds_t' does not name a type" / "redefinition"). Scalars,
+        // strings, and pointers keep the promotion.
+        if (/^_[A-Za-z]\w*_t$/.test((stmt.cppType ?? "").trim())) {
           continue;
         }
         const varType = strategy.normalizeCppType(stmt.cppType);

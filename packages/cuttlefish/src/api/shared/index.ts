@@ -14,7 +14,6 @@ export type {
   CppTypeIR,
   CppTypeKind,
   CppPrimitiveName,
-  CppFormatKind,
 } from './cpp-type-ir.js';
 export {
   parseCppType,
@@ -35,7 +34,6 @@ export {
   isPrimitive,
   bareType,
   elementOf,
-  formatKindOf,
   CppTypeIR as cppTypeIRBuilder,
   parsedIsPointer,
   parsedIsStringLike,

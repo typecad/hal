@@ -24,6 +24,7 @@ import {
 } from "../snprintf-helpers.js";
 import { ExpressionRenderer } from "../expression-renderer.js";
 import { StatementRenderer } from "../statement-renderer.js";
+import { stampMutableRecordParams } from "../utils/param-mutation.js";
 import {
   isCuttlefishSDKImport,
   emitCommentLines,
@@ -656,6 +657,17 @@ export function buildEmitterContext(
       }
     }
   }
+  // Object-literal TYPE ALIASES (`type Reading = { tMs: number; ... }`) lower
+  // to concrete structs just like interfaces — their structFields ride the
+  // alias IR. Seeding the same field-type map makes property inference
+  // resolve `r.tag` on alias-typed values (without it, a template-literal
+  // part took the %d default for a std::string field — -Wformat= and a
+  // pointer printed as an int).
+  for (const alias of (program.typeAliases ?? []) as Array<{ name: string; structFields?: Array<{ name: string; cppType: string }> }>) {
+    if (alias.structFields && alias.structFields.length > 0) {
+      interfaceFieldTypes.set(alias.name, new Map(alias.structFields.map(f => [f.name, f.cppType])));
+    }
+  }
   for (const classDef of program.classes) {
     if (classDef.fields.length > 0 || classDef.extendsClass) {
       const fieldTypes = new Map<string, string>();
@@ -720,7 +732,11 @@ export function buildEmitterContext(
       sourceSpan: fn.sourceSpan,
       leadingComments: fn.leadingComments,
       trailingComments: fn.trailingComments,
-      parameters: fn.parameters,
+      // A body that writes fields through a record-typed parameter gets the
+      // same demotion the ownership analysis applies to const locals: the
+      // const& borrow unlocks to a mutable reference (info-level, not a
+      // g++ "assignment of member in read-only object" error).
+      parameters: stampMutableRecordParams(fn.parameters, fn.statements),
       isAsync: fn.isAsync,
       typeParameters: fn.typeParameters,
       typeParameterConstraints: fn.typeParameterConstraints,
@@ -1077,6 +1093,12 @@ function collectUserVarNames(program: ProgramIR): Set<string> {
               varAccessorNames,
               typeAccessorNames: classAccessorNames,
               pointerVarTypes,
+              // The task-body renderer must see the SAME struct/class field
+              // maps as the main renderer: without interfaceFieldTypes every
+              // field-type lookup in a task template missed, and a string
+              // field took the %d snprintf default (pointer printed as int).
+              interfaceFieldTypes,
+              crossModuleClassNames: classNames,
               diagnostics: emitDiagnostics,
             });
             // Use renderWithPrelude so snprintf buffer declarations (e.g.
@@ -1172,6 +1194,11 @@ function collectUserVarNames(program: ProgramIR): Set<string> {
               varAccessorNames,
               typeAccessorNames: classAccessorNames,
               pointerVarTypes,
+              // Same field-map threading as the task renderer above — an
+              // async METHOD task's segment bodies resolve member/field types
+              // through these maps too.
+              interfaceFieldTypes,
+              crossModuleClassNames: classNames,
               diagnostics: emitDiagnostics,
             });
             const { prelude, statement } = contextRenderer.renderWithPrelude(stmt, forHeader, calleeTransformer);
@@ -1240,6 +1267,12 @@ function collectUserVarNames(program: ProgramIR): Set<string> {
   }
   if (programAnalysis.usesStdMap) {
     includes.push("<map>");
+  }
+  // Sets lower to std::set the same way maps lower to std::map — the
+  // include arm was missing entirely (only the native strategy's own
+  // include list had it), so any Set-bearing program failed g++.
+  if (programAnalysis.usesSet) {
+    includes.push("<set>");
   }
   const needsSnprintf = strategy.useSnprintfForStrings() && (
     program.topLevelStatements.some((statement) => statementNeedsSnprintf(statement, strategy)) ||

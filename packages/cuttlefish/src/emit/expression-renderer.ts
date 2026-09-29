@@ -15,7 +15,7 @@ import { escapeCppKeyword, escapeCppStringLiteral } from "../utils/strings.js";
 import { accessorGetterName } from "./utils/cpp-helpers.js";
 import { INTEGRAL_CPP_TYPE_RE } from "./utils/cpp-helpers.js";
 import { renderPeripheralProperty } from "../mapping/peripheral-names.js";
-import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsStringLike, parsedElementString, parsedIsVector, needsCStrForStringLike, elementOf } from "../api/shared/cpp-type-ir.js";
+import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsStringLike, parsedElementString, parsedIsVector, needsCStrForStringLike, elementOf, snprintfTypeFormat } from "../api/shared/cpp-type-ir.js";
 import { helperReturnTypeForText } from "../api/shared/helper-return-types.js";
 import { cppTypeForHalOp } from "./utils/hal-op-cpp-type.js";
 
@@ -440,8 +440,13 @@ export class ExpressionRenderer {
         if (kind === "getter" || kind === "both") {
           const getterName = accessorGetterName(propName);
           // A reserved-named user variable renders under its ESCAPED name —
-          // match either spelling and rebuild with the escaped one.
-          const escaped = escapeCppKeyword(varName, this.strategy.reservedNames());
+          // match either spelling and rebuild with the escaped one. `this` is
+          // the exception: withThisAccessors registers it under its KEYWORD
+          // spelling and expression-to-ir lowers it to the verbatim raw text
+          // `this` — it is not a declared variable carrying an escaped name,
+          // so escaping it rewrote `this->value` into `this_->getValue()`
+          // (g++: "'this_' was not declared in this scope").
+          const escaped = varName === "this" ? varName : escapeCppKeyword(varName, this.strategy.reservedNames());
           for (const spelling of escaped === varName ? [varName] : [varName, escaped]) {
             const pattern = new RegExp(`\\b${spelling}->${propName}\\b(?!\\()`, "g");
             result = result.replace(pattern, `${escaped}->${getterName}()`);
@@ -862,60 +867,30 @@ export class ExpressionRenderer {
       if (inferredType) {
         const rendered = this.render(expr, exprTransformer, knownVariableTypes);
         const normalized = this.strategy.normalizeCppType(inferredType);
-        if (this.isStringLikeCppType(inferredType)) {
-          // .c_str() is needed for std::string-like types (which own a buffer)
-          // but NOT for const char* / char* (already C-strings). Detect via the
-          // structured IR: string/strPtr/string-enum need it; char pointers don't.
-          const needsCStr = needsCStrForStringLike(normalized);
-          // std::string operands can be arbitrarily long (a method like
-          // statusLine() may return a 100+ char string), so budget a generous
-          // estimate. The previous value (32) truncated output whenever a
-          // string-returning method was interpolated into a concat.
-          return { format: "%s", arg: needsCStr ? `${rendered}.c_str()` : rendered, estimatedLength: 128 };
-        }
-        if (normalized === "bool") {
-          return { format: "%s", arg: `(${rendered} ? "true" : "false")`, estimatedLength: 5 };
-        }
-        // A char in a string context is the CHARACTER (JS string coercion),
-        // not its code point — %d would print "97" for 'a'. %c prints it.
-        if (normalized === "char") {
-          return { format: "%c", arg: rendered, estimatedLength: 1 };
-        }
-        if (normalized === "float" || normalized === "double") {
-          const knownPrecision = expr.kind === "identifier"
-            ? effectiveKnownVariableTypes?.get(expr.value)?.floatPrecision
-            : undefined;
-          const floatArg = this.strategy.floatToSnprintfArg?.(rendered, knownPrecision, ++this._snprintfCounter.value);
-          if (floatArg !== undefined) return floatArg;
-          // Use %.15g (not %g) so large integer-valued doubles don't collapse
-          // to scientific notation — matches JS Number.toString() more closely.
-          return { format: knownPrecision !== undefined ? `%.${knownPrecision}f` : "%.15g", arg: rendered, estimatedLength: 24 };
-        }
-        // Enum-typed value (struct field, variable, etc. whose type resolves
-        // to a known numeric enum name). C++ enum class values need
-        // static_cast<int>(...) for %d — without it, -Wformat= warns that
-        // the argument type (enum) doesn't match %d (int).
+        // Enum-typed value first (a shape the shared classifier does not know):
+        // C++ enum class values need static_cast<int>(...) for %d — without
+        // it, -Wformat= warns that the argument type (enum) doesn't match %d.
         if (this.enumNames.has(normalized) && !this.stringEnumNames.has(normalized)) {
           return { format: "%d", arg: `static_cast<int>(${rendered})`, estimatedLength: 12 };
         }
-        if (/^(?:unsigned\s+)?(?:char|short|int|long|long long)$/.test(normalized) || /^(?:u?int(?:8|16|32|64)_t|size_t)$/.test(normalized)) {
-          if (normalized.includes("long long") || /64_t$/.test(normalized)) {
-            return { format: "%lld", arg: rendered, estimatedLength: 20 };
+        // THE shared type→conversion decision (api/shared/cpp-type-ir.ts).
+        // This used to be a hand-rolled int/long/uint/… chain that drifted
+        // from the HAL emitter's identical chain — every new type shape had
+        // to be taught twice.
+        const f = snprintfTypeFormat(normalized);
+        if (f.recognized) {
+          if (f.isBool) {
+            return { format: f.format, arg: `(${rendered} ? "true" : "false")`, estimatedLength: f.estimatedLength };
           }
-          // `long` is its own C++ type and matches %ld regardless of width.
-          // int32_t/uint32_t are typedefs for int/unsigned int on every target
-          // cuttlefish supports (AVR/ARM), so they must use %d/%u — using %ld
-          // triggers -Wformat= ("expects long int, has int").
-          if (normalized.includes("long")) {
-            return { format: normalized.startsWith("unsigned") ? "%lu" : "%ld", arg: rendered, estimatedLength: 12 };
+          if (f.format === "%.15g") {
+            const knownPrecision = expr.kind === "identifier"
+              ? effectiveKnownVariableTypes?.get(expr.value)?.floatPrecision
+              : undefined;
+            const floatArg = this.strategy.floatToSnprintfArg?.(rendered, knownPrecision, ++this._snprintfCounter.value);
+            if (floatArg !== undefined) return floatArg;
+            return { format: knownPrecision !== undefined ? `%.${knownPrecision}f` : f.format, arg: rendered, estimatedLength: f.estimatedLength };
           }
-          // 32_t/16_t/8_t and bare int/short/char. These are `int`-sized or
-          // narrower; unsigned variants are `unsigned int`-sized → %u. size_t
-          // is platform-dependent but unsigned int on the targets here → %u.
-          if (/^size_t$/.test(normalized) || normalized.startsWith("uint") || normalized.startsWith("unsigned")) {
-            return { format: "%u", arg: rendered, estimatedLength: 12 };
-          }
-          return { format: "%d", arg: rendered, estimatedLength: 12 };
+          return { format: f.format, arg: f.needsCStr ? `${rendered}.c_str()` : rendered, estimatedLength: f.estimatedLength };
         }
       }
     }
@@ -950,31 +925,13 @@ export class ExpressionRenderer {
         const knownVar = effectiveKnownVariableTypes?.get(expr.value);
         const cppType = knownVar?.cppType ?? this.knownFunctionReturnTypes?.get(expr.value);
 
-        if (this.isStringLikeCppType(cppType)) {
-          const normalized = this.strategy.normalizeCppType(cppType ?? "");
-          const arg = normalized === "__tc_str_ptr" ? `${expr.value}.c_str()` : expr.value;
-          return { format: "%s", arg, estimatedLength: 128 };
-        }
-        if (cppType === "bool") {
-          return { format: "%s", arg: `(${expr.value} ? "true" : "false")`, estimatedLength: 5 };
-        }
-        if (cppType === "float" || cppType === "double") {
-          const floatArg = this.strategy.floatToSnprintfArg?.(expr.value, knownVar?.floatPrecision, ++this._snprintfCounter.value);
-          if (floatArg !== undefined) return floatArg;
-          return { format: knownVar?.floatPrecision !== undefined ? `%.${knownVar.floatPrecision}f` : "%.15g", arg: expr.value, estimatedLength: 24 };
-        }
-        if (cppType === "int" || cppType === "short" || cppType === "int16_t" || cppType === "uint16_t" || cppType === "int32_t") {
-          return { format: "%d", arg: expr.value, estimatedLength: 12 };
-        }
-        if (cppType === "uint32_t") {
-          return { format: "%u", arg: expr.value, estimatedLength: 12 };
-        }
-        // auto-deduced local: infer the real type from the retained initializer
-        // before falling back. Treating `auto` as `%ld` is wrong for locals
-        // deduced from a string/enum/float expression (e.g.
-        // `const name = loot.name` → std::string). Re-dispatch through the
-        // general inference path so the proper specifier is chosen.
         if (cppType === "auto" && knownVar?.initializer) {
+          // auto-deduced local: infer the real type from the retained
+          // initializer before falling back. Treating `auto` as `%ld` is
+          // wrong for locals deduced from a string/enum/float expression
+          // (e.g. `const name = loot.name` → std::string). Re-dispatch
+          // through the general inference path so the proper specifier is
+          // chosen.
           const inferredFromInit = this.inferFormatSpecifier(knownVar.initializer, exprTransformer, knownVariableTypes);
           if (inferredFromInit) {
             // Replace the placeholder arg with the local variable name, since
@@ -982,22 +939,32 @@ export class ExpressionRenderer {
             return { ...inferredFromInit, arg: expr.value };
           }
         }
-        if (cppType === "long") {
-          return { format: "%ld", arg: expr.value, estimatedLength: 12 };
-        }
-        if (cppType === "unsigned long") {
-          return { format: "%lu", arg: expr.value, estimatedLength: 12 };
-        }
-        if (cppType === "long long" || cppType === "unsigned long long" || cppType === "int64_t" || cppType === "uint64_t") {
-          return { format: "%lld", arg: expr.value, estimatedLength: 20 };
-        }
-        if (this.stringVarNames?.has(expr.value)) {
+        // String-var fallback first (a `std::string` var whose recorded type
+        // was not resolvable above).
+        if (this.stringVarNames?.has(expr.value) && !cppType) {
           return { format: "%s", arg: expr.value, estimatedLength: 32 };
         }
         // Numeric enum-typed variable: static_cast<int> for snprintf (%d).
-        // String enums are const char* (handled by isStringLikeType above).
+        // String enums are const char* (handled by the shared classifier's
+        // string branch below).
         if (cppType && this.enumNames.has(cppType) && !this.stringEnumNames.has(cppType)) {
           return { format: "%d", arg: `static_cast<int>(${expr.value})`, estimatedLength: 12 };
+        }
+        // THE shared type→conversion decision (mirrors the generic region
+        // above — this case used to carry its own diverging copy of the
+        // same chain).
+        const normalizedCpp = cppType ? this.strategy.normalizeCppType(cppType) : undefined;
+        const f = normalizedCpp ? snprintfTypeFormat(normalizedCpp) : undefined;
+        if (f?.recognized) {
+          if (f.isBool) {
+            return { format: f.format, arg: `(${expr.value} ? "true" : "false")`, estimatedLength: f.estimatedLength };
+          }
+          if (f.format === "%.15g") {
+            const floatArg = this.strategy.floatToSnprintfArg?.(expr.value, knownVar?.floatPrecision, ++this._snprintfCounter.value);
+            if (floatArg !== undefined) return floatArg;
+            return { format: knownVar?.floatPrecision !== undefined ? `%.${knownVar.floatPrecision}f` : f.format, arg: expr.value, estimatedLength: f.estimatedLength };
+          }
+          return { format: f.format, arg: f.needsCStr && normalizedCpp === "__tc_str_ptr" ? `${expr.value}.c_str()` : expr.value, estimatedLength: f.estimatedLength };
         }
         // Default to %d for integers and unknowns
         return { format: "%d", arg: expr.value, estimatedLength: 12 };
@@ -1071,18 +1038,24 @@ export class ExpressionRenderer {
         if (this.stringVarNames?.has(rendered)) {
           return { format: "%s", arg: rendered, estimatedLength: 32 };
         }
-        // A user-class method call (`obj->name(...)`, `obj.name(...)`)
+        // A user-class method call (`obj->name(...)`, `obj.name(...)`, or a
+        // base-qualified `Base::name(...)` — a super.method() lowering)
         // resolves its return type from the bare-name registry (setup.ts
         // seeds class method and getter returns). `w.describe()` returning
         // const char* fell through to the %d default — -Wformat= pointer-as-
         // int garbage on device. (Guarded by has() so a bare free-function
         // call of the same name is unaffected — those match earlier branches.)
-        const methodMatch = rendered.match(/[.>](\w+)\(\s*\)\s*$/);
+        const methodMatch = rendered.match(/[.>:]+(\w+)\(\s*\)\s*$/);
         if (methodMatch && this.knownFunctionReturnTypes?.has(methodMatch[1])) {
           const ret = this.knownFunctionReturnTypes.get(methodMatch[1])!;
           if (this.isStringLikeCppType(ret)) {
             const normalized = this.strategy.normalizeCppType(ret);
-            return { format: "%s", arg: normalized === "__tc_str_ptr" ? `${rendered}.c_str()` : rendered, estimatedLength: 128 };
+            // snprintf's %s needs char*: a std::string return (and the
+            // wrapped __tc_str_ptr form) must ride .c_str().
+            const arg = normalized === "std::string" || normalized === "__tc_str_ptr"
+              ? `${rendered}.c_str()`
+              : rendered;
+            return { format: "%s", arg, estimatedLength: 128 };
           }
           if (ret === "float" || ret === "double") {
             return { format: "%.15g", arg: rendered, estimatedLength: 24 };
@@ -1096,6 +1069,25 @@ export class ExpressionRenderer {
         // integer/bool and keep the default.)
         if (/[.>](?:at|get)\([^()]*\)\s*$/.test(rendered)) {
           return { format: "%.15g", arg: rendered, estimatedLength: 24 };
+        }
+        // A STRUCT FIELD read (`p.tag`, `_v_p.tag` — including an async
+        // task's hoisted member after the identifier rewrite) resolves the
+        // object's type and the field from the interface/alias field map:
+        // a string field is %s with .c_str() (the %d default printed the
+        // pointer as an int), a number field %g. Structured property-access
+        // AND the raw-text spelling both land here.
+        if (expr.kind === "property-access" || (expr.kind === "raw" && /^([A-Za-z_]\w*)\.([A-Za-z_]\w*)$/.test(rendered) && !rendered.includes("("))) {
+          const objectType = this.inferExpressionCppType(expr.kind === "property-access" ? expr.object : { kind: "identifier", value: rendered.split(".")[0] } as ExpressionIR, effectiveKnownVariableTypes);
+          if (objectType) {
+            const propName = expr.kind === "property-access" ? expr.property : rendered.split(".")[1];
+            const fieldType = this.interfaceFieldTypes.get(this.normalizeRecordType(objectType))?.get(propName);
+            if (fieldType && this.isStringLikeCppType(fieldType)) {
+              return { format: "%s", arg: `${rendered}.c_str()`, estimatedLength: 128 };
+            }
+            if (fieldType === "float" || fieldType === "double") {
+              return { format: "%.15g", arg: rendered, estimatedLength: 24 };
+            }
+          }
         }
         // Element access that arrived as raw text (`args[0]`, `s[i]` — a
         // template-literal part) resolves its base's ELEMENT type from the
@@ -1488,6 +1480,27 @@ export class ExpressionRenderer {
     const numericOps = new Set(["+", "-", "*", "/", "&", "|", "^", "<<", ">>"]);
     let preLeft = leftRendered;
     let preRight = rightRendered;
+    // JS BITWISE SEMANTICS: `& | ^ << >> >>>` coerce BOTH operands to int32
+    // (ToUint32 for >>>) and yield an int. C++ `&`/`^`/`<<` on doubles is a
+    // hard error ("invalid operands to binary ^") — a CRC loop (`crc ^= b`)
+    // with every value inferred double died here. Cast floating operands to
+    // int before the operator; `>>>` also makes the LEFT operand unsigned so
+    // the shift is logical, not arithmetic.
+    const jsBitwiseOps = new Set(["&", "|", "^", "<<", ">>", ">>>"]);
+    if (jsBitwiseOps.has(expr.operator)) {
+      const isFloating = (t: string | undefined): boolean =>
+        t === "double" || t === "float" || t === "long double" || t === "auto" || t === undefined;
+      const leftType = this.inferExpressionCppType(expr.left, knownVariableTypes);
+      const rightType = this.inferExpressionCppType(expr.right, knownVariableTypes);
+      let l = leftRendered;
+      let r = rightRendered;
+      if (isFloating(leftType)) l = `static_cast<int>(${l})`;
+      if (isFloating(rightType)) r = `static_cast<int>(${r})`;
+      if (expr.operator === ">>>") {
+        l = `static_cast<unsigned int>(${isFloating(leftType) ? leftRendered : l})`;
+      }
+      return `(${l} ${expr.operator} ${r})`;
+    }
     if (numericOps.has(expr.operator)) {
       // For "+", only cast when neither side is string-like — "+" may be
       // string concatenation (handled by the wrapStringConcat path above),
@@ -1536,6 +1549,18 @@ export class ExpressionRenderer {
       const leftIsCStringValue = isRawCString(expr.left, modLeftType);
       const rightIsCStringValue = isRawCString(expr.right, modRightType);
 
+      // A std::string operand inside the strcmp forms must convert to
+      // const char* (`p !== Phase.Idle` — p is std::string, Phase::Idle is
+      // constexpr const char*: strcmp(p, Phase::Idle) was "cannot convert
+      // std::string to const char*"). Managed-string *variables* never take
+      // the strcmp path (isManagedStringVar below), but a string-typed
+      // operand paired with a string-ENUM member DOES — mixed comparisons
+      // are the norm for enum-holding locals.
+      const asStrcmpOperand = (text: string, t: string | undefined): string => {
+        const nt = t ? this.strategy.normalizeCppType(t) : undefined;
+        return nt === "std::string" ? `(${text}).c_str()` : text;
+      };
+
       // String equality: any C-string operand compared with == / != must use
       // strcmp (C++ pointer == on char* compares addresses, not contents).
       // But std::string/String variables have operator==, so skip strcmp when
@@ -1552,7 +1577,7 @@ export class ExpressionRenderer {
       if ((expr.operator === "===" || expr.operator === "==" || expr.operator === "!==" || expr.operator === "!=") &&
           bothCString) {
         const wantEqual = expr.operator === "===" || expr.operator === "==";
-        finalLeft = `strcmp(${leftRendered}, ${rightRendered})`;
+        finalLeft = `strcmp(${asStrcmpOperand(leftRendered, modLeftType)}, ${asStrcmpOperand(rightRendered, modRightType)})`;
         return `${finalLeft} ${wantEqual ? "==" : "!="} 0`;
       }
       // Relational string comparison (a < b): C++ `<` on char* compares
@@ -1561,7 +1586,7 @@ export class ExpressionRenderer {
       if ((expr.operator === "<" || expr.operator === "<=" || expr.operator === ">" || expr.operator === ">=") &&
           bothCString) {
         const op = expr.operator;
-        return `strcmp(${leftRendered}, ${rightRendered}) ${op} 0`;
+        return `strcmp(${asStrcmpOperand(leftRendered, modLeftType)}, ${asStrcmpOperand(rightRendered, modRightType)}) ${op} 0`;
       }
 
       // After the strcmp path, apply the shared enum-operand cast (with

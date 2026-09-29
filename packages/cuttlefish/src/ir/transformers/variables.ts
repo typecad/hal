@@ -34,6 +34,7 @@ import {
   activeStringEnumNames,
   requiredIncludes,
   userDeclaredVarNames,
+  doubleWidenedVars,
 } from "../build-ir-state.js";
 import { getCurrentIrTypeScope, setScopeLocalType } from "../symbol-types.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
@@ -59,6 +60,15 @@ import { requestCtorFields, mqttCtorFields, halClassRegistry } from "../hal/hal-
 import { resolveHALCallForVarInit } from "./hal-call-resolver.js";
 import { recordSignal } from "./ui-call-resolver.js";
 import { hasSafetyHook, requireSafetyHook } from "../../safety-hook.js";
+import { helperReturnTypeForText } from "../../api/shared/helper-return-types.js";
+import { topLevelInterfaceNames, objectTypeAliasNames } from "../build-ir-state.js";
+
+/** Bare named type of a C++ type string (`const Reading*` → `Reading`),
+ *  or undefined when it is not a simple named type. */
+function varIrBareName(cppType: string): string | undefined {
+  const bare = bareType(parseCppType(cppType));
+  return bare.kind === "named" ? bare.name : undefined;
+}
 
 function replaceHalReadBufferPlaceholder(_op: HALOpIR, _varName: string): HALOpIR {
   // i2c/spi read_buffer ops were removed with the legacy Wire/SPI surfaces.
@@ -1209,19 +1219,45 @@ export function variableStatementToIR(
     );
 
     let varCppType: string = declarationType.resolvedType === "void" ? "auto" : declarationType.resolvedType;
-    // A local initialized from a lowered string-method helper
-    // (`const s = v.toFixed(0)` → raw `__tc_toFixed(v, 0)`) holds a string:
-    // type it std::string so `.length` lowers to strlen (the strategy
-    // normalizes the declaration to const char* where applicable) instead
-    // of resolving `auto` through the raw-C-array sizeof branch —
-    // `sizeof(pointer)/sizeof(char)` was both a -Wsizeof-pointer-div warning
-    // and a wrong length value.
+    // A local initialized from a lowered `__tc_*` helper carries the helper's
+    // return type (HELPER_RETURN_TYPES — the single source of truth):
+    // `const s = v.toFixed(0)` → std::string (so `.length` lowers to strlen,
+    // the strategy normalizes the declaration to const char* where
+    // applicable), `const parts = body.split(',')` → std::vector<std::string>
+    // (so `parts[0].slice(1, 2)` resolves its element type and lowers as a
+    // STRING slice — an `auto` local used to leave the element receiver
+    // unresolvable and the call fell through verbatim: g++ "no member named
+    // 'slice'"), `const c = s.charCodeAt(0)` → int.
     if (varCppType === "auto" && loweredDeclaration.initializer
       && loweredDeclaration.initializer.kind === "raw") {
       const initText = (loweredDeclaration.initializer as { value: string }).value.trim();
-      if (/^__tc_(?:toFixed|toUpperCase|toLowerCase|trim|replace|charAt|substring\d?|slice\d?|padStart(?:_default)?|padEnd(?:_default)?|repeat|num_radix)\(/.test(initText)) {
-        varCppType = "std::string";
+      const helperRet = helperReturnTypeForText(initText);
+      if (helperRet) {
+        varCppType = helperRet;
       }
+    }
+    // A local bound to a template literal or string concat is a STRING —
+    // typing it `auto` made the snprintf prelude's char[] buffer decay to
+    // char* (`auto acc = __cuttlefish_str_3`), and the later `acc += ...`
+    // failed with "invalid operands char* + char*". std::string converts
+    // from the char buffer implicitly and appends work.
+    if (varCppType === "auto" && loweredDeclaration.initializer
+      && (loweredDeclaration.initializer.kind === "template_string"
+        || loweredDeclaration.initializer.kind === "string_concat"
+        || loweredDeclaration.initializer.kind === "string")) {
+      varCppType = "std::string";
+    }
+    // Numeric widening (JS numbers are f64): an UNANNOTATED local initialized
+    // from an int literal infers an integral type, but the widening prescan
+    // found a later `sum += v` / `sum = v` whose RHS is double — keep the
+    // accumulator double or every step truncates (0 + 22.7 through int is
+    // 22). Covers the whole integral family (int32_t under --autosar,
+    // long long from the bitwise inference).
+    if ((varCppType === "int" || varCppType === "int32_t" || varCppType === "long long" || varCppType === "int64_t")
+      && declaration.type === undefined
+      && ts.isIdentifier(declaration.name)
+      && doubleWidenedVars.has(declaration.name.text)) {
+      varCppType = "double";
     }
 
     // A string enum lowers to a C++ namespace (not a type), so a variable
@@ -1279,6 +1315,24 @@ export function variableStatementToIR(
     }
     loweredDeclaration.cppType = varCppType as CppType;
     localVariableTypes.set(declaration.name.text, varCppType as CppTypeHint);
+    // `let best: Reading | null = null` — the union strips to the CONCRETE
+    // struct, and a null initializer lowers to nullptr/0, which cannot
+    // initialize a non-scalar (`Reading best = 0`: "conversion from int to
+    // non-scalar type"). Mirror the return-statement rule (demo #14): a
+    // value-typed local value-initializes `{}` — and the null-comparison
+    // guard in expression-to-ir resolves `best === null` against it as a
+    // compile-time false.
+    if (loweredDeclaration.initializer
+      && (loweredDeclaration.initializer as { kind?: string }).kind === "identifier") {
+      const initIdent = loweredDeclaration.initializer as { kind: "identifier"; value: string };
+      const bareVarType = varIrBareName(varCppType);
+      if ((initIdent.value === "nullptr" || initIdent.value === "CUTTLEFISH_UNDEFINED")
+        && bareVarType !== undefined
+        && !isPointer(parseCppType(varCppType))
+        && (topLevelInterfaceNames.has(bareVarType) || objectTypeAliasNames.has(bareVarType))) {
+        loweredDeclaration.initializer = { kind: "raw", value: "{}" };
+      }
+    }
     // Mirror into the scope's locals view so getCurrentIrTypeScope().locals
     // readers (in expression-to-ir) see this binding. localVariableTypes is the
     // accumulating threaded map; scope.locals is the function-resettable view —
@@ -1358,15 +1412,18 @@ export function variableStatementToIR(
             (e): e is ts.Expression => !ts.isSpreadElement(e) && ts.isObjectLiteralExpression(e),
           );
         // A MODULE-level literal mutated from inside a function/method body
-        // must NOT promote: the function runs per-call (unbounded growth), and
-        // the call sites already lower through the std::vector path (see the
-        // willPromoteToStaticArray mirror in array-methods.ts). bench-console
-        // split exactly here — a class-method element-assign promoted the
-        // declaration to __tc_StaticArray while bump()'s .push lowered to
-        // push_back on it.
+        // must NOT promote — on EITHER arm: the function runs per-call
+        // (unbounded growth), the call sites lower through the std::vector
+        // path (see the willPromoteToStaticArray mirror in array-methods.ts),
+        // and function PARAMETERS typed `T[]` are std::vector<T> — a promoted
+        // declaration cannot convert to them ("could not convert journal
+        // from __tc_StaticArray<Reading,3> to std::vector<Reading>"). The
+        // struct-element arm (AVR's no-vector protection) shares the rule:
+        // vector-capable targets are exactly where the function-mutated
+        // shape lives.
         const moduleFnMutated = moduleArrayLiteralVars.has(varName)
           && functionScopeMutatedArrays.has(varName);
-        const shouldPromote = (mutableArrayVars.has(varName) && !moduleFnMutated) || isStructElement;
+        const shouldPromote = !moduleFnMutated && (mutableArrayVars.has(varName) || isStructElement);
 
         if (shouldPromote) {
           // When the element type is a shadow struct (anonymous object), emit
@@ -1740,9 +1797,14 @@ export function variableStatementToIR(
       const objInit = loweredDeclaration.initializer as Extract<ExpressionIR, { kind: "object" }>;
       loweredDeclaration.initializer = undefined;
       lowered.push(loweredDeclaration);
+      // String-keyed maps must QUOTE every initializer key: a numerically-
+      // spelled string key ('3') subscripts bare otherwise (`NAMES[3]` — a
+      // double against std::map<std::string,...>::operator[]). Bare numeric
+      // keys are only for genuinely numeric key types.
+      const keyIsString = varMapIr.key !== undefined
+        && renderCppType(varMapIr.key) === "std::string";
       for (const field of objInit.fields) {
-        // String keys quote; numeric keys subscript bare.
-        const keyText = /^\d+$/.test(field.name) ? field.name : JSON.stringify(field.name);
+        const keyText = !keyIsString && /^\d+$/.test(field.name) ? field.name : JSON.stringify(field.name);
         lowered.push({
           kind: "assign",
           sourceSpan: loweredDeclaration.sourceSpan,
