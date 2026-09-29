@@ -1,7 +1,7 @@
 ﻿import ts from "typescript";
 import { Diagnostic } from "../../types.js";
 import { StatementIR } from "../../api/index.js";
-import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases, hoistedNestedClasses, topLevelClassNames, topLevelClasses, activeEnumNames, hoistedNestedFunctions, getContext } from "../build-ir-state.js";
+import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases, hoistedNestedClasses, topLevelClassNames, topLevelClasses, hoistedNestedFunctions, getContext } from "../build-ir-state.js";
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { type CppTypeHint } from "../type-resolution.js";
 import { extractNodeComments, makeSourceSpan, makeDiagnostic } from "../ast-node-utils.js";
@@ -18,11 +18,12 @@ import {
 import { rewriteCanvasCall } from "./canvas-lowering.js";
 import { callbackContextLabel, unsupportedStatementHint } from "./callback-context-registry.js";
 import { tryLowerArrayAndStringMethods } from "./array-methods.js";
-import { expressionToIR, castEnumArgsForCallParams } from "../expression-to-ir.js";
+import { expressionToIR, castEnumArgsForCallParams, resolveExprCppType } from "../expression-to-ir.js";
+import { castMapKeyIfNeeded } from "../map-key-cast.js";
 import { lowerStatementList } from "../statement-to-ir.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import { renderExprAsText, calleeToText } from "../render-expr.js";
-import { parseCppType, renderCppType, parsedIsPointer, parsedIsMap, parsedIsSet } from "../../api/shared/cpp-type-ir.js";
+import { parsedIsPointer, parsedIsMap, parsedIsSet } from "../../api/shared/cpp-type-ir.js";
 
 /**
  * Resolve a `screen.<id>` or `screen.groups.<screenId>.<id>` element receiver
@@ -52,51 +53,14 @@ function resolveElementReceiver(expr: ts.Expression): { treeName: string; elemId
   return undefined;
 }
 
-/**
- * When a Map/Set key is an enum-typed expression and the container's key type
- * is an integral type, the lowered `map[key]` / `map.count(key)` / `map.at(key)`
- * would pass the enum operand directly. A C++ `enum class` does not implicitly
- * convert to the map's integral key type, so g++ rejects it ("no match for
- * 'operator[]' ... 'K' to 'const int&'"). Wrap the key in
- * `static_cast<KeyType>(...)` so it matches.
- *
- * This handles BOTH shapes of enum-typed key operand:
- *   - an enum member access (`Color.Red`, `Op.Inc`) — detected via
- *     `activeEnumNames` on the object identifier; and
- *   - a bare identifier whose declared type is an enum (`k` where `k: K`) —
- *     resolved through the in-scope IR type map (the gap demo #28 Finding E
- *     surfaced: previously only enum-member access was cast, so a bare
- *     enum-typed key variable on `.set`/`.has`/`.get`/`.delete` compiled to an
- *     uncast `map[k]`/`map.count(k)`/`map.at(k)` and failed at g++ time).
- */
+/** Cast an enum-typed Map/Set key to the container's key type (statement
+ *  path wrapper around the shared implementation). */
 function castEnumKeyIfNeeded(
   keyText: string,
   keyNode: ts.Expression,
   receiverType: string,
 ): string {
-  // Only relevant for std::map/std::set with an integral key type.
-  if (!parsedIsMap(receiverType) && !parsedIsSet(receiverType)) return keyText;
-  const containerIr = parseCppType(receiverType);
-  const keyType = containerIr.kind === "map" ? renderCppType(containerIr.key) : "";
-  // double/float included: TS `Map<number, V>` lowers to std::map<double, V>
-  // — a scoped enum converts to neither implicitly.
-  const isIntegral = /^(int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|long|short|unsigned|char|double|float)$/.test(keyType);
-  if (!isIntegral) return keyText;
-  // Detect an enum-typed key operand.
-  let isEnum = false;
-  if (ts.isPropertyAccessExpression(keyNode) && ts.isIdentifier(keyNode.expression)) {
-    // Enum member access: `Color.Red`.
-    isEnum = activeEnumNames.has(keyNode.expression.text);
-  } else if (ts.isIdentifier(keyNode)) {
-    // Bare identifier: resolve its declared type through the IR type scope.
-    // If it is an enum name, the operand is enum-typed and needs the cast.
-    const varType = getCurrentIrTypeScope()?.locals.get(keyNode.text) ?? getCurrentIrTypeScope()?.globals.get(keyNode.text);
-    if (varType && activeEnumNames.has(varType)) {
-      isEnum = true;
-    }
-  }
-  if (!isEnum) return keyText;
-  return `static_cast<${keyType}>(${keyText})`;
+  return castMapKeyIfNeeded(keyText, keyNode, receiverType, resolveExprCppType);
 }
 
 /** Lower a void UI event callback (onClick/onHold/onRelease/arity-1 onChange)

@@ -13,10 +13,11 @@ import { escapeCppKeyword } from "../utils/strings.js";
 import { tryLowerRegisterRead } from "./transformers/register-assignment.js";
 import { tryLowerArrayAndStringMethods } from "./transformers/array-methods.js";
 import { collectReturns, inferExprCppType, typeNodeToCppType, type CppTypeHint } from "./type-resolution.js";
+import { castMapKeyIfNeeded } from "./map-key-cast.js";
 import { parseCppType, elementOf, renderCppType, isPointer, bareType, parsedIsPointer, parsedIsVector, parsedIsMap, parsedIsSet, parsedIsTuple, parsedIsStdString, parsedElementString, parsedBareString, isVector, isMap, isSet, isContainer } from "../api/shared/cpp-type-ir.js";
 import { hasSafetyHook, requireSafetyHook } from "../safety-hook.js";
 
-function resolveExprCppType(expr: ts.Expression): string | undefined {
+export function resolveExprCppType(expr: ts.Expression): string | undefined {
   if (ts.isNonNullExpression(expr) || ts.isParenthesizedExpression(expr)) {
     return resolveExprCppType(expr.expression);
   }
@@ -384,36 +385,12 @@ function mapLookupForNullish(
   if (!receiverType || !parsedIsMap(receiverType)) {
     return undefined;
   }
-  // An enum-typed key must cast to the map's key type (a scoped enum has no
-  // implicit conversion — mirrors the Map-method lowering's keyIsEnum cast).
-  const mapIr = parseCppType(receiverType);
-  const mapKeyType = mapIr.kind === "map" ? renderCppType(mapIr.key) : "";
-  const keyIsIntegral = /^(int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|long|short|unsigned|char|double|float)$/.test(mapKeyType);
-  let keyIsEnum = false;
-  if (keyIsIntegral) {
-    const keyArg = expr.arguments[0];
-    if (ts.isPropertyAccessExpression(keyArg) && ts.isIdentifier(keyArg.expression)) {
-      keyIsEnum = activeEnumNames.has(keyArg.expression.text);
-    } else if (ts.isIdentifier(keyArg)) {
-      const keyVarType = getCurrentIrTypeScope()?.locals.get(keyArg.text) ?? getCurrentIrTypeScope()?.globals.get(keyArg.text);
-      if (keyVarType && activeEnumNames.has(keyVarType)) {
-        keyIsEnum = true;
-      }
-    }
-    // An enum-typed FIELD on a class instance (`handlers.get(cmd.verb)` —
-    // Command::verb is a scoped enum): resolve the property access's type
-    // through the class registry.
-    if (!keyIsEnum && ts.isPropertyAccessExpression(keyArg)) {
-      const t = resolveExprCppType(keyArg);
-      if (t && activeEnumNames.has(t) && !activeStringEnumNames.has(t)) {
-        keyIsEnum = true;
-      }
-    }
-  }
+  // Enum-key casting through the ONE shared implementation (see
+  // ir/map-key-cast.ts) — the `??` lowering previously carried its own copy.
   const keyText = renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars));
   return {
     receiver: renderExprAsText(expressionToIR(receiver, sourceText, diagnostics, pointerVars)),
-    key: keyIsEnum ? `static_cast<${mapKeyType}>(${keyText})` : keyText,
+    key: castMapKeyIfNeeded(keyText, expr.arguments[0], receiverType, resolveExprCppType),
   };
 }
 
@@ -2112,34 +2089,15 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           const recIR = expressionToIR(receiver, sourceText, diagnostics, pointerVars);
           receiverText = renderExprAsText(recIR);
           const arg0IR = expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars);
-          let arg0Text = renderExprAsText(arg0IR);
-          // When the key is an enum-typed operand and the container's key type
-          // is integral, wrap it in static_cast so it matches the comparator /
-          // converts the enum class to the integral key. Handles BOTH shapes:
-          //   - an enum member access (Color.Red) — detected via activeEnumNames; and
-          //   - a bare identifier whose declared type is an enum (k where k: K)
-          //     — resolved through the in-scope IR type map. Demo #28 Finding E
-          //     review: previously only the enum-member shape was cast, so a
-          //     bare enum-typed key variable on .has/.get/.delete (expression
-          //     form) compiled to an uncast map.count(k)/map.at(k) and failed.
-          const receiverIr = parseCppType(receiverType);
-          const mapKeyType = receiverIr.kind === "map" ? renderCppType(receiverIr.key) : "";
-          const keyIsIntegral = /^(int|int8_t|int16_t|int32_t|int64_t|uint8_t|uint16_t|uint32_t|uint64_t|size_t|long|short|unsigned|char|double|float)$/.test(mapKeyType);
-          let keyIsEnum = false;
-          if (keyIsIntegral) {
-            const keyArg = expr.arguments[0];
-            if (ts.isPropertyAccessExpression(keyArg) && ts.isIdentifier(keyArg.expression)) {
-              keyIsEnum = activeEnumNames.has(keyArg.expression.text);
-            } else if (ts.isIdentifier(keyArg)) {
-              const keyVarType = getCurrentIrTypeScope()?.locals.get(keyArg.text) ?? getCurrentIrTypeScope()?.globals.get(keyArg.text);
-              if (keyVarType && activeEnumNames.has(keyVarType)) {
-                keyIsEnum = true;
-              }
-            }
-          }
-          if (keyIsEnum) {
-            arg0Text = `static_cast<${mapKeyType}>(${arg0Text})`;
-          }
+          // Enum-key casting through the ONE shared implementation
+          // (ir/map-key-cast.ts) — covers enum member accesses, bare
+          // enum-typed identifiers, and enum-typed instance fields.
+          const arg0Text = castMapKeyIfNeeded(
+            renderExprAsText(arg0IR),
+            expr.arguments[0],
+            receiverType,
+            resolveExprCppType,
+          );
 
           if (parsedIsMap(receiverType)) {
             if (methodName === "set" && expr.arguments.length >= 2) {

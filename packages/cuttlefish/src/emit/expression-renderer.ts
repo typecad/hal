@@ -16,6 +16,7 @@ import { accessorGetterName } from "./utils/cpp-helpers.js";
 import { INTEGRAL_CPP_TYPE_RE } from "./utils/cpp-helpers.js";
 import { renderPeripheralProperty } from "../mapping/peripheral-names.js";
 import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsStringLike, parsedElementString, parsedIsVector, needsCStrForStringLike, elementOf } from "../api/shared/cpp-type-ir.js";
+import { helperReturnTypeForText } from "../api/shared/helper-return-types.js";
 import { cppTypeForHalOp } from "./utils/hal-op-cpp-type.js";
 
 /**
@@ -567,10 +568,11 @@ export class ExpressionRenderer {
       case "array":
         return `std::vector<${expr.elementType}>`;
       case "method-call": {
-        const helper = expr.callee.match(/^__tc_(?:toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|padStart_default|padEnd_default|repeat|jsonStringify|toFixed|num_radix)\b/);
-        if (helper) return "std::string";
-        if (/^__tc_(?:startsWith|endsWith|includes)\b/.test(expr.callee)) return "bool";
-        if (/^__tc_(?:charCodeAt|indexOf|lastIndexOf)\b/.test(expr.callee)) return "int";
+        // Helper return types come from the shared registry (the single
+        // source of truth — adding a helper to a polyfill requires one entry
+        // there, not an arm here; see helper-return-types.ts).
+        const helperReturn = helperReturnTypeForText(expr.callee);
+        if (helperReturn) return helperReturn;
         // Math.* members lower with the callee text already mapped to
         // `std::<fn>` — type them double so the modulo→fmod promotion and
         // other double-aware rendering fire (`Math.floor(x) % n`).
@@ -599,11 +601,11 @@ export class ExpressionRenderer {
         return this.knownFunctionReturnTypes?.get(expr.callee);
       }
       case "raw": {
-        if (/^std::string\(/.test(expr.value) || /^__tc_(?:toUpperCase|toLowerCase|trim|replace|charAt|substring|slice|padStart|padEnd|padStart_default|padEnd_default|repeat|jsonStringify|toFixed|num_radix)\b/.test(expr.value)) {
-          return "std::string";
-        }
-        if (/^__tc_(?:startsWith|endsWith|includes)\b/.test(expr.value)) return "bool";
-        if (/^__tc_(?:charCodeAt|indexOf|lastIndexOf)\b/.test(expr.value)) return "int";
+        if (/^std::string\(/.test(expr.value)) return "std::string";
+        // Same registry as the call arms — one entry per helper covers the
+        // raw-text form too (see helper-return-types.ts).
+        const rawHelperReturn = helperReturnTypeForText(expr.value);
+        if (rawHelperReturn) return rawHelperReturn;
         if (/^std::(floor|ceil|round|abs|sqrt|sin|cos|tan|atan2|log|exp|pow|fmod)\b/.test(expr.value)) {
           return "double";
         }

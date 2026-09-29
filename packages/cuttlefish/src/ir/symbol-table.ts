@@ -41,6 +41,12 @@ export interface SymbolTable {
   variableTypes: Map<string, string>;
   /** All class names across the aggregated files. Replaces allClassNames. */
   classNames: Set<string>;
+  /** All top-level interface names across the aggregated files — the
+   *  cross-module interface registry (pointer typing, `implements` bases).
+   *  Interfaces have no fields/accessors to merge, so names are the whole
+   *  state. Replaces the separate per-scan interface-name loop in
+   *  transpile.ts (one scan owner for every cross-module symbol kind). */
+  interfaceNames: Set<string>;
   /** className → parent class name (the `extends X` target). Needed by
    *  resolveInheritance to copy parent fields into children; not present in
    *  the old ad-hoc maps (it was read from programIR.classes in the second
@@ -56,6 +62,7 @@ export function createSymbolTable(): SymbolTable {
     functionReturnTypes: new Map(),
     variableTypes: new Map(),
     classNames: new Set(),
+    interfaceNames: new Set(),
     extends: new Map(),
   };
 }
@@ -77,6 +84,10 @@ export function createSymbolTable(): SymbolTable {
  */
 export function buildSymbolTable(program: ProgramIR): SymbolTable {
   const table = createSymbolTable();
+
+  for (const iface of program.interfaces) {
+    table.interfaceNames.add(iface.name);
+  }
 
   for (const cls of program.classes) {
     table.classNames.add(cls.name);
@@ -178,6 +189,9 @@ export function mergeSymbolTable(target: SymbolTable, source: SymbolTable): Symb
   }
   for (const name of source.classNames) {
     target.classNames.add(name);
+  }
+  for (const name of source.interfaceNames) {
+    target.interfaceNames.add(name);
   }
   return target;
 }

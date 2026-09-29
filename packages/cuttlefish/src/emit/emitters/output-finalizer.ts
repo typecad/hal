@@ -11,6 +11,7 @@ import { runSelfCheck } from "../compliance/rule-engine.js";
 import { renderRegistryJson } from "../compliance/deviation-writer.js";
 import { renderArxml } from "../compliance/arxml-writer.js";
 import type { Diagnostic } from "../../api/shared/index.js";
+import { findHeaderLinkageIssues } from "./header-linkage-check.js";
 
 /** Derives a unique C preprocessor guard name from a source file path. */
 function sanitizeGuardName(filePath: string): string {
@@ -293,6 +294,26 @@ export function finalizeOutput(ctx: EmitterContext): GeneratedOutputs {
         }
         finalHeaderLines.splice(insertIdx, 0, ...shimLines, "");
       }
+    }
+
+    // ── Header linkage invariants (post-emit, pre-write) ──────────────────
+    // Structural ODR/visibility rules over the FINAL lines: no non-inline
+    // free-function definitions (multi-TU link errors), no prototypes after
+    // the classes when an inline class body above calls them ("not declared
+    // in this scope"). Both classes shipped as bugs the demos caught late;
+    // this fails the build at emit time instead. See header-linkage-check.
+    const linkageIssues = findHeaderLinkageIssues(finalHeaderLines);
+    for (const issue of linkageIssues) {
+      ctx.emitDiagnostics.push({
+        severity: "error",
+        code: issue.kind === "non-inline-definition"
+          ? "header-non-inline-definition"
+          : "header-late-prototype",
+        message: issue.kind === "non-inline-definition"
+          ? `Function '${issue.symbol}' is defined (not declared inline) in the generated header — every including translation unit defines it, which fails the link with multiple-definition errors. Polyfill/helper definitions in headers must be \`inline\`.`
+          : `Prototype for '${issue.symbol}' appears after the class definitions, but an inline class body above it calls it — the call site cannot see the declaration. Hoist the prototype above the classes.`,
+        source: program.fileName,
+      } as never);
     }
 
     writeText(headerPath, finalHeaderLines.join("\n").trimEnd() + "\n");
