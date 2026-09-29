@@ -141,7 +141,7 @@ function resolveUIImportPath(fromFile: string, moduleSpecifier: string): string 
   return undefined;
 }
 
-export function buildProgramIR(fileName: string, sourceText: string, boardTarget?: string, prebuiltClassMap?: Map<string, ClassIR>): ProgramIR {
+export function buildProgramIR(fileName: string, sourceText: string, boardTarget?: string, prebuiltClassMap?: Map<string, ClassIR>, prebuiltFunctionReturns?: Map<string, string>): ProgramIR {
   const parentStrategy = getContext().activeStrategy;
   return contextStorage.run(new CompilationContext(), () => {
     getContext().activeStrategy = parentStrategy;
@@ -181,6 +181,25 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
   const boilerplates = new Set<string>();
   // Reset module-level state for this file
   resetBuildState();
+  // Cross-module free-function return types (transpile.ts Phase 0b pre-scan)
+  // — seeded AFTER resetBuildState (which clears the context-bound map) so
+  // the IR-time snprintf ladder can classify `${fn(x)}` interpolations by the
+  // callee's real return type.
+  if (prebuiltFunctionReturns) {
+    for (const [name, cppType] of prebuiltFunctionReturns) {
+      getContext().crossModuleFunctionReturns.set(name, cppType);
+    }
+  }
+  // Same coverage for THIS file's own annotated top-level functions — direct
+  // buildProgramIR callers (tests, tooling) don't run the transpile pre-scan,
+  // and a same-file `${fn(x)}` needs the same classification.
+  for (const statement of source.statements) {
+    if (!ts.isFunctionDeclaration(statement) || !statement.name || !statement.type) continue;
+    const ownReturnType = typeNodeToCppType(statement.type, typeAliasNodes);
+    if (ownReturnType && ownReturnType !== "auto" && ownReturnType !== "void") {
+      getContext().crossModuleFunctionReturns.set(statement.name.text, ownReturnType);
+    }
+  }
   resetHALResolver();
   registerFieldMap.clear();
 

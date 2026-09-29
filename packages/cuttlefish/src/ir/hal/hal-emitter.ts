@@ -1,6 +1,6 @@
 ﻿import ts from "typescript";
 import { ExpressionIR, HALOpIR } from "../../api/index.js";
-import { requiredIncludes, registeredCallbacks, isrHandlerFunctions, activeStringVars, TYPED_ARRAY_ELEMENT_MAP, getContext, floatVariables, halInstances, getCurrentBoardConstants, markHalOpResolved, topLevelClasses } from "../build-ir-state.js";
+import { requiredIncludes, registeredCallbacks, isrHandlerFunctions, activeStringVars, TYPED_ARRAY_ELEMENT_MAP, getContext, floatVariables, halInstances, getCurrentBoardConstants, markHalOpResolved, topLevelClasses, crossModuleFunctionReturns, activeEnumNames, activeStringEnumNames } from "../build-ir-state.js";
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { parsedElementString, parseCppType, renderCppType } from "../../api/shared/cpp-type-ir.js";
 import { renderExprAsText } from "../render-expr.js";
@@ -414,7 +414,41 @@ export function processHALMethodBody(
 
   const paramNames = methodEntry.paramNames;
   const spreadParamName = methodEntry.spreadParamName;
-  const callArgTexts = callArgs.map(a => renderExprAsText(a));
+  const callArgTexts = callArgs.map((a, i) => {
+    const text = renderExprAsText(a);
+    // Enum ↔ integral boundary at HAL call sites: an enum-typed identifier
+    // (`mode: FanMode`) passed to a `number`-annotated HAL parameter
+    // (`setInt(key, value: number)`) needs static_cast<int32_t> — enum class
+    // has no implicit conversion to its underlying type, and the raw shim
+    // call bakes the arg text verbatim. Only identifiers whose recorded IR
+    // scope type is an enum take the cast; everything else renders as before.
+    const param = methodEntry.methodNode.parameters[i];
+    if (
+      param?.type?.kind === ts.SyntaxKind.NumberKeyword
+      && a.kind === "identifier"
+    ) {
+      const argName = (a as { value: string }).value;
+      const argType = getCurrentIrTypeScope()?.locals.get(argName)
+        ?? getCurrentIrTypeScope()?.globals.get(argName);
+      if (argType && argType !== "auto" && /^[A-Za-z_]\w*$/.test(argType) && activeEnumNames.has(argType)) {
+        return `static_cast<int32_t>(${text})`;
+      }
+    }
+    // Same boundary for an enum MEMBER access (`FanMode.Boost` renders as
+    // `FanMode::Boost`) — without the cast the raw shim parameter type
+    // (`int32_t`) rejects the scoped enum.
+    if (
+      param?.type?.kind === ts.SyntaxKind.NumberKeyword
+      && a.kind === "property-access"
+      && (a as { isEnum?: boolean }).isEnum
+    ) {
+      const enumName = (a as { object: { value?: string } }).object?.value ?? "";
+      if (enumName && activeEnumNames.has(enumName) && !activeStringEnumNames.has(enumName)) {
+        return `static_cast<int32_t>(${text})`;
+      }
+    }
+    return text;
+  });
   
   instance._spreadParamName = spreadParamName;
   const paramDefaults = methodEntry.paramDefaults;
@@ -896,9 +930,13 @@ export function buildSnprintfFromConcat(
       } else if (isFloatVar) {
         // %g formats the double expression directly — portable (Zephyr's
         // cbprintf turns on FP support when it sees a float specifier);
-        // dtostrf is AVR-only and fails to compile elsewhere.
+        // dtostrf is AVR-only and fails to compile elsewhere. The static_cast
+        // keeps the varargs call type-correct even when the variable's
+        // EMITTED type is narrower than the recorded double (an un-annotated
+        // integer-literal const records as double for TS number semantics but
+        // emits as `const auto` = int — %g on an int arg is -Wformat/UB).
         formatString += "%g";
-        args.push(text);
+        args.push(`static_cast<double>(${text})`);
         estimatedLength += 16;
       } else if (isDoubleCall) {
         // Inline double-returning HAL call (`${Time.now()}`) — the rendered
@@ -957,9 +995,11 @@ export function buildSnprintfFromConcat(
           // and %g renders both integer-valued and fractional doubles in JS
           // form ("5", "2.5") — the %d default was a -Wformat mismatch and
           // garbage output for every such local. Enum-typed and INTEGRAL
-          // recorded names keep %d (checked above).
+          // recorded names keep %d (checked above). The static_cast keeps the
+          // varargs call type-correct when the emitted type is actually
+          // narrower than double (see the isFloatVar branch above).
           formatString += "%g";
-          args.push(text);
+          args.push(`static_cast<double>(${text})`);
           estimatedLength += 16;
         } else if (isStringHelperText(text)) {
           // Raw text of a lowered string method (`__tc_toFixed(x, 2)`,
@@ -1009,6 +1049,11 @@ export function buildSnprintfFromConcat(
               if (m) { methodReturn = m.returnType; break; }
               const g = cls.getters.find(gg => gg.name === methodName);
               if (g) { methodReturn = g.returnType; break; }
+              // A getter ACCESS lowered to a method call renders as
+              // `recv->getProp()` — match it back to the getter IR, whose
+              // name is the TS property (`prop`), not the accessor.
+              const gAcc = cls.getters.find(gg => `get${gg.name.charAt(0).toUpperCase()}${gg.name.slice(1)}` === methodName);
+              if (gAcc) { methodReturn = gAcc.returnType; break; }
             }
           }
           if (methodReturn === "const char*" || methodReturn === "char*" || methodReturn === "std::string") {
@@ -1023,6 +1068,91 @@ export function buildSnprintfFromConcat(
             formatString += "%s";
             args.push(`(${text} ? "true" : "false")`);
             estimatedLength += 5;
+          } else {
+            formatString += "%d";
+            args.push(text);
+            estimatedLength += 12;
+          }
+        } else if (
+          part.kind === "template_string"
+          && part.expression.kind === "method-call"
+          && (part.expression as { cppType?: string }).cppType !== undefined
+        ) {
+          // Method-call IR carrying its resolved return type (getter-access
+          // lowering attaches cppType) — classify directly from it.
+          const callType = (part.expression as { cppType?: string }).cppType;
+          if (callType === "const char*" || callType === "char*" || callType === "std::string") {
+            formatString += "%s";
+            args.push(text);
+            estimatedLength += 128;
+          } else if (callType === "float" || callType === "double") {
+            formatString += "%g";
+            args.push(text);
+            estimatedLength += 16;
+          } else if (callType === "bool") {
+            formatString += "%s";
+            args.push(`(${text} ? "true" : "false")`);
+            estimatedLength += 5;
+          } else {
+            formatString += "%d";
+            args.push(text);
+            estimatedLength += 12;
+          }
+        } else if (
+          part.kind === "template_string"
+          && part.expression.kind === "call"
+        ) {
+          // A free-function call in a template (`${modeLabel(mode)}`) —
+          // resolve the function's return type from the cross-module
+          // registry seeded by transpile.ts's pre-scan (same- and
+          // cross-file). A const char* return fell through to the %d
+          // default and printed a POINTER VALUE on device.
+          const callExpr = part.expression as { callee: string };
+          const fnReturn = crossModuleFunctionReturns.get(callExpr.callee);
+          if (fnReturn === "const char*" || fnReturn === "char*" || fnReturn === "std::string") {
+            formatString += "%s";
+            args.push(text);
+            estimatedLength += 128;
+          } else if (fnReturn === "float" || fnReturn === "double") {
+            formatString += "%g";
+            args.push(text);
+            estimatedLength += 16;
+          } else if (fnReturn === "bool") {
+            formatString += "%s";
+            args.push(`(${text} ? "true" : "false")`);
+            estimatedLength += 5;
+          } else {
+            formatString += "%d";
+            args.push(text);
+            estimatedLength += 12;
+          }
+        } else if (
+          part.kind === "template_string"
+          && part.expression.kind === "property-access"
+          && /^[A-Za-z_]\w*::\w+$/.test(text.trim())
+        ) {
+          // A STATIC field read (`${Pid.constructed}` renders `Pid::constructed`):
+          // resolve the field's type from the class IR so a double static takes
+          // %g — the %d default printed the low 32 bits of a double.
+          const staticMatch = text.trim().match(/^([A-Za-z_]\w*)::(\w+)$/);
+          let staticType: string | undefined;
+          if (staticMatch) {
+            const cls = topLevelClasses.get(staticMatch[1]);
+            const field = cls?.fields.find(f => f.name === staticMatch[2]);
+            staticType = field?.cppType as string | undefined;
+          }
+          if (staticType === "float" || staticType === "double") {
+            formatString += "%g";
+            args.push(text);
+            estimatedLength += 16;
+          } else if (staticType === "bool") {
+            formatString += "%s";
+            args.push(`(${text} ? "true" : "false")`);
+            estimatedLength += 5;
+          } else if (staticType === "const char*" || staticType === "char*" || staticType === "std::string") {
+            formatString += "%s";
+            args.push(text);
+            estimatedLength += 128;
           } else {
             formatString += "%d";
             args.push(text);

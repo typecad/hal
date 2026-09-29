@@ -41,6 +41,12 @@ export type PointerTracker = Map<string, string>;
 export class CompilationContext {
   topLevelClasses = new Map<string, ClassIR>();
   registerFieldMap = new Map<string, Map<string, { hi: number; lo: number; width: number }>>();
+  /** Top-level free-function name → return cppType, seeded across ALL files
+   *  of the transpile graph by transpile.ts's Phase 0 pre-scan. The IR-time
+   *  snprintf ladder consults it so `${fn(x)}` picks the specifier for the
+   *  function's actual return type (a const char* return printed its POINTER
+   *  through the %d default). */
+  crossModuleFunctionReturns = new Map<string, string>();
 
   hoistedNestedFunctions: FunctionIR[] = [];
   hoistedNestedClasses: ClassIR[] = [];
@@ -121,6 +127,10 @@ export class CompilationContext {
   // synchronous per file and the scope pointer is a module-local variable.
   // See symbol-types.ts for the full rationale.
   activeExtendsClass: string | undefined = undefined;
+  /** Bare name of the class whose members are currently being lowered —
+   *  set by classDeclarationToIR for the whole member loop so `this.prop`
+   *  accesses can resolve the enclosing class's getters. */
+  activeClassName: string | undefined = undefined;
   contextId = Math.random().toString(36).slice(2, 8);
 
   halInstances = new Map<string, HALInstance>();
@@ -266,6 +276,7 @@ function createArrayProxy<T>(getContextKey: (ctx: CompilationContext) => T[]): T
 
 // 4. Export proxies matching the original module API
 export const topLevelClasses = createMapProxy(ctx => ctx.topLevelClasses);
+export const crossModuleFunctionReturns = createMapProxy(ctx => ctx.crossModuleFunctionReturns);
 export const registerFieldMap = createMapProxy(ctx => ctx.registerFieldMap);
 export const halInstances = createMapProxy(ctx => ctx.halInstances);
 export const topLevelAliasReceivers = createMapProxy(ctx => ctx.topLevelAliasReceivers);
@@ -328,6 +339,8 @@ export const restParamFunctions = createMapProxy(ctx => ctx.restParamFunctions);
 export const activeFunctionReturnTypes = createMapProxy(ctx => ctx.activeFunctionReturnTypes);
 
 export function getActiveExtendsClass(): string | undefined { return getContext().activeExtendsClass; }
+export function getActiveClassName(): string | undefined { return getContext().activeClassName; }
+export function setActiveClassName(v: string | undefined): void { getContext().activeClassName = v; }
 export function setActiveExtendsClass(v: string | undefined): void { getContext().activeExtendsClass = v; }
 
 // Static configurations
@@ -452,6 +465,7 @@ export function resetBuildState(): void {
   activeEnumNames.clear();
   activeStringEnumNames.clear();
   topLevelClasses.clear();
+  crossModuleFunctionReturns.clear();
   // Start a fresh IrTypeScope for this file. The old activeGlobalTypes was a
   // file-scoped map cleared here; activeLocalTypes/activeClassFieldTypes were
   // function/class-scoped and cleared in resetFunctionScopeState. Creating a
@@ -530,4 +544,5 @@ export function resetFunctionScopeState(): void {
     resetIrTypeScopeFunctionState(scope);
   }
   getContext().activeExtendsClass = undefined;
+  getContext().activeClassName = undefined;
 }

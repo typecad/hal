@@ -1021,7 +1021,8 @@ export interface PreferencesPutBoolOp {
   /** Namespace — the settings subtree prefix tc/<ns>/. */
   ns: string;
   key: string;
-  value: boolean;
+  /** Literal true/false, or the C++ text of a runtime bool expression. */
+  value: boolean | string;
 }
 
 export interface PreferencesGetBoolOp {
@@ -1029,7 +1030,8 @@ export interface PreferencesGetBoolOp {
   /** Namespace — the settings subtree prefix tc/<ns>/. */
   ns: string;
   key: string;
-  defaultValue: boolean;
+  /** Literal true/false, or the C++ text of a runtime bool expression. */
+  defaultValue: boolean | string;
 }
 
 export interface PreferencesPutFloatOp {

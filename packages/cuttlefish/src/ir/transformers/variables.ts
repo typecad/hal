@@ -19,6 +19,7 @@ import {
   activeCArrayVars,
   activeArrayLiteralVars,
   activeStringVars,
+  activeEnumNames,
   mutableArrayVars,
   arrayLiteralSizes,
   arrayPushCounts,
@@ -1042,6 +1043,25 @@ export function variableStatementToIR(
             // (sensor.get → val1 + val2/1e6): the snprintf specifier picker
             // reads floatVariables and must pick %g, not %d.
             if (lastOp && lastOp.operation === "sensor.get") registerFloatVariable(varName);
+            // Preserve the DECLARED annotation when one exists: `let mode:
+            // FanMode = settings.getInt(...)` must lower as `FanMode mode =
+            // static_cast<FanMode>(...)`, not `auto mode = ...` — the auto form
+            // types the variable int32_t and every later `mode ==
+            // FanMode::Off` comparison / enum-parameter call is ill-formed
+            // C++ (enum class has no implicit int conversion). The var_decl
+            // renderer routes the initializer through renderValueForTarget,
+            // which supplies the integral→enum static_cast.
+            const declaredCppType = declaration.type
+              ? typeNodeToCppType(declaration.type, typeAliases)
+              : "auto";
+            const emitCppType = declaredCppType !== "auto" ? declaredCppType : "auto";
+            // The raw HAL return is integral; a scoped-enum target needs the
+            // explicit cast (renderValueForTarget can't infer the type of raw
+            // shim-call text, so supply it here).
+            const emitIsEnum = emitCppType !== "auto" && activeEnumNames.has(emitCppType);
+            const rawInitValue = emitIsEnum
+              ? `static_cast<${emitCppType}>(${result.returnValue})`
+              : result.returnValue;
             if (isHalOpReturn) {
               lowered.push({
                 kind: "var_decl",
@@ -1050,7 +1070,7 @@ export function variableStatementToIR(
                 trailingComments: [],
                 name: varName,
                 storage,
-                cppType: "auto",
+                cppType: emitCppType,
                 initializer: { kind: "hal-expr", operation: lastOp },
               });
             } else {
@@ -1076,12 +1096,12 @@ export function variableStatementToIR(
                   trailingComments: [],
                   name: varName,
                   storage,
-                  cppType: "auto",
-                  initializer: { kind: "raw", value: result.returnValue },
+                  cppType: emitCppType,
+                  initializer: { kind: "raw", value: rawInitValue },
                 });
               }
             }
-            localVariableTypes.set(varName, "auto");
+            localVariableTypes.set(varName, (emitCppType !== "auto" ? emitCppType : "auto") as CppTypeHint);
             commentsAssigned = true;
           }
           continue;

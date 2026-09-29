@@ -1,8 +1,8 @@
 ﻿import ts from "typescript";
 import { Diagnostic } from "../types.js";
-import { ExpressionIR, StatementIR } from "../api/index.js";
+import { ExpressionIR, StatementIR, ClassIR } from "../api/index.js";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils.js";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, requiredIncludes, throwExpressionDepth, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions, getContext, getCurrentBoardConstants, inConditionContext, enterConditionContext, exitConditionContext, mapEntryVarNames } from "./build-ir-state.js";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, requiredIncludes, throwExpressionDepth, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, getActiveClassName, restParamFunctions, getContext, getCurrentBoardConstants, inConditionContext, enterConditionContext, exitConditionContext, mapEntryVarNames, crossModuleFunctionReturns } from "./build-ir-state.js";
 import { getCurrentIrTypeScope, type IrTypeScope } from "./symbol-types.js";
 import { renderExprAsText } from "./render-expr.js";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir.js";
@@ -24,6 +24,14 @@ function resolveExprCppType(expr: ts.Expression): string | undefined {
     const scope = getCurrentIrTypeScope();
     const t = scope?.locals.get(expr.text) ?? scope?.globals.get(expr.text);
     return t && t !== "auto" ? t : undefined;
+  }
+  // A free-function call (`modeLabel(mode)` — bare identifier callee): the
+  // cross-module pre-scan registry carries its annotated return type. This
+  // feeds method-call IR cppType, which the snprintf specifier ladder and the
+  // emit-time type inference both consume.
+  if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression)) {
+    const registered = crossModuleFunctionReturns.get(expr.expression.text);
+    if (registered) return registered;
   }
   if (ts.isPropertyAccessExpression(expr)) {
     if (expr.expression.kind === ts.SyntaxKind.ThisKeyword) {
@@ -65,6 +73,111 @@ function resolveExprCppType(expr: ts.Expression): string | undefined {
     return topLevelClasses.get(className)?.methods.find((method) => method.name === methodName)?.returnType;
   }
   return undefined;
+}
+
+/** Accessor method name for a TS getter property (`integral` → `getIntegral`).
+ *  Same convention as emit/utils/cpp-helpers.ts (kept local so the IR layer
+ *  doesn't import from emit). */
+function accessorCallName(propName: string): string {
+  return `get${propName.charAt(0).toUpperCase()}${propName.slice(1)}`;
+}
+
+/**
+ * Find the getter a property access resolves to on a class (own getter, or
+ * one inherited through the extendsClass chain — BandThreshold.high reads
+ * Threshold's getter). Returns undefined when propName is a plain field (or
+ * the class is unknown), in which case the access stays a field read.
+ */
+function findClassGetter(
+  className: string,
+  propName: string,
+  requireStatic: boolean,
+): { getterName: string; returnType: string } | undefined {
+  let current: string | undefined = className;
+  // Cycle guard: inheritance chains are short, but a malformed self-extends
+  // must not loop forever.
+  for (let depth = 0; current !== undefined && depth < 8; depth += 1) {
+    const classDef: ClassIR | undefined = topLevelClasses.get(current) ?? hoistedNestedClasses.find((c) => c.name === current);
+    if (!classDef) return undefined;
+    const getter = classDef.getters.find((g) => g.name === propName && g.isStatic === requireStatic);
+    if (getter) {
+      return { getterName: accessorCallName(propName), returnType: getter.returnType as string };
+    }
+    current = classDef.extendsClass;
+  }
+  return undefined;
+}
+
+/**
+ * Lower a getter property access (`pid.integral`, `this.alive`,
+ * `Counter.total`) to the accessor CALL the emitted C++ declares
+ * (`pid->getIntegral()`, `this->getAlive()`, `Counter::getTotal()`).
+ * The accessors' backing fields are PRIVATE in the generated class, and a
+ * getter may compute its value — a plain field read both fails to compile
+ * and diverges from TS semantics. Returns undefined when the receiver is not
+ * a class instance with such a getter (the common case — plain field).
+ */
+function tryGetterCallIR(
+  receiverNode: ts.Expression,
+  propName: string,
+  pointerVars: PointerTracker,
+): ExpressionIR | undefined {
+  // Static getter: receiver is the CLASS name itself (`Cls.prop`).
+  if (ts.isIdentifier(receiverNode) && topLevelClassNames.has(receiverNode.text)) {
+    const getter = findClassGetter(receiverNode.text, propName, true);
+    if (getter) {
+      return {
+        kind: "method-call",
+        callee: `${receiverNode.text}::${getter.getterName}`,
+        args: [],
+        isStatic: true,
+        ...(getter.returnType && getter.returnType !== "auto" ? { cppType: getter.returnType } : {}),
+      };
+    }
+    return undefined;
+  }
+  // `this.getter` inside a ctor/method/getter body: the enclosing class is
+  // tracked by classDeclarationToIR (getActiveClassName); the chain walk
+  // covers inherited accessors too.
+  if (receiverNode.kind === ts.SyntaxKind.ThisKeyword || (ts.isIdentifier(receiverNode) && receiverNode.text === "this")) {
+    const enclosing = getActiveClassName();
+    if (enclosing) {
+      const getter = findClassGetter(enclosing, propName, false);
+      if (getter) {
+        return {
+          kind: "method-call",
+          callee: `this->${getter.getterName}`,
+          args: [],
+          isPointer: true,
+          ...(getter.returnType && getter.returnType !== "auto" ? { cppType: getter.returnType } : {}),
+        };
+      }
+    }
+    return undefined;
+  }
+  // Instance getter: receiver is an identifier whose class comes from the
+  // pointer tracker (`new Cls()` initializers) or the IR type scope
+  // (`Cls*`-typed locals/globals — includes cross-file instances).
+  if (!ts.isIdentifier(receiverNode)) return undefined;
+  let className: string | undefined = pointerVars.get(receiverNode.text);
+  if (!className) {
+    const scopeType = getCurrentIrTypeScope()?.locals.get(receiverNode.text)
+      ?? getCurrentIrTypeScope()?.globals.get(receiverNode.text);
+    if (scopeType && scopeType !== "auto") {
+      const bare = bareType(parseCppType(scopeType));
+      className = bare.kind === "named" ? bare.name : undefined;
+    }
+  }
+  if (!className) return undefined;
+  const getter = findClassGetter(className, propName, false);
+  if (!getter) return undefined;
+  return {
+    kind: "method-call",
+    callee: `${receiverNode.text}->${getter.getterName}`,
+    args: [],
+    isPointer: true,
+    ...(getter.returnType && getter.returnType !== "auto" ? { cppType: getter.returnType } : {}),
+  };
 }
 
 /**
@@ -2392,6 +2505,17 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         const objectText = renderExprAsText(object);
         return { kind: "raw", value: `static_cast<long long>(${objectText}.size())` };
       }
+    }
+
+    // Getter access (`pid.integral`, `this.alive`, `Counter.total`) lowers to
+    // the accessor call the emitted class declares (`pid->getIntegral()`).
+    // Must run BEFORE the pointer property-access returns below — they would
+    // emit a field read against a private member (g++ error) and lose the
+    // getter's computed value/return type. `.length`/`.size` and the other
+    // special members above keep their dedicated lowerings.
+    const getterCall = tryGetterCallIR(expr.expression, propName, pointerVars);
+    if (getterCall) {
+      return getterCall;
     }
 
     // Use -> for pointer variables in property access

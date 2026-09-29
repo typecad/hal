@@ -22,6 +22,7 @@ const CUTTLEFISH_VERSION: string = (() => {
 import { buildProgramIR } from "./ir/build-ir.js";
 import { getCurrentBoardConstants, resetTranspileResolvedHalOps } from "./ir/build-ir-state.js";
 import { classDeclarationToIR } from "./ir/declaration-builders.js";
+import { typeNodeToCppType } from "./ir/type-resolution.js";
 import { clickHandlers } from "./ir/transformers/ui-call-resolver.js";
 import { setUIHook, requireUIHook, hasUIHook } from "./ui-hook.js";
 import { loadUIEngine } from "./ui/ui-bridge.js";
@@ -748,6 +749,30 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     }
   });
 
+  // ── Phase 0b: Pre-scan top-level free functions across ALL files and seed
+  // a cross-module return-type registry (function name → cppType). The IR-time
+  // snprintf ladder consults it so `${modeLabel(mode)}` picks %s for a
+  // const char* return — the per-file IR build otherwise can't see another
+  // file's function signatures. Only annotated returns are recorded (an
+  // unannotated return honestly stays unknown).
+  const prebuiltFunctionReturns = new Map<string, string>();
+  contextStorage.run(prebuildContext, () => {
+    for (const { filePath, sourceText } of classSources) {
+      try {
+        const source = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true);
+        for (const statement of source.statements) {
+          if (!ts.isFunctionDeclaration(statement) || !statement.name || !statement.type) continue;
+          const returnType = typeNodeToCppType(statement.type, new Map());
+          if (returnType && returnType !== "auto" && returnType !== "void") {
+            prebuiltFunctionReturns.set(statement.name.text, returnType as string);
+          }
+        }
+      } catch {
+        // Parse errors surface during the real IR build
+      }
+    }
+  });
+
   // ── Phase A: Build IR for all files (no tree-shaking yet) ────────────────
   // We need all IRs built before we can compute cross-module imports for
   // accurate tree-shaking across file boundaries.
@@ -782,7 +807,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     }
 
     profiler.startTimer(`ir:build-ir:${fileBasename}`);
-    const programIR = buildProgramIR(filePath, sourceText, options.boardTarget, prebuiltClassMap);
+    const programIR = buildProgramIR(filePath, sourceText, options.boardTarget, prebuiltClassMap, prebuiltFunctionReturns);
     profiler.endTimer(`ir:build-ir:${fileBasename}`);
 
     const npmPackage = npmPackages.get(filePath);

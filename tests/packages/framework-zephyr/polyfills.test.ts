@@ -49,6 +49,20 @@ describe('ZephyrStrategy no-STL polyfills', () => {
     expect(text).not.toMatch(/std::string/);
   });
 
+  it('rotates enough result slots for one printf argument list', () => {
+    // The helpers return pointers into a rotating static ring. A status line
+    // like `t=${a.toFixed(2)} avg=${b.toFixed(2)} set=${c.toFixed(1)}`
+    // evaluates ALL its __tc_toFixed calls BEFORE snprintf runs — with two
+    // slots the third call overwrote the first result and the line printed
+    // setpoint for the temperature. The ring must span a full argument list
+    // (CUTTLEFISH_STR_SLOTS, power of two for the mask advance).
+    const polys = s.generateNativePolyfills(undefined, undefined);
+    const text = (polys.find((p) => p.id === 'string_methods')?.helperFunctions ?? []).join('\n');
+    expect(text).toContain('#define CUTTLEFISH_STR_SLOTS 8');
+    expect(text).not.toContain('buf[2][CUTTLEFISH_STR_BUF_SIZE]');
+    expect(text).not.toContain('slot ^= 1');
+  });
+
   it('normalizeRawExpression lowers string methods to __tc_* helpers / inline ops', () => {
     // The rewrite is what makes a const char* receiver's method calls compile
     // (the polyfill only supplies the definitions). Mirrors framework-arduino.

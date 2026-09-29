@@ -4,7 +4,7 @@ import { CppType, ClassIR, ClassFieldIR, ClassMethodIR, ClassGetterIR, ClassSett
 import { extractNodeComments, makeSourceSpan, makeDiagnostic } from "./ast-node-utils.js";
 import { CppTypeHint, typeNodeToCppType, extractOwnershipKindFromTypeNode, inferExprCppType } from "./type-resolution.js";
 import { getBitsRange, getRegisterAddress } from "./register-decorators.js";
-import { registerFieldMap, PointerTracker, setActiveExtendsClass, discriminatedUnionVariantNames, requiredIncludes, getContext } from "./build-ir-state.js";
+import { registerFieldMap, PointerTracker, setActiveExtendsClass, setActiveClassName, discriminatedUnionVariantNames, requiredIncludes, getContext } from "./build-ir-state.js";
 import { resolveHALReceiver, setActiveThisHalFields, getActiveThisHalFields, registerClassHalFields, halClassRegistry, halCtorIncludes, type HALInstance } from "./hal/hal-parser.js";
 import { getCurrentIrTypeScope } from "./symbol-types.js";
 import { expressionToIR } from "./expression-to-ir.js";
@@ -140,6 +140,10 @@ export function classDeclarationToIR(
 
   const qualifiedName = scopePrefix ? `${scopePrefix}.${className}` : className;
   const staticBlockStatements: StatementIR[] = [];
+
+  // Track the enclosing class for the whole member loop so `this.prop`
+  // accesses inside ctor/method/getter bodies can resolve accessors.
+  setActiveClassName(className);
 
   const preScannedFieldTypes = new Map<string, CppTypeHint>();
   for (const member of node.members) {
@@ -509,6 +513,7 @@ export function classDeclarationToIR(
 
   // Restore the enclosing class's field map (nested classes) — or clear it.
   setActiveThisHalFields(previousThisHalFields);
+  setActiveClassName(undefined);
 
   return {
     name: className,

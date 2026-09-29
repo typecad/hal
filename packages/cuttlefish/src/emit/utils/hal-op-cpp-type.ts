@@ -32,6 +32,18 @@ export function cppTypeForHalOp(operation: string): string | undefined {
     // Zephyr's sensor channel value is a double (val1 + val2/1e6).
     case "sensor.get":
       return "double";
+    // Settings reads: the shim's typed accessors (int32_t/bool/float/const
+    // char*). Typing these lets the enum↔integral storage boundary cast a
+    // `let mode: FanMode = store.getInt(...)` initializer into the scoped
+    // enum, and the snprintf specifier ladder pick the right format.
+    case "preferences.get_int":
+      return "int32_t";
+    case "preferences.get_bool":
+      return "bool";
+    case "preferences.get_float":
+      return "double";
+    case "preferences.get_string":
+      return "const char*";
     default:
       return undefined;
   }

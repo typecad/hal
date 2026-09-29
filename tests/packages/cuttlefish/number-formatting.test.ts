@@ -49,7 +49,10 @@ describe('function-local numbers in template literals', () => {
       report();
     `);
 
-    expect(r.cpp).toMatch(/"ratio is %g", ratio/);
+    // %g for the double local, with a static_cast<double> wrapper so the
+    // varargs call stays type-correct even when the emitted type is narrower
+    // than the recorded double (an un-annotated integer-literal const).
+    expect(r.cpp).toMatch(/"ratio is %g", static_cast<double>\(ratio\)/);
     expect(r.cpp).toMatch(/"half is %g", static_cast<double>\(ratio\) \/ static_cast<double>\(2\)/);
   });
 

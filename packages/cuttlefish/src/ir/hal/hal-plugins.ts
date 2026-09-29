@@ -136,7 +136,11 @@ export function resolveNumericArg(
   // R1: Boolean coercion — true → 1, false → 0
   if (text === "true") return 1;
   if (text === "false") return 0;
-  const n = Number(text);
+  // Numeric renders may carry a C++ float suffix (`1.5f` from the expression
+  // renderer) — strip it before Number() or every float literal parsed as NaN
+  // and a caller's `?? 0` silently replaced it.
+  const trimmed = text.trim();
+  const n = Number(/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?f$/i.test(trimmed) ? trimmed.slice(0, -1) : text);
   return isNaN(n) ? null : n;
 }
 
@@ -163,6 +167,19 @@ function resolveNumericOrExpression(
  *  default resolves to the literal text "undefined" (see resolveExpressionText);
  *  map that to null so op builders can omit the field entirely. */
 function dropUndefined(value: string | null): string | null {  return value === "undefined" ? null : value;
+}
+
+/** dropUndefined for resolvers that also fold numbers (`string | number | null`). */
+function dropUnresolved(value: string | number | null): string | number | null {
+  return value === "undefined" ? null : value;
+}
+
+/** Fold a resolved bool argument: literal true/false become booleans, any
+ *  other C++ text (variable, member access, call) rides the op verbatim. */
+function boolOpValue(text: string): boolean | string {
+  if (text === "true") return true;
+  if (text === "false") return false;
+  return text;
 }
 
 // ── Responder lowering diagnostics ──────────────────────────────────────────
@@ -777,7 +794,11 @@ export function tryResolveSemanticCall(
       const ns = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (ns === null) return null;
       const key = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const def = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults) ?? 0;
+      // The default may be any expression (enum member, variable, call) —
+      // fold it when numeric, otherwise carry the C++ text verbatim. A bare
+      // `?? 0` silently replaced caller defaults (`getInt('mode',
+      // FanMode.Auto)` booted as 0 instead of Auto).
+      const def = dropUnresolved(resolveNumericOrExpression(args, 2, instance, paramNames, callArgTexts, paramDefaults)) ?? 0;
       if (key === null) return null;
       return { operation: "preferences.get_int", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), defaultValue: def };
     }
@@ -787,7 +808,9 @@ export function tryResolveSemanticCall(
       const key = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       const value = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
       if (key === null || value === null) return null;
-      return { operation: "preferences.put_bool", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), value: value === "true" };
+      // A runtime bool (`setBool('f', flag)`) must ride the op as its C++
+      // text — folding `value === "true"` wrote false for every variable.
+      return { operation: "preferences.put_bool", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), value: boolOpValue(value) };
     }
     case "preferencesGetBool": {
       const ns = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
@@ -795,7 +818,7 @@ export function tryResolveSemanticCall(
       const key = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       const def = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
       if (key === null) return null;
-      return { operation: "preferences.get_bool", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), defaultValue: def === "true" };
+      return { operation: "preferences.get_bool", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), defaultValue: boolOpValue(dropUndefined(def) ?? "false") };
     }
     case "preferencesPutFloat": {
       const ns = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
@@ -809,7 +832,7 @@ export function tryResolveSemanticCall(
       const ns = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (ns === null) return null;
       const key = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const def = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults) ?? 0;
+      const def = dropUnresolved(resolveNumericOrExpression(args, 2, instance, paramNames, callArgTexts, paramDefaults)) ?? 0;
       if (key === null) return null;
       return { operation: "preferences.get_float", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), defaultValue: def };
     }
@@ -819,15 +842,18 @@ export function tryResolveSemanticCall(
       const key = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       const value = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
       if (key === null || value === null) return null;
-      return { operation: "preferences.put_string", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), value: quoteNonIdentifier(value) };
+      // The resolver yields C++-ready text (string literals arrive already
+      // quoted); quoteNonIdentifier here baked a `name()` call into the
+      // literal "name()".
+      return { operation: "preferences.put_string", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), value };
     }
     case "preferencesGetString": {
       const ns = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (ns === null) return null;
       const key = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const def = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults) ?? '""';
+      const def = dropUndefined(resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults)) ?? '""';
       if (key === null) return null;
-      return { operation: "preferences.get_string", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), defaultValue: quoteNonIdentifier(def) };
+      return { operation: "preferences.get_string", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), defaultValue: def };
     }
 
     // ── FS (littlefs on the storage partition — lazy mount, no session) ──

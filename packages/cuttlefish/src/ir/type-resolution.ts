@@ -683,6 +683,15 @@ export function inferExprCppType(
     return "bool";
   }
 
+  // A negated literal (`const FLOOR = -5.0`) is a prefix-unary over the
+  // number — without recursing into the operand the declaration fell to
+  // `auto` (losing both the explicit type and, for a negative fractional
+  // like -0.5 used in integer arithmetic, the value's double-ness), and
+  // split-mode skipped the auto-typed global in the header's extern list.
+  if (ts.isPrefixUnaryExpression(expr)) {
+    return inferExprCppType(expr.operand, functionReturnTypes, localVariableTypes, sourceText);
+  }
+
   if (ts.isCallExpression(expr)) {
     if (ts.isIdentifier(expr.expression)) {
       const fnReturnType = functionReturnTypes.get(expr.expression.text);

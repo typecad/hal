@@ -146,7 +146,7 @@ export function emitNamespaces(ctx: EmitterContext): void {
           appendSourceLine(ctx, "");
         }
         if (classDef.constructor) {
-          const ctorParams = renderParameters(classDef.constructor.parameters);
+          const ctorParams = renderParameters(classDef.constructor.parameters, true);
           appendSourceLine(ctx, `    ${classDef.name}(${ctorParams}) {`);
           const ctorScope = createChildEmissionScope(topLevelScope, classDef.constructor.parameters);
           for (const stmt of classDef.constructor.statements) {
@@ -171,7 +171,7 @@ export function emitNamespaces(ctx: EmitterContext): void {
         }
         if (publicFields.length > 0) appendSourceLine(ctx, "");
         for (const method of publicMethods) {
-          const methodParams = renderParameters(method.parameters);
+          const methodParams = renderParameters(method.parameters, true);
           const staticPrefix = method.isStatic ? "static " : "";
           const returnType = normalizeCppTypeForTarget(method.returnType);
           if (method.isAbstract) {
@@ -206,7 +206,7 @@ export function emitNamespaces(ctx: EmitterContext): void {
           appendSourceLine(ctx, `    ${renderTypedName(fieldType, field.name)}${initSuffix};`);
         }
         for (const method of privateMethods) {
-          const methodParams = renderParameters(method.parameters);
+          const methodParams = renderParameters(method.parameters, true);
           appendSourceLine(ctx, `    ${normalizeCppTypeForTarget(method.returnType)} ${escapeCppKeyword(method.name, reservedNames)}(${methodParams}) {`);
           const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
           for (const stmt of method.statements) {
@@ -233,7 +233,7 @@ export function emitNamespaces(ctx: EmitterContext): void {
           appendSourceLine(ctx, `    ${renderTypedName(fieldType, field.name)}${initSuffix};`);
         }
         for (const method of protectedMethods) {
-          const methodParams = renderParameters(method.parameters);
+          const methodParams = renderParameters(method.parameters, true);
           appendSourceLine(ctx, `    ${normalizeCppTypeForTarget(method.returnType)} ${escapeCppKeyword(method.name, reservedNames)}(${methodParams}) {`);
           const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
           for (const stmt of method.statements) {

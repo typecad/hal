@@ -277,6 +277,10 @@ export function emitClasses(ctx: EmitterContext): void {
   };
 
   // Emit each class
+  // Split-mode accumulator: every class's out-of-class static data-member
+  // definitions, appended to the SOURCE stream after the header/source swap
+  // (one definition per program, in the module's .cpp — see the swap below).
+  const staticFieldDefsAll: string[] = [];
   for (const classDef of program.classes) {
     emitCommentLines(classDef.leadingComments, "", (line) => appendSourceLine(ctx, line));
     // C++14: a mutable (or non-integral-const) static data member may not be
@@ -383,7 +387,7 @@ export function emitClasses(ctx: EmitterContext): void {
           ...p,
           cppType: normalizeCppTypeForTarget(p.cppType)
         }));
-        const ctorParams = renderParameters(ctorParamsMapped);
+        const ctorParams = renderParameters(ctorParamsMapped, true);
         let ctorInitializer = "";
         let ctorStatements = classDef.constructor.statements;
         const firstCtorStatement = ctorStatements[0];
@@ -431,7 +435,7 @@ export function emitClasses(ctx: EmitterContext): void {
       if (publicFields.length > 0) appendSourceLine(ctx, "");
 
       for (const method of publicMethods) {
-        const methodParams = renderParameters(method.parameters);
+        const methodParams = renderParameters(method.parameters, true);
         const staticPrefix = method.isStatic ? "static " : "";
         const returnType = normalizeCppTypeForTarget(method.returnType);
         if (method.isAbstract) {
@@ -527,7 +531,7 @@ export function emitClasses(ctx: EmitterContext): void {
       }
       if (privateFields.length > 0) appendSourceLine(ctx, "");
       for (const method of privateMethods) {
-        const methodParams = renderParameters(method.parameters);
+        const methodParams = renderParameters(method.parameters, true);
         const staticPrefix = method.isStatic ? "static " : "";
         const virtualSet = virtualMethodNames.get(classDef.name);
         const isVirtual = !method.isStatic && virtualSet?.has(method.name);
@@ -606,7 +610,7 @@ export function emitClasses(ctx: EmitterContext): void {
       }
       if (protectedFields.length > 0) appendSourceLine(ctx, "");
       for (const method of protectedMethods) {
-        const methodParams = renderParameters(method.parameters);
+        const methodParams = renderParameters(method.parameters, true);
         const staticPrefix = method.isStatic ? "static " : "";
         const virtualSet = virtualMethodNames.get(classDef.name);
         const isVirtual = !method.isStatic && virtualSet?.has(method.name);
@@ -671,9 +675,19 @@ export function emitClasses(ctx: EmitterContext): void {
 
     appendSourceLine(ctx, "};");
     // Out-of-class definitions for the class's static data members (C++14 —
-    // see staticFieldDefs above).
-    for (const def of staticFieldDefs) {
-      appendSourceLine(ctx, def);
+    // see staticFieldDefs above). In split mode these hold back: the class
+    // (and this `};` block) swaps into the HEADER below, and a definition
+    // baked into a header included by several TUs is a multiple-definition
+    // link error (`Pid::constructed` defined by control.cpp.obj AND
+    // src.cpp.obj). Split mode appends them to the SOURCE stream after the
+    // swap — one definition, in the class's own module .cpp, matching the
+    // in-class `static T field;` declaration every TU sees.
+    if (effectiveEmitMode !== "split") {
+      for (const def of staticFieldDefs) {
+        appendSourceLine(ctx, def);
+      }
+    } else {
+      staticFieldDefsAll.push(...staticFieldDefs);
     }
     emitCommentLines(classDef.trailingComments, "", (line) => appendSourceLine(ctx, line));
     appendSourceLine(ctx, "");
@@ -688,5 +702,11 @@ export function emitClasses(ctx: EmitterContext): void {
     const _swapMaps = ctx.sourceMapEntries;
     ctx.sourceMapEntries = ctx.headerMapEntries;
     ctx.headerMapEntries = _swapMaps;
+    // The static data-member definitions deferred above land in the SOURCE
+    // stream (the module's .cpp) — after the swap, so ordering with the
+    // class definition in the header (which the .cpp includes) is correct.
+    for (const def of staticFieldDefsAll) {
+      appendSourceLine(ctx, def);
+    }
   }
 }

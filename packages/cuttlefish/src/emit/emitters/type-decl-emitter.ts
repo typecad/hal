@@ -276,6 +276,11 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
         if (resolved) cppType = strategy.normalizeCppType(resolved);
       }
       const isConst = statement.storage === "const";
+      // ISR-shared globals get `volatile` on their DEFINITION (renderVarDecl
+      // honors statement.isVolatile). The extern declaration in the header
+      // must carry the same qualifier or the two declarations conflict
+      // ("conflicting declaration ... previous declaration as ...").
+      const volatilePrefix = (statement as { isVolatile?: boolean }).isVolatile ? "volatile " : "";
       // A const-qualified top-level variable whose cppType already begins with
       // `const` (e.g. a string-literal global lowered as `const char*`) would
       // otherwise emit `extern const const char* X;` — a duplicate-const error.
@@ -298,12 +303,12 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
         const elemType = statement.initializer.elementType && statement.initializer.elementType !== "auto"
           ? strategy.normalizeCppType(statement.initializer.elementType)
           : strategy.defaultNumericType(ctx.compliance.isEnabled() ? ctx.compliance : undefined);
-        appendHeaderLine(ctx, `extern ${constPrefix}${elemType} ${varName}[];`);
+        appendHeaderLine(ctx, `extern ${volatilePrefix}${constPrefix}${elemType} ${varName}[];`);
         emitted = true;
         continue;
       }
       if (cppType === "auto") continue;
-      appendHeaderLine(ctx, `extern ${constPrefix}${cppType} ${varName};`);
+      appendHeaderLine(ctx, `extern ${volatilePrefix}${constPrefix}${cppType} ${varName};`);
       emitted = true;
     }
     if (emitted) {

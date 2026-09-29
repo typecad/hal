@@ -40,6 +40,18 @@ function s(v: unknown): string {
   return String(v);
 }
 
+/** Render a bool op field: literal booleans become `true`/`false`, string
+ *  values are the C++ text of a runtime expression and pass through
+ *  verbatim (truthiness of the non-empty string would emit `true`). */
+function boolText(v: boolean | string): string {
+  if (typeof v === "string") {
+    if (v === "true") return "true";
+    if (v === "false") return "false";
+    return v;
+  }
+  return v ? "true" : "false";
+}
+
 // Type tags for the cache slot payload. Scoped enum (AUTOSAR: enum class).
 // The on-metal order matters: these are stored in the `type` byte and matched
 // at h_set time, so do not renumber.
@@ -307,9 +319,9 @@ export function lowerPreferences(op: HALOpIR): { code?: string; expression?: str
     case 'preferences.get_int':
       return { expression: `__tc_prefs_get_int("tc/${unq(o.ns)}/${unq(o.key)}", ${s(o.defaultValue)})` };
     case 'preferences.put_bool':
-      return { code: `__tc_prefs_put_bool("tc/${unq(o.ns)}/${unq(o.key)}", ${o.value ? 'true' : 'false'});` };
+      return { code: `__tc_prefs_put_bool("tc/${unq(o.ns)}/${unq(o.key)}", ${boolText(o.value)});` };
     case 'preferences.get_bool':
-      return { expression: `__tc_prefs_get_bool("tc/${unq(o.ns)}/${unq(o.key)}", ${o.defaultValue ? 'true' : 'false'})` };
+      return { expression: `__tc_prefs_get_bool("tc/${unq(o.ns)}/${unq(o.key)}", ${boolText(o.defaultValue)})` };
     case 'preferences.put_float':
       return { code: `__tc_prefs_put_float("tc/${unq(o.ns)}/${unq(o.key)}", ${s(o.value)});` };
     case 'preferences.get_float':

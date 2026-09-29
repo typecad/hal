@@ -41,7 +41,19 @@ function resolveLocalModuleHeader(moduleSpecifier: string, importerFilePath: str
     return undefined;
   }
 
-  const basePath = path.resolve(path.dirname(importerFilePath), moduleSpecifier);
+  // ESM-style specifiers name the emitted extension: './control.js' is the
+  // canonical way to import control.ts. Strip it before generating candidates
+  // or the '.js' never matches a '.ts' file on disk and the import falls
+  // through to the PascalCase angle-bracket fallback (<Control.h>) — wrong
+  // case on case-sensitive filesystems and a header that doesn't exist.
+  let specifier = moduleSpecifier;
+  if (specifier.endsWith(".js")) {
+    specifier = specifier.slice(0, -3);
+  } else if (specifier.endsWith(".mjs")) {
+    specifier = specifier.slice(0, -4);
+  }
+
+  const basePath = path.resolve(path.dirname(importerFilePath), specifier);
   const candidates = [
     basePath,
     `${basePath}.ts`,
