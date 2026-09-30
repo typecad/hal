@@ -1,6 +1,7 @@
 import { emitCommentLines, isRuntimeExpression } from "../utils/index.js";
 import { appendSourceLine, appendHeaderLine, appendRenderedStatement } from "./line-appender.js";
 import type { EmitterContext } from "./emitter-context.js";
+import type { StatementIR } from "../../api/index.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import { isStringEnum } from "../../api/shared/index.js";
 import { parsedIsVector } from "../../api/shared/cpp-type-ir.js";
@@ -249,6 +250,31 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
   }
 
   // Emit top-level constant declarations BEFORE classes
+  // Struct-definition __EMIT__s hoisted out of the executable stream
+  // (top-level-prep.ts) render FIRST: they name the element types of the
+  // file-scope declarations below — a definition after its use is the
+  // "'_sensors_t' was not declared" failure this phase exists to prevent.
+  // In SPLIT mode they go into the HEADER instead (before the extern block
+  // below, which names the same types) — emitting them in the .cpp would
+  // leave the header's extern referencing a type declared only after the
+  // #include, and emitting in BOTH files would be a redefinition.
+  const structDefText = (stmt: StatementIR): string | undefined =>
+    stmt.kind === "call"
+    && (stmt as unknown as { callee?: string }).callee === "__EMIT__"
+    && Array.isArray((stmt as unknown as { args?: { kind?: string; value?: unknown }[] }).args)
+    && (stmt as unknown as { args: { kind?: string; value?: unknown }[] }).args[0]?.kind === "string"
+    ? String((stmt as unknown as { args: { value?: unknown }[] }).args[0].value)
+    : undefined;
+  if (effectiveEmitMode === "split") {
+    for (const structDef of ctx.topLevelStructDefinitions ?? []) {
+      const text = structDefText(structDef);
+      if (text) appendHeaderLine(ctx, text);
+    }
+  } else {
+    for (const structDef of ctx.topLevelStructDefinitions ?? []) {
+      appendRenderedStatement(ctx, structDef, "", topLevelScope);
+    }
+  }
   for (const statement of emittedTopLevelStatements) {
     if (statement.kind === "var_decl" && statement.initializer && isRuntimeExpression(statement.initializer)) {
       continue;

@@ -15,6 +15,7 @@ import {
 
 export type CppTypeHint =
   | "int"
+  | "char"
   | "long long"
   | "unsigned long long"
   | "float"
@@ -567,10 +568,30 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
       const ir: CppTypeIR = { kind: "map", key: parseCppType(keyType), value: parseCppType(valueType) };
       return renderCppType(ir) as CppTypeHint;
     }
+    // An INLINE type-literal annotation in a named position (parameter of a
+    // function or class method — `function board(limit: { take: number })`)
+    // has no C++ name. build-ir.ts synthesizes a named struct per such
+    // annotation (the parameter twin of the _<fn>_ret_t return synthesis)
+    // and registers the literal node here. Without this the annotation
+    // resolved "auto" → normalizeTypeHintForUse("double"), and the parameter
+    // lowered as a plain double while the body kept writing `limit.take`.
+    const synthesized = inlineTypeLiteralStructNames.get(resolvedNode);
+    if (synthesized) {
+      return synthesized as CppTypeHint;
+    }
   }
 
   return "auto";
 }
+
+/**
+ * Inline type-literal annotations that build-ir.ts has given a synthesized
+ * struct name (see synthesizeInlineLiteralParamStructs in build-ir.ts). Keyed
+ * by the literal node so every typeNodeToCppType call site — the parameter
+ * loops in function-builder, field inferences, call-site casts — resolves the
+ * SAME name with no threading.
+ */
+export const inlineTypeLiteralStructNames = new WeakMap<ts.TypeLiteralNode, string>();
 
 export function resolveFunctionTypeSignature(
   typeNode: ts.TypeNode | undefined,
@@ -722,6 +743,26 @@ export function inferExprCppType(
   // not an integral expression (`buckets[i]` with `const double i`).
   if (ts.isBinaryExpression(expr) && ["<<", ">>", ">>>", "|", "&", "^"].includes(expr.operatorToken.getText())) {
     return "int";
+  }
+
+  // A closure-valued record field (`read: (): number => 2300 + 1` in an
+  // object literal whose array gets promoted to __tc_StaticArray) infers as
+  // a callable member type, not the numeric default — the promotion path
+  // builds the element struct's field list from this function, and `int
+  // read;` cannot hold the lambda the constructor pushes (the emit-side
+  // twin of this rule lives in inferObjectFieldType).
+  if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr)) {
+    const fn = expr as ts.ArrowFunction | ts.FunctionExpression;
+    const paramTypes = fn.parameters.map(p =>
+      p.type ? typeNodeToCppType(p.type, undefined) : undefined);
+    const returnType = fn.type ? typeNodeToCppType(fn.type, undefined) : undefined;
+    const paramSpellable = paramTypes.length === 0
+      || paramTypes.every(t => t && t !== "auto" && t !== "void");
+    const returnSpellable = returnType !== undefined && returnType !== "auto" && returnType !== "void";
+    if (paramSpellable && returnSpellable) {
+      return `std::function<${returnType}(${paramTypes.filter(Boolean).join(", ")})>` as CppTypeHint;
+    }
+    return "auto";
   }
 
   if (ts.isCallExpression(expr)) {
@@ -1050,6 +1091,14 @@ export function inferExprCppType(
 
   if (ts.isElementAccessExpression(expr)) {
     const objectType = inferExprCppType(expr.expression, functionReturnTypes, localVariableTypes, sourceText);
+    // An element access on a STRING yields a char: `s[i] === '+'` compares a
+    // char against a 1-char literal, and a const bound to it (`const op =
+    // s[i]`) must CARRY char-ness into later comparisons — with the old
+    // "auto" fallthrough the identifier compared via strcmp against a
+    // literal rendered as ("+").c_str(), which is not valid C++.
+    if (objectType === "std::string" || objectType === "const char*" || objectType === "char*") {
+      return "char";
+    }
     // Typed array pointers → element types
     if (objectType === "float*") return "float";
     if (objectType === "uint8_t*") return "int";

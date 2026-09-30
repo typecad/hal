@@ -405,6 +405,51 @@ export function getCtorIncludes(className: string): string[] {
 
 /** Top-level `const NAME = "literal"` lookup, or null. One pass over the
  *  file's statements — cheap and cached by the TS compiler. */
+/**
+ * Fold a constructor argument to a compile-time NUMBER: a numeric literal, a
+ * top-level `const NAME = <numeric literal>` reference (typical firmware
+ * names every tunable: `new PWM(PA8, { periodNs: FAN_PWM_NS })`), or a
+ * product/sum of those (`new Watchdog(WDOG_MS * 4)`). The ctor field
+ * extractors previously accepted numeric LITERALS only, so a const-named
+ * option left the field unset and the method inlining silently failed.
+ */
+export function resolveConstNumericExpr(
+  expr: ts.Expression | undefined,
+  sourceFile: ts.SourceFile | undefined,
+): number | null {
+  if (!expr) return null;
+  if (ts.isNumericLiteral(expr)) {
+    return Number(expr.text.replace(/_/g, ""));
+  }
+  if (ts.isIdentifier(expr) && sourceFile) {
+    for (const stmt of sourceFile.statements) {
+      if (!ts.isVariableStatement(stmt)) continue;
+      for (const decl of stmt.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name) && decl.name.text === expr.text) {
+          return resolveConstNumericExpr(decl.initializer, sourceFile);
+        }
+      }
+    }
+    return null;
+  }
+  if (ts.isParenthesizedExpression(expr)) {
+    return resolveConstNumericExpr(expr.expression, sourceFile);
+  }
+  if (ts.isBinaryExpression(expr)) {
+    const left = resolveConstNumericExpr(expr.left, sourceFile);
+    const right = resolveConstNumericExpr(expr.right, sourceFile);
+    if (left === null || right === null) return null;
+    switch (expr.operatorToken.kind) {
+      case ts.SyntaxKind.AsteriskToken: return left * right;
+      case ts.SyntaxKind.SlashToken: return right !== 0 ? left / right : null;
+      case ts.SyntaxKind.PlusToken: return left + right;
+      case ts.SyntaxKind.MinusToken: return left - right;
+      default: return null;
+    }
+  }
+  return null;
+}
+
 function topLevelStringConst(sourceFile: ts.SourceFile, name: string): string | null {
   for (const stmt of sourceFile.statements) {
     if (!ts.isVariableStatement(stmt)) continue;

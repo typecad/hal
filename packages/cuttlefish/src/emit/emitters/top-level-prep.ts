@@ -86,6 +86,7 @@ function collectCallbackFromExpression(
   callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number; isInterruptHandler?: boolean; returnType?: string; typedParams?: { name: string; cppType: string }[] }[],
   isrPrefix: string,
   counter: { value: number },
+  programScopeNames?: ReadonlySet<string>,
 ): void {
   if (expr.kind === "callback") {
     const callbackName = `${isrPrefix}_isr_${counter.value++}`;
@@ -106,8 +107,43 @@ function collectCallbackFromExpression(
   // it strips the parameter and breaks the call site. That case is guarded by
   // the caller (collectCallbackFromStatement) which skips var_decl initializers.
   if (expr.kind === "lambda") {
-    const callbackName = `${isrPrefix}_isr_${counter.value++}`;
     const lam = expr as any;
+    // A lambda that references names beyond its own parameters/locals and
+    // program-level symbols is a CLOSURE over the enclosing function's
+    // locals or params. Hoisting it to a free function strands those
+    // references ("'k' was not declared" for `return (x) => x * k` where k
+    // is a factory parameter). Keep it inline — renderLambda emits `[&]`
+    // capture-by-ref, which preserves the closure exactly, and every
+    // __tc_* callback helper takes its callable as a template parameter, so
+    // an inline lambda works there too.
+    if (programScopeNames) {
+      const ownNames = new Set<string>();
+      for (const p of (lam.params ?? [])) {
+        if (p && p.name) ownNames.add(p.name);
+      }
+      const lamBody: StatementIR[] = lam.statements ?? lam.body ?? [];
+      const collectLocalDeclNames = (stmts: StatementIR[]) => {
+        for (const s of stmts) {
+          if (s.kind === "var_decl") ownNames.add(s.name);
+          for (const key of ["body", "thenBranch", "elseBranch"] as const) {
+            const nested = (s as unknown as Record<string, unknown>)[key];
+            if (Array.isArray(nested)) collectLocalDeclNames(nested as StatementIR[]);
+          }
+          if ("cases" in s && Array.isArray((s as { cases?: { body: StatementIR[] }[] }).cases)) {
+            for (const c of (s as { cases: { body: StatementIR[] }[] }).cases) collectLocalDeclNames(c.body);
+          }
+        }
+      };
+      collectLocalDeclNames(lamBody);
+      for (const name of collectIdentifierNames(lamBody)) {
+        if (ownNames.has(name) || programScopeNames.has(name)) continue;
+        // Runtime-helper and C library names surface through raw IR text;
+        // they are never closure captures.
+        if (/^(?:__tc_\w+|__cuttlefish_\w+|k_\w+|static_cast|reinterpret_cast|const_cast|dynamic_cast|printf|snprintf|sprintf|strlen|strcmp|strncmp|strcpy|strncpy|strtol|strtoul|atoi|atof|abs|fabs|floor|ceil|round|fmod|pow|sqrt|sin|cos|tan|min|max|isdigit|isalpha|isspace|toupper|tolower|memcpy|memmove|memset|memset|size_t|uint\d+_t|int\d+_t|int64_t|uint64_t)$/.test(name)) continue;
+        return; // capturing closure — stays inline
+      }
+    }
+    const callbackName = `${isrPrefix}_isr_${counter.value++}`;
     // Preserve the lambda's return type and typed params so a
     // `(x): int16_t => {...}` callback lowers to `int16_t name(int16_t)`
     // rather than the default `void name()`. The historical ISR/HAL path
@@ -145,25 +181,25 @@ function collectCallbackFromExpression(
         });
         rewriteAsIdentifier(arg, callbackName);
       } else {
-        collectCallbackFromExpression(arg, callbackFunctions, isrPrefix, counter);
+        collectCallbackFromExpression(arg, callbackFunctions, isrPrefix, counter, programScopeNames);
       }
     }
   }
   if (expr.kind === "raw") return;
   if ("args" in expr && Array.isArray(expr.args)) {
-    for (const arg of expr.args) { collectCallbackFromExpression(arg, callbackFunctions, isrPrefix, counter); }
+    for (const arg of expr.args) { collectCallbackFromExpression(arg, callbackFunctions, isrPrefix, counter, programScopeNames); }
   }
-  if ("initializer" in expr && expr.initializer) { collectCallbackFromExpression(expr.initializer as ExpressionIR, callbackFunctions, isrPrefix, counter); }
-  if ("value" in expr && expr.value && typeof expr.value === "object") { collectCallbackFromExpression(expr.value, callbackFunctions, isrPrefix, counter); }
-  if ("left" in expr) { collectCallbackFromExpression(expr.left, callbackFunctions, isrPrefix, counter); }
-  if ("right" in expr) { collectCallbackFromExpression(expr.right, callbackFunctions, isrPrefix, counter); }
-  if ("condition" in expr && typeof expr.condition === "object") { collectCallbackFromExpression(expr.condition, callbackFunctions, isrPrefix, counter); }
-  if ("whenTrue" in expr) { collectCallbackFromExpression(expr.whenTrue, callbackFunctions, isrPrefix, counter); }
-  if ("whenFalse" in expr) { collectCallbackFromExpression(expr.whenFalse, callbackFunctions, isrPrefix, counter); }
-  if ("inner" in expr) { collectCallbackFromExpression(expr.inner, callbackFunctions, isrPrefix, counter); }
-  if ("object" in expr && typeof expr.object === "object" && expr.kind !== "instanceof") { collectCallbackFromExpression(expr.object, callbackFunctions, isrPrefix, counter); }
+  if ("initializer" in expr && expr.initializer) { collectCallbackFromExpression(expr.initializer as ExpressionIR, callbackFunctions, isrPrefix, counter, programScopeNames); }
+  if ("value" in expr && expr.value && typeof expr.value === "object") { collectCallbackFromExpression(expr.value, callbackFunctions, isrPrefix, counter, programScopeNames); }
+  if ("left" in expr) { collectCallbackFromExpression(expr.left, callbackFunctions, isrPrefix, counter, programScopeNames); }
+  if ("right" in expr) { collectCallbackFromExpression(expr.right, callbackFunctions, isrPrefix, counter, programScopeNames); }
+  if ("condition" in expr && typeof expr.condition === "object") { collectCallbackFromExpression(expr.condition, callbackFunctions, isrPrefix, counter, programScopeNames); }
+  if ("whenTrue" in expr) { collectCallbackFromExpression(expr.whenTrue, callbackFunctions, isrPrefix, counter, programScopeNames); }
+  if ("whenFalse" in expr) { collectCallbackFromExpression(expr.whenFalse, callbackFunctions, isrPrefix, counter, programScopeNames); }
+  if ("inner" in expr) { collectCallbackFromExpression(expr.inner, callbackFunctions, isrPrefix, counter, programScopeNames); }
+  if ("object" in expr && typeof expr.object === "object" && expr.kind !== "instanceof") { collectCallbackFromExpression(expr.object, callbackFunctions, isrPrefix, counter, programScopeNames); }
   if ("elements" in expr && Array.isArray(expr.elements)) {
-    for (const e of expr.elements) { collectCallbackFromExpression(e, callbackFunctions, isrPrefix, counter); }
+    for (const e of expr.elements) { collectCallbackFromExpression(e, callbackFunctions, isrPrefix, counter, programScopeNames); }
   }
 }
 
@@ -172,6 +208,7 @@ function collectCallbacks(
   callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number; isInterruptHandler?: boolean; returnType?: string; typedParams?: { name: string; cppType: string }[] }[],
   isrPrefix: string,
   counter: { value: number },
+  programScopeNames?: ReadonlySet<string>,
 ): void {
   for (const stmt of statements) {
     if (stmt.kind === "call") {
@@ -181,7 +218,7 @@ function collectCallbacks(
       // from these — they must stay inline to preserve closure captures.
       if (stmt.callee === "__EXPR_STMT__") continue;
       for (const arg of stmt.args) {
-        collectCallbackFromExpression(arg, callbackFunctions, isrPrefix, counter);
+        collectCallbackFromExpression(arg, callbackFunctions, isrPrefix, counter, programScopeNames);
       }
     }
     if (stmt.kind === "var_decl" && stmt.initializer) {
@@ -190,25 +227,25 @@ function collectCallbacks(
       // breaks the call site. Skip direct-lambda initializers, but still
       // recurse to find callbacks nested inside (e.g. `const f = foo(() => {})`).
       if (stmt.initializer.kind !== "lambda") {
-        collectCallbackFromExpression(stmt.initializer, callbackFunctions, isrPrefix, counter);
+        collectCallbackFromExpression(stmt.initializer, callbackFunctions, isrPrefix, counter, programScopeNames);
       }
     }
     if ("body" in stmt && Array.isArray(stmt.body)) {
-      collectCallbacks(stmt.body, callbackFunctions, isrPrefix, counter);
+      collectCallbacks(stmt.body, callbackFunctions, isrPrefix, counter, programScopeNames);
     }
     if ("thenBranch" in stmt && Array.isArray(stmt.thenBranch)) {
-      collectCallbacks(stmt.thenBranch, callbackFunctions, isrPrefix, counter);
+      collectCallbacks(stmt.thenBranch, callbackFunctions, isrPrefix, counter, programScopeNames);
     }
     if ("elseBranch" in stmt && Array.isArray(stmt.elseBranch)) {
-      collectCallbacks(stmt.elseBranch, callbackFunctions, isrPrefix, counter);
+      collectCallbacks(stmt.elseBranch, callbackFunctions, isrPrefix, counter, programScopeNames);
     }
     if ("cases" in stmt && Array.isArray(stmt.cases)) {
       for (const c of stmt.cases) {
-        collectCallbacks(c.body, callbackFunctions, isrPrefix, counter);
+        collectCallbacks(c.body, callbackFunctions, isrPrefix, counter, programScopeNames);
       }
     }
     if ("value" in stmt && stmt.value) {
-      collectCallbackFromExpression(stmt.value, callbackFunctions, isrPrefix, counter);
+      collectCallbackFromExpression(stmt.value, callbackFunctions, isrPrefix, counter, programScopeNames);
     }
   }
 }
@@ -525,6 +562,25 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
     }
     return false;
   });
+  // A struct-definition `__EMIT__` synthesized by the StaticArray promotion
+  // (variables.ts) names the ELEMENT TYPE of a file-scope declaration. Left
+  // in the executable stream it emits inside main() — AFTER the global that
+  // uses it ("'_sensors_t' was not declared in this scope"). These are type
+  // declarations, not executables: route them to the declaration phase
+  // (type-decl-emitter renders them before the top-level globals). The
+  // function-local promotion path is untouched — its __EMIT__s never pass
+  // through here.
+  const isTopLevelStructEmit = (statement: StatementIR): boolean =>
+    statement.kind === "call"
+    && (statement as unknown as { callee?: string }).callee === "__EMIT__"
+    && Array.isArray((statement as unknown as { args?: unknown[] }).args)
+    && (statement as unknown as { args: { kind?: string; value?: unknown }[] }).args.length === 1
+    && (statement as unknown as { args: { kind?: string; value?: unknown }[] }).args[0].kind === "string"
+    && String((statement as unknown as { args: { value?: unknown }[] }).args[0].value).startsWith("struct ");
+  ctx.topLevelStructDefinitions = filteredTopLevelExecutables.filter(isTopLevelStructEmit);
+  const executablesWithoutStructDefs = filteredTopLevelExecutables.filter(s => !isTopLevelStructEmit(s));
+  filteredTopLevelExecutables.length = 0;
+  filteredTopLevelExecutables.push(...executablesWithoutStructDefs);
   ctx.filteredTopLevelExecutables = filteredTopLevelExecutables;
 
   const emittedTopLevelStatements = isEntryFile
@@ -568,22 +624,52 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
   const callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number; isInterruptHandler?: boolean; returnType?: string; typedParams?: { name: string; cppType: string }[] }[] = [];
   const counter = { value: 0 };
 
-  collectCallbacks(filteredTopLevelExecutables, callbackFunctions, ctx.isrPrefix, counter);
+  // Program-level symbols a hoisted free function may legally reference:
+  // top-level vars (promoted to file scope for exactly this reason), free
+  // functions, classes, and type aliases. A lambda referencing anything else
+  // (an enclosing function's params/locals) is a CLOSURE and must stay
+  // inline — see the lambda branch of collectCallbackFromExpression.
+  const programScopeNames = new Set<string>();
+  for (const stmt of filteredTopLevelDeclarations) {
+    if (stmt.kind === "var_decl") programScopeNames.add(stmt.name);
+  }
+  for (const fn of program.functions) {
+    programScopeNames.add(fn.originalName);
+  }
   for (const fn of mappedFunctions) {
-    collectCallbacks(fn.statements, callbackFunctions, ctx.isrPrefix, counter);
+    if (fn.name) programScopeNames.add(fn.name);
+  }
+  for (const cls of program.classes) {
+    programScopeNames.add(cls.name);
+    for (const field of cls.fields) programScopeNames.add(field.name);
+  }
+  for (const en of program.enums) {
+    programScopeNames.add(en.name);
+    for (const member of en.members) programScopeNames.add(member.name);
+  }
+  for (const alias of program.typeAliases) {
+    programScopeNames.add(alias.name);
+  }
+  for (const iface of program.interfaces) {
+    programScopeNames.add(iface.name);
+  }
+
+  collectCallbacks(filteredTopLevelExecutables, callbackFunctions, ctx.isrPrefix, counter, programScopeNames);
+  for (const fn of mappedFunctions) {
+    collectCallbacks(fn.statements, callbackFunctions, ctx.isrPrefix, counter, programScopeNames);
   }
   for (const cls of program.classes) {
     if (cls.constructor) {
-      collectCallbacks(cls.constructor.statements, callbackFunctions, ctx.isrPrefix, counter);
+      collectCallbacks(cls.constructor.statements, callbackFunctions, ctx.isrPrefix, counter, programScopeNames);
     }
     for (const method of cls.methods) {
-      collectCallbacks(method.statements, callbackFunctions, ctx.isrPrefix, counter);
+      collectCallbacks(method.statements, callbackFunctions, ctx.isrPrefix, counter, programScopeNames);
     }
     for (const getter of cls.getters) {
-      collectCallbacks(getter.statements, callbackFunctions, ctx.isrPrefix, counter);
+      collectCallbacks(getter.statements, callbackFunctions, ctx.isrPrefix, counter, programScopeNames);
     }
     for (const setter of cls.setters) {
-      collectCallbacks(setter.statements, callbackFunctions, ctx.isrPrefix, counter);
+      collectCallbacks(setter.statements, callbackFunctions, ctx.isrPrefix, counter, programScopeNames);
     }
   }
 

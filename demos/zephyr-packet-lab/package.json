@@ -1,0 +1,19 @@
+{
+  "name": "zephyr-packet-lab",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload",
+    "monitor": "typecad-hal build --compile --upload --monitor",
+    "dev": "typecad-hal build --watch"
+  },
+  "dependencies": {
+    "@typecad/cuttlefish": "*",
+    "@typecad/hal": "*",
+    "@typecad/framework-zephyr": "*"
+  },
+  "description": "Black Pill packet lab — sensor frames serialized with byte escaping, reparsed by a state machine, per-channel tallies, a sorted leaderboard and a recursive config-expression evaluator"
+}

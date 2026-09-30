@@ -136,12 +136,17 @@ export function renderExprAsText(expr: ExpressionIR): string {
       return `${expr.operator}${renderExprAsText(expr.operand)}`;
     case "property-access": {
       const objText = renderExprAsText(expr.object);
+      // The member name is a C++ TOKEN — escape reserved words exactly like
+      // the emit-side renderer (escapeCppKeyword). A record field named
+      // `auto` rendered here un-escaped (`cfg->auto`) is a hard parse error;
+      // the emit renderer already renames it `auto_`, so this side drifted.
+      const safeProperty = escapeCppKeyword(expr.property, getContext().activeStrategy?.reservedNames?.());
       if (expr.isEnum || expr.isNamespace || expr.isStatic) {
-        return `${objText}::${expr.property}`;
+        return `${objText}::${safeProperty}`;
       }
       const isPointer = expr.isPointer || (expr.object.kind === "raw" && expr.object.value === "this");
       const sep = isPointer ? "->" : ".";
-      return `${objText}${sep}${expr.property}`;
+      return `${objText}${sep}${safeProperty}`;
     }
     case "paren":
       return `(${renderExprAsText(expr.inner)})`;

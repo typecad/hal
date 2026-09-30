@@ -254,7 +254,22 @@ export const RULES: readonly RuleEntry[] = [
   { id: "M4-5-1", title: "No magic numbers; named constants", severity: "advisory", category: "D", enabled: true },
   { id: "A18-1-1", title: "C-style arrays -> std::array", severity: "required", category: "D", enabled: true },
   { id: "A8-4-4", title: "No goto", severity: "required", category: "C",
-    detect: /\bgoto\s+\w+;/, enabled: true },
+    detect: /\bgoto\s+\w+;/, enabled: true,
+    knownPatterns: [
+      {
+        // Labeled break/continue lowering: JS `break outer` / `continue outer`
+        // have no single C++ construct (a labeled continue must resume the
+        // OUTER loop's increment; plain continue resumes the innermost one —
+        // silent wrong-code). The engine lowers them to forward jumps to
+        // machine-generated no-op labels placed at the labeled statement's
+        // end / the loop body's end — a strictly-forward, same-function,
+        // machine-generated jump (the AUTOSAR-controlled-jump exemption
+        // shape), never a user-written goto.
+        detect: /\bgoto\s+__(?:break|continue)_[A-Za-z0-9_]+;/,
+        justification: "Engine-generated lowering of JS labeled break/continue; a forward jump to a machine-placed no-op label at the loop/statement boundary is the only C++14 form with JS semantics (plain continue/break would target the wrong loop).",
+        kind: "engine-lowering",
+      },
+    ] },
   { id: "A7-1-2", title: "No register keyword", severity: "required", category: "C",
     detect: /(?<![A-Za-z0-9_])register\s+(?:int|char|short|long|unsigned|float|double|bool|void|uint\d+_t|int\d+_t|size_t|auto)/, enabled: true },
 

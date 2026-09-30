@@ -56,7 +56,7 @@ import {
   isHALSingleton,
   HALInstance,
 } from "../hal-resolver.js";
-import { requestCtorFields, mqttCtorFields, halClassRegistry } from "../hal/hal-parser.js";
+import { resolveConstNumericExpr, requestCtorFields, mqttCtorFields, halClassRegistry } from "../hal/hal-parser.js";
 import { resolveHALCallForVarInit } from "./hal-call-resolver.js";
 import { recordSignal } from "./ui-call-resolver.js";
 import { hasSafetyHook, requireSafetyHook } from "../../safety-hook.js";
@@ -73,6 +73,382 @@ function varIrBareName(cppType: string): string | undefined {
 function replaceHalReadBufferPlaceholder(_op: HALOpIR, _varName: string): HALOpIR {
   // i2c/spi read_buffer ops were removed with the legacy Wire/SPI surfaces.
   return _op;
+}
+
+/**
+ * Register a top-level `const x = new <HALClass>(...)` declaration into the
+ * halInstances registry (and pull the ctor's includes). Extracted verbatim
+ * from the declaration-lowering path so build-ir.ts can PRE-REGISTER every
+ * top-level HAL construction BEFORE any function body lowers — function
+ * bodies lower first (hoisting), and a use of an instance inside a function
+ * resolved against an unregistered name fell through to a broken half-inline
+ * (`adcReadMv(PA1, , , this->_channel…)` — receiver as the pin, unsubstituted
+ * this-fields) with no diagnostic.
+ * Returns true when the declaration is a HAL construction (registered or
+ * already present).
+ */
+export function registerHalCtorInstance(
+  varName: string,
+  initializer: ts.NewExpression,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+): boolean {
+  if (!ts.isIdentifier(initializer.expression)) return false;
+  const className = initializer.expression.text;
+  const ctorArgs = initializer.arguments as ts.NodeArray<ts.Expression> | undefined;
+
+  if (!isKnownHALClass(className)) return false;
+  const fieldValues = new Map<string, string>();
+          const ctorIncludes = getCtorIncludes(className);
+          for (const inc of ctorIncludes) {
+            requiredIncludes.add(inc);
+          }
+
+          if (ctorArgs) {
+            for (const arg of ctorArgs) {
+              if (ts.isIdentifier(arg)) {
+                // Resolved pin/port identifier mappings
+              } else if (ts.isStringLiteral(arg)) {
+                if (className === "I2CBus") fieldValues.set("_bus", arg.text);
+                else if (className === "SPIBus") fieldValues.set("_bus", arg.text);
+                else if (className === "UART") fieldValues.set("_port", arg.text);
+              } else if (ts.isNumericLiteral(arg)) {
+                if (className === "Pin") fieldValues.set("_pin", arg.text);
+              } else if (ts.isPropertyAccessExpression(arg)) {
+                if (className === "Pin") fieldValues.set("_pin", arg.getText());
+              }
+            }
+          }
+
+          // new Sensor(SENSOR.<part>, I2C1.device(0x44)) — the generic
+          // DT-bound peripheral. The part token is kept as text (property
+          // access text like 'SENSOR.sensirion_sht3xd'); the bus + address
+          // come from the I2CTarget the second arg resolves to. The lowering
+          // resolves the token against the generated catalog.
+          if (className === "Sensor" && ctorArgs && ctorArgs.length >= 2) {
+            const dev = resolveSensorDeviceArg(ctorArgs[1]);
+            if (dev) {
+              fieldValues.set("_part", ctorArgs[0].getText());
+              fieldValues.set("_bus", dev.bus);
+              fieldValues.set("_kind", dev.kind);
+              fieldValues.set("_port", dev.port);
+            } else {
+              diagnostics.push(
+                makeDiagnostic(
+                  sourceText,
+                  initializer.pos,
+                  `new Sensor(...) second argument must be an I2C device (e.g. I2C1.device(0x44), possibly via a const) — got '${ctorArgs[1].getText()}'.`,
+                  "error",
+                  "HAL_SENSOR_CTOR",
+                ),
+              );
+            }
+            // opts object literal: numeric properties pass through, pin
+            // identifiers resolve to their number (alert?: PA5). Absent
+            // properties fall back to the class-field initializer defaults
+            // (_spiHz = 1000000 etc.) so `this._spiHz` in an inlined method
+            // body always resolves.
+            const sensorDefaults = halClassRegistry.get("Sensor")?.fieldDefaults;
+            if (sensorDefaults) {
+              for (const [name, val] of sensorDefaults) {
+                if (!fieldValues.has(name)) fieldValues.set(name, val);
+              }
+            }
+            if (ctorArgs.length >= 3 && ts.isObjectLiteralExpression(ctorArgs[2])) {
+              for (const prop of ctorArgs[2].properties) {
+                if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
+                const name = prop.name.text;
+                if (ts.isNumericLiteral(prop.initializer)) {
+                  fieldValues.set(`_${name}`, prop.initializer.text);
+                } else if (ts.isIdentifier(prop.initializer)) {
+                  const inst = halInstances.get(prop.initializer.text);
+                  fieldValues.set(`_${name}`, inst?.fieldValues.get("_pin") ?? inst?.fieldValues.get("pin") ?? prop.initializer.text);
+                }
+              }
+            }
+          }
+
+          // new Request(method, url, opts?) — shared capture (also serves
+          // bare `new Request(...).send()` receivers via resolveHALReceiver).
+          if (className === "Request") {
+            const reqFields = requestCtorFields(ctorArgs, ctorArgs?.[0]?.getSourceFile());
+            if (reqFields) for (const [k, v] of reqFields) fieldValues.set(k, v);
+          }
+
+          // Thin Zephyr-shaped peripherals (GPIO/PWM/ADC/DAC/
+          // Watchdog/Counter — hal/gpio-pin.ts and siblings). Same discipline
+          // as Sensor: construction facts become instance fields. Pin args
+          // keep their identifier/text form (resolved to numbers later);
+          // flag/gain token EXPRESSIONS keep their source text — the lowering
+          // maps token names to C macros; numeric opts props pass through as
+          // numbers (numeric separators stripped for C++).
+          const thinPinFirst: Record<string, true> = { GPIO: true, PWM: true, Servo: true, ADC: true, DAC: true };
+          if (thinPinFirst[className] && ctorArgs && ctorArgs.length >= 1) {
+            const pinArg = ctorArgs[0];
+            if (ts.isIdentifier(pinArg)) {
+              // resolveHALReceiver seeds board-module pin constants (LED,
+              // BUTTON, datasheet names) into halInstances on first lookup —
+              // a plain halInstances.get() would miss them.
+              const inst = halInstances.get(pinArg.text) ?? resolveHALReceiver(pinArg);
+              fieldValues.set("_pin", inst?.fieldValues.get("_pin") ?? inst?.fieldValues.get("pin") ?? pinArg.text);
+            } else {
+              fieldValues.set("_pin", pinArg.getText());
+            }
+          }
+          if (className === "GPIO" && ctorArgs && ctorArgs.length >= 2) {
+            // "GPIO.OUTPUT | GPIO.PULL_UP" — the token text is the IR carrier.
+            fieldValues.set("_flags", ctorArgs[1].getText());
+          }
+          const thinOptsCtor: Record<string, true> = { PWM: true, Servo: true, ADC: true, DAC: true, Counter: true, I2S: true };
+          if (thinOptsCtor[className] && ctorArgs && ctorArgs.length >= 2 && ts.isObjectLiteralExpression(ctorArgs[1])) {
+            for (const prop of ctorArgs[1].properties) {
+              if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
+              const name = prop.name.text;
+              // A const-referenced numeric option (`periodNs: FAN_PWM_NS`) folds
+              // to its number so numeric consumers (pwm.set_duty's periodNs)
+              // resolve; tokens and runtime expressions keep their text.
+              const folded = resolveConstNumericExpr(prop.initializer, initializer.getSourceFile());
+              if (folded !== null) {
+                fieldValues.set(`_${name}`, String(folded));
+              } else if (ts.isNumericLiteral(prop.initializer)) {
+                fieldValues.set(`_${name}`, prop.initializer.text.replace(/_/g, ""));
+              } else {
+                // Token (ADC.GAIN_1_4) or runtime expression text.
+                fieldValues.set(`_${name}`, prop.initializer.getText());
+              }
+            }
+          }
+          // Matrix (hal/matrix.ts): the ctor's single opts object carries
+          // rows/cols as arrays of pin identifiers — resolve each through
+          // halInstances (board-module pin constants seed there on lookup)
+          // and store comma-joined numbers for the op capture.
+          if (className === "Matrix" && ctorArgs && ctorArgs.length >= 1 && ts.isObjectLiteralExpression(ctorArgs[0])) {
+            const pinList = (prop: ts.PropertyAssignment | undefined): string | undefined => {
+              if (!prop || !ts.isArrayLiteralExpression(prop.initializer)) return undefined;
+              const nums: string[] = [];
+              for (const el of prop.initializer.elements) {
+                if (ts.isNumericLiteral(el)) { nums.push(el.text); continue; }
+                if (ts.isIdentifier(el)) {
+                  const inst = halInstances.get(el.text) ?? resolveHALReceiver(el);
+                  const pin = inst?.fieldValues.get("_pin") ?? inst?.fieldValues.get("pin");
+                  if (pin !== undefined) { nums.push(String(pin)); continue; }
+                }
+                return undefined;
+              }
+              return nums.join(",");
+            };
+            for (const prop of ctorArgs[0].properties) {
+              if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
+              if (prop.name.text === "rows") {
+                const v = pinList(prop);
+                if (v !== undefined) fieldValues.set("_rows", v);
+              } else if (prop.name.text === "cols") {
+                const v = pinList(prop);
+                if (v !== undefined) fieldValues.set("_cols", v);
+              }
+            }
+          }
+          if (className === "Watchdog" && ctorArgs && ctorArgs.length >= 1) {
+            // Const-folded: `new Watchdog(WDOG_MS * 4)` is typical firmware;
+            // a literal-only check silently dropped the timeout and broke the
+            // wdt.setup op (hal-method-unresolved).
+            const wdtMs = resolveConstNumericExpr(ctorArgs[0], initializer.getSourceFile());
+            if (wdtMs !== null) {
+              fieldValues.set("_timeoutMs", String(wdtMs));
+            } else if (ts.isNumericLiteral(ctorArgs[0])) {
+              fieldValues.set("_timeoutMs", ctorArgs[0].text.replace(/_/g, ""));
+            }
+          }
+          // Thin File: the path is the construction fact.
+          if (className === "File" && ctorArgs && ctorArgs.length >= 1 && ts.isStringLiteral(ctorArgs[0])) {
+            fieldValues.set("_path", ctorArgs[0].text);
+          }
+          // new Mqtt(uri, opts?) — shared capture (also serves bare
+          // `new Mqtt(...).connect()` receivers via resolveHALReceiver).
+          if (className === "Mqtt") {
+            const mqttFields = mqttCtorFields(ctorArgs, ctorArgs?.[0]?.getSourceFile());
+            if (mqttFields) for (const [k, v] of mqttFields) fieldValues.set(k, v);
+          }
+          // Thin Store: the namespace is the construction fact (plain text —
+          // the plugin case quotes it when composing the settings key).
+          if (className === "Store" && ctorArgs && ctorArgs.length >= 1 && ts.isStringLiteral(ctorArgs[0])) {
+            fieldValues.set("_ns", ctorArgs[0].text);
+          }
+          // Thin BLE: the advertised name is the construction fact.
+          if (className === "BLE" && ctorArgs && ctorArgs.length >= 1 && ts.isStringLiteral(ctorArgs[0])) {
+            fieldValues.set("_name", JSON.stringify(ctorArgs[0].text));
+          }
+          if (className === "Counter" && ctorArgs && ctorArgs.length >= 1 && ts.isNumericLiteral(ctorArgs[0])) {
+            fieldValues.set("_instance", ctorArgs[0].text.replace(/_/g, ""));
+          }
+
+          // Thin WiFi station: first arg is the ssid literal; the opts carry
+          // the link facts. Nested ipv4 facts flatten to _ipAddr/_gateway/
+          // _netmask. Computed defaults (security ternary, timeoutMs ??) are
+          // applied by the wifiJoin plugin case, not here.
+          if (className === "WiFi" && ctorArgs && ctorArgs.length >= 1) {
+            if (ts.isStringLiteral(ctorArgs[0])) {
+              fieldValues.set("_ssid", JSON.stringify(ctorArgs[0].text));
+            } else {
+              fieldValues.set("_ssid", ctorArgs[0].getText());
+            }
+            const wopts = ctorArgs[1];
+            if (wopts && ts.isObjectLiteralExpression(wopts)) {
+              for (const prop of wopts.properties) {
+                if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
+                const name = prop.name.text;
+                if (name === "ipv4" && ts.isObjectLiteralExpression(prop.initializer)) {
+                  for (const ip of prop.initializer.properties) {
+                    if (!ts.isPropertyAssignment(ip) || !ts.isIdentifier(ip.name)) continue;
+                    const ipName = ip.name.text;
+                    const key = ipName === "addr" ? "_ipAddr" : `_${ipName}`;
+                    if (ts.isStringLiteral(ip.initializer)) {
+                      fieldValues.set(key, JSON.stringify(ip.initializer.text));
+                    } else {
+                      fieldValues.set(key, ip.initializer.getText());
+                    }
+                  }
+                } else if (name !== "powerSave") {
+                  if (ts.isStringLiteral(prop.initializer)) {
+                    fieldValues.set(`_${name}`, JSON.stringify(prop.initializer.text));
+                  } else if (ts.isNumericLiteral(prop.initializer)) {
+                    fieldValues.set(`_${name}`, prop.initializer.text.replace(/_/g, ""));
+                  } else {
+                    fieldValues.set(`_${name}`, prop.initializer.getText());
+                  }
+                } else {
+                  // powerSave: WiFi.PS_OFF token → ps=1 flag (0 = default on).
+                  const txt = prop.initializer.getText();
+                  fieldValues.set("_ps", txt.includes("PS_OFF") ? "1" : "0");
+                }
+              }
+            }
+          }
+          if (className === "Thread" && ctorArgs && ctorArgs.length >= 1 && ts.isNumericLiteral(ctorArgs[0])) {
+            fieldValues.set("_index", ctorArgs[0].text.replace(/_/g, ""));
+            // stackKb → bytes here (the class-body arithmetic is erased).
+            const kbArg = ctorArgs.length >= 2 && ts.isObjectLiteralExpression(ctorArgs[1])
+              ? ctorArgs[1].properties.find((p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === "stackKb")
+              : undefined;
+            const kb = kbArg && ts.isPropertyAssignment(kbArg) && ts.isNumericLiteral(kbArg.initializer)
+              ? parseInt(kbArg.initializer.text.replace(/_/g, ""), 10) : 2;
+            fieldValues.set("_stackBytes", String((isNaN(kb) ? 2 : kb) * 1024));
+          }
+
+          // Tier-2 thin buses. The first arg is the board's bus/port instance
+          // export (I2C0/SPI0/UART1) — kept as text, which the lowerings'
+          // parseControllerIndex reads; SPITarget adds the cs pin (identifier
+          // or property access, resolved later like every pin arg); opts carry
+          // the wire facts (hz/mode/baud).
+          const thinBusFirst: Record<string, true> = { I2CTarget: true, SPITarget: true, UART: true, Strip: true, I2CResponder: true };
+          if (thinBusFirst[className] && ctorArgs && ctorArgs.length >= 1) {
+            const busArg = ctorArgs[0];
+            if (ts.isIdentifier(busArg)) {
+              const inst = halInstances.get(busArg.text);
+              fieldValues.set("_bus", inst?.fieldValues.get("_bus") ?? busArg.text);
+              fieldValues.set("_port", inst?.fieldValues.get("_port") ?? inst?.fieldValues.get("_bus") ?? busArg.text);
+            } else if (ts.isStringLiteral(busArg)) {
+              fieldValues.set("_bus", busArg.text);
+              fieldValues.set("_port", busArg.text);
+            } else {
+              fieldValues.set("_bus", busArg.getText());
+              fieldValues.set("_port", busArg.getText());
+            }
+          }
+          if (className === "SPITarget" && ctorArgs && ctorArgs.length >= 2) {
+            const csArg = ctorArgs[1];
+            if (ts.isIdentifier(csArg)) {
+              const inst = halInstances.get(csArg.text);
+              fieldValues.set("_cs", inst?.fieldValues.get("_pin") ?? inst?.fieldValues.get("pin") ?? csArg.text);
+            } else {
+              fieldValues.set("_cs", csArg.getText());
+            }
+          }
+          if ((className === "I2CTarget" || className === "I2CResponder") && ctorArgs && ctorArgs.length >= 2 && ts.isNumericLiteral(ctorArgs[1])) {
+            fieldValues.set("_address", ctorArgs[1].text);
+          }
+          const thinBusOpts: Record<string, true> = { I2CTarget: true, SPITarget: true, UART: true, Thread: true, Strip: true, CAN: true, I2CResponder: true };
+          if (thinBusOpts[className] && ctorArgs && ctorArgs.length >= 2) {
+            // I2CTarget/UART: (bus, opts?); SPITarget: (bus, cs, opts?).
+            const optsArg = ctorArgs.length === 2 ? ctorArgs[1] : ctorArgs[2];
+            if (optsArg && ts.isObjectLiteralExpression(optsArg)) {
+              for (const prop of optsArg.properties) {
+                if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
+                const name = prop.name.text;
+                if (ts.isNumericLiteral(prop.initializer)) {
+                  fieldValues.set(`_${name}`, prop.initializer.text.replace(/_/g, ""));
+                } else if (
+                  prop.initializer.kind === ts.SyntaxKind.TrueKeyword
+                  || prop.initializer.kind === ts.SyntaxKind.FalseKeyword
+                ) {
+                  // Boolean flags (CAN's loopback) — numeric-friendly text so
+                  // resolveNumericArg folds them (true → 1, false → 0).
+                  fieldValues.set(`_${name}`, prop.initializer.kind === ts.SyntaxKind.TrueKeyword ? "1" : "0");
+                } else {
+                  fieldValues.set(`_${name}`, prop.initializer.getText());
+                }
+              }
+            }
+          }
+
+          // Thin-class field DEFAULTS (the singleton __default_fields channel
+          // does not reach constructed instances). Fill only absent fields —
+          // an omitted opts object must resolve to these sentinels, not leak
+          // `this->_gain` text into the ops (string args pass through raw).
+          const thinFieldDefaults: Record<string, Record<string, string>> = {
+            ADC: { _gain: "", _reference: "" },
+            I2CTarget: { _hz: "0" },
+            SPITarget: { _hz: "1000000", _mode: "0" },
+            UART: { _baud: "115200", _rxBufferBytes: "64" },
+            I2CResponder: { _rxBufferBytes: "64", _txBufferBytes: "32" },
+            DAC: { _resolution: "0" },
+            Sensor: { _resolution: "12" },
+            CAN: { _hz: "500000", _loopback: "0" },
+            I2S: { _hz: "16000", _channels: "2", _bits: "16", _blockFrames: "64" },
+          };
+          // WiFi absent-fact sentinels: fields whose class initializer is
+          // `opts.x?.y` render as raw `this->_x` when the fact was omitted.
+          // "undefined" is what dropUndefined() strips at the plugin case,
+          // so the op omits the fact entirely.
+          if (className === "WiFi") {
+            const wifiDefaults: Record<string, string> = {
+              _psk: "undefined", _ipAddr: "undefined", _gateway: "undefined",
+              _netmask: "undefined", _timeoutMs: "15000", _channel: "0",
+              _band: "0", _ps: "0",
+            };
+            for (const [k, v] of Object.entries(wifiDefaults)) {
+              if (!fieldValues.has(k)) fieldValues.set(k, v);
+            }
+          }
+          const thinDefs = thinFieldDefaults[className];
+          if (thinDefs) {
+            for (const [k, v] of Object.entries(thinDefs)) {
+              if (!fieldValues.has(k)) fieldValues.set(k, v);
+            }
+          }
+
+          if (ctorArgs) {
+            // Resolve a Pin-identifier ctor arg to its _pin number, for any HAL
+            // class whose first constructor field is _pin (Pin itself, plus
+            // pin-bearing wrappers like RmtChannel). Mirrors the Pin branch
+            // above but keyed off the class's registered ctor field map so new
+            // pin-keyed classes work without a per-class branch here.
+            const ctorFieldMap = getHALCtorFieldMap(className);
+            const firstFieldIsPin = ctorFieldMap && Array.from(ctorFieldMap.keys())[0] === "_pin";
+            for (const arg of ctorArgs) {
+              if (ts.isIdentifier(arg) && (className === "Pin" || firstFieldIsPin)) {
+                const existing = halInstances.get(arg.text);
+                if (existing && existing.fieldValues.has("_pin")) {
+                  fieldValues.set("_pin", existing.fieldValues.get("_pin")!);
+                } else {
+                  fieldValues.set("_pin", arg.text);
+                }
+              }
+            }
+          }
+
+          halInstances.set(varName, { className, fieldValues });
+  return true;
 }
 
 export function assignmentOperatorToString(kind: ts.SyntaxKind): Extract<StatementIR, { kind: "assign" }>['operator'] | undefined {
@@ -558,348 +934,9 @@ export function variableStatementToIR(
         }
       }
 
-      if (ts.isNewExpression(declaration.initializer) && ts.isIdentifier(declaration.initializer.expression)) {
-        const className = declaration.initializer.expression.text;
-        const ctorArgs = declaration.initializer.arguments as ts.NodeArray<ts.Expression> | undefined;
-
-        if (isKnownHALClass(className)) {
-          const fieldValues = new Map<string, string>();
-          const ctorIncludes = getCtorIncludes(className);
-          for (const inc of ctorIncludes) {
-            requiredIncludes.add(inc);
-          }
-
-          if (ctorArgs) {
-            for (const arg of ctorArgs) {
-              if (ts.isIdentifier(arg)) {
-                // Resolved pin/port identifier mappings
-              } else if (ts.isStringLiteral(arg)) {
-                if (className === "I2CBus") fieldValues.set("_bus", arg.text);
-                else if (className === "SPIBus") fieldValues.set("_bus", arg.text);
-                else if (className === "UART") fieldValues.set("_port", arg.text);
-              } else if (ts.isNumericLiteral(arg)) {
-                if (className === "Pin") fieldValues.set("_pin", arg.text);
-              } else if (ts.isPropertyAccessExpression(arg)) {
-                if (className === "Pin") fieldValues.set("_pin", arg.getText());
-              }
-            }
-          }
-
-          // new Sensor(SENSOR.<part>, I2C1.device(0x44)) — the generic
-          // DT-bound peripheral. The part token is kept as text (property
-          // access text like 'SENSOR.sensirion_sht3xd'); the bus + address
-          // come from the I2CTarget the second arg resolves to. The lowering
-          // resolves the token against the generated catalog.
-          if (className === "Sensor" && ctorArgs && ctorArgs.length >= 2) {
-            const dev = resolveSensorDeviceArg(ctorArgs[1]);
-            if (dev) {
-              fieldValues.set("_part", ctorArgs[0].getText());
-              fieldValues.set("_bus", dev.bus);
-              fieldValues.set("_kind", dev.kind);
-              fieldValues.set("_port", dev.port);
-            } else {
-              diagnostics.push(
-                makeDiagnostic(
-                  sourceText,
-                  declaration.pos,
-                  `new Sensor(...) second argument must be an I2C device (e.g. I2C1.device(0x44), possibly via a const) — got '${ctorArgs[1].getText()}'.`,
-                  "error",
-                  "HAL_SENSOR_CTOR",
-                ),
-              );
-            }
-            // opts object literal: numeric properties pass through, pin
-            // identifiers resolve to their number (alert?: PA5). Absent
-            // properties fall back to the class-field initializer defaults
-            // (_spiHz = 1000000 etc.) so `this._spiHz` in an inlined method
-            // body always resolves.
-            const sensorDefaults = halClassRegistry.get("Sensor")?.fieldDefaults;
-            if (sensorDefaults) {
-              for (const [name, val] of sensorDefaults) {
-                if (!fieldValues.has(name)) fieldValues.set(name, val);
-              }
-            }
-            if (ctorArgs.length >= 3 && ts.isObjectLiteralExpression(ctorArgs[2])) {
-              for (const prop of ctorArgs[2].properties) {
-                if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
-                const name = prop.name.text;
-                if (ts.isNumericLiteral(prop.initializer)) {
-                  fieldValues.set(`_${name}`, prop.initializer.text);
-                } else if (ts.isIdentifier(prop.initializer)) {
-                  const inst = halInstances.get(prop.initializer.text);
-                  fieldValues.set(`_${name}`, inst?.fieldValues.get("_pin") ?? inst?.fieldValues.get("pin") ?? prop.initializer.text);
-                }
-              }
-            }
-          }
-
-          // new Request(method, url, opts?) — shared capture (also serves
-          // bare `new Request(...).send()` receivers via resolveHALReceiver).
-          if (className === "Request") {
-            const reqFields = requestCtorFields(ctorArgs, ctorArgs?.[0]?.getSourceFile());
-            if (reqFields) for (const [k, v] of reqFields) fieldValues.set(k, v);
-          }
-
-          // Thin Zephyr-shaped peripherals (GPIO/PWM/ADC/DAC/
-          // Watchdog/Counter — hal/gpio-pin.ts and siblings). Same discipline
-          // as Sensor: construction facts become instance fields. Pin args
-          // keep their identifier/text form (resolved to numbers later);
-          // flag/gain token EXPRESSIONS keep their source text — the lowering
-          // maps token names to C macros; numeric opts props pass through as
-          // numbers (numeric separators stripped for C++).
-          const thinPinFirst: Record<string, true> = { GPIO: true, PWM: true, Servo: true, ADC: true, DAC: true };
-          if (thinPinFirst[className] && ctorArgs && ctorArgs.length >= 1) {
-            const pinArg = ctorArgs[0];
-            if (ts.isIdentifier(pinArg)) {
-              // resolveHALReceiver seeds board-module pin constants (LED,
-              // BUTTON, datasheet names) into halInstances on first lookup —
-              // a plain halInstances.get() would miss them.
-              const inst = halInstances.get(pinArg.text) ?? resolveHALReceiver(pinArg);
-              fieldValues.set("_pin", inst?.fieldValues.get("_pin") ?? inst?.fieldValues.get("pin") ?? pinArg.text);
-            } else {
-              fieldValues.set("_pin", pinArg.getText());
-            }
-          }
-          if (className === "GPIO" && ctorArgs && ctorArgs.length >= 2) {
-            // "GPIO.OUTPUT | GPIO.PULL_UP" — the token text is the IR carrier.
-            fieldValues.set("_flags", ctorArgs[1].getText());
-          }
-          const thinOptsCtor: Record<string, true> = { PWM: true, Servo: true, ADC: true, DAC: true, Counter: true, I2S: true };
-          if (thinOptsCtor[className] && ctorArgs && ctorArgs.length >= 2 && ts.isObjectLiteralExpression(ctorArgs[1])) {
-            for (const prop of ctorArgs[1].properties) {
-              if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
-              const name = prop.name.text;
-              if (ts.isNumericLiteral(prop.initializer)) {
-                fieldValues.set(`_${name}`, prop.initializer.text.replace(/_/g, ""));
-              } else {
-                // Token (ADC.GAIN_1_4) or runtime expression text.
-                fieldValues.set(`_${name}`, prop.initializer.getText());
-              }
-            }
-          }
-          // Matrix (hal/matrix.ts): the ctor's single opts object carries
-          // rows/cols as arrays of pin identifiers — resolve each through
-          // halInstances (board-module pin constants seed there on lookup)
-          // and store comma-joined numbers for the op capture.
-          if (className === "Matrix" && ctorArgs && ctorArgs.length >= 1 && ts.isObjectLiteralExpression(ctorArgs[0])) {
-            const pinList = (prop: ts.PropertyAssignment | undefined): string | undefined => {
-              if (!prop || !ts.isArrayLiteralExpression(prop.initializer)) return undefined;
-              const nums: string[] = [];
-              for (const el of prop.initializer.elements) {
-                if (ts.isNumericLiteral(el)) { nums.push(el.text); continue; }
-                if (ts.isIdentifier(el)) {
-                  const inst = halInstances.get(el.text) ?? resolveHALReceiver(el);
-                  const pin = inst?.fieldValues.get("_pin") ?? inst?.fieldValues.get("pin");
-                  if (pin !== undefined) { nums.push(String(pin)); continue; }
-                }
-                return undefined;
-              }
-              return nums.join(",");
-            };
-            for (const prop of ctorArgs[0].properties) {
-              if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
-              if (prop.name.text === "rows") {
-                const v = pinList(prop);
-                if (v !== undefined) fieldValues.set("_rows", v);
-              } else if (prop.name.text === "cols") {
-                const v = pinList(prop);
-                if (v !== undefined) fieldValues.set("_cols", v);
-              }
-            }
-          }
-          if (className === "Watchdog" && ctorArgs && ctorArgs.length >= 1 && ts.isNumericLiteral(ctorArgs[0])) {
-            fieldValues.set("_timeoutMs", ctorArgs[0].text.replace(/_/g, ""));
-          }
-          // Thin File: the path is the construction fact.
-          if (className === "File" && ctorArgs && ctorArgs.length >= 1 && ts.isStringLiteral(ctorArgs[0])) {
-            fieldValues.set("_path", ctorArgs[0].text);
-          }
-          // new Mqtt(uri, opts?) — shared capture (also serves bare
-          // `new Mqtt(...).connect()` receivers via resolveHALReceiver).
-          if (className === "Mqtt") {
-            const mqttFields = mqttCtorFields(ctorArgs, ctorArgs?.[0]?.getSourceFile());
-            if (mqttFields) for (const [k, v] of mqttFields) fieldValues.set(k, v);
-          }
-          // Thin Store: the namespace is the construction fact (plain text —
-          // the plugin case quotes it when composing the settings key).
-          if (className === "Store" && ctorArgs && ctorArgs.length >= 1 && ts.isStringLiteral(ctorArgs[0])) {
-            fieldValues.set("_ns", ctorArgs[0].text);
-          }
-          // Thin BLE: the advertised name is the construction fact.
-          if (className === "BLE" && ctorArgs && ctorArgs.length >= 1 && ts.isStringLiteral(ctorArgs[0])) {
-            fieldValues.set("_name", JSON.stringify(ctorArgs[0].text));
-          }
-          if (className === "Counter" && ctorArgs && ctorArgs.length >= 1 && ts.isNumericLiteral(ctorArgs[0])) {
-            fieldValues.set("_instance", ctorArgs[0].text.replace(/_/g, ""));
-          }
-
-          // Thin WiFi station: first arg is the ssid literal; the opts carry
-          // the link facts. Nested ipv4 facts flatten to _ipAddr/_gateway/
-          // _netmask. Computed defaults (security ternary, timeoutMs ??) are
-          // applied by the wifiJoin plugin case, not here.
-          if (className === "WiFi" && ctorArgs && ctorArgs.length >= 1) {
-            if (ts.isStringLiteral(ctorArgs[0])) {
-              fieldValues.set("_ssid", JSON.stringify(ctorArgs[0].text));
-            } else {
-              fieldValues.set("_ssid", ctorArgs[0].getText());
-            }
-            const wopts = ctorArgs[1];
-            if (wopts && ts.isObjectLiteralExpression(wopts)) {
-              for (const prop of wopts.properties) {
-                if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
-                const name = prop.name.text;
-                if (name === "ipv4" && ts.isObjectLiteralExpression(prop.initializer)) {
-                  for (const ip of prop.initializer.properties) {
-                    if (!ts.isPropertyAssignment(ip) || !ts.isIdentifier(ip.name)) continue;
-                    const ipName = ip.name.text;
-                    const key = ipName === "addr" ? "_ipAddr" : `_${ipName}`;
-                    if (ts.isStringLiteral(ip.initializer)) {
-                      fieldValues.set(key, JSON.stringify(ip.initializer.text));
-                    } else {
-                      fieldValues.set(key, ip.initializer.getText());
-                    }
-                  }
-                } else if (name !== "powerSave") {
-                  if (ts.isStringLiteral(prop.initializer)) {
-                    fieldValues.set(`_${name}`, JSON.stringify(prop.initializer.text));
-                  } else if (ts.isNumericLiteral(prop.initializer)) {
-                    fieldValues.set(`_${name}`, prop.initializer.text.replace(/_/g, ""));
-                  } else {
-                    fieldValues.set(`_${name}`, prop.initializer.getText());
-                  }
-                } else {
-                  // powerSave: WiFi.PS_OFF token → ps=1 flag (0 = default on).
-                  const txt = prop.initializer.getText();
-                  fieldValues.set("_ps", txt.includes("PS_OFF") ? "1" : "0");
-                }
-              }
-            }
-          }
-          if (className === "Thread" && ctorArgs && ctorArgs.length >= 1 && ts.isNumericLiteral(ctorArgs[0])) {
-            fieldValues.set("_index", ctorArgs[0].text.replace(/_/g, ""));
-            // stackKb → bytes here (the class-body arithmetic is erased).
-            const kbArg = ctorArgs.length >= 2 && ts.isObjectLiteralExpression(ctorArgs[1])
-              ? ctorArgs[1].properties.find((p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === "stackKb")
-              : undefined;
-            const kb = kbArg && ts.isPropertyAssignment(kbArg) && ts.isNumericLiteral(kbArg.initializer)
-              ? parseInt(kbArg.initializer.text.replace(/_/g, ""), 10) : 2;
-            fieldValues.set("_stackBytes", String((isNaN(kb) ? 2 : kb) * 1024));
-          }
-
-          // Tier-2 thin buses. The first arg is the board's bus/port instance
-          // export (I2C0/SPI0/UART1) — kept as text, which the lowerings'
-          // parseControllerIndex reads; SPITarget adds the cs pin (identifier
-          // or property access, resolved later like every pin arg); opts carry
-          // the wire facts (hz/mode/baud).
-          const thinBusFirst: Record<string, true> = { I2CTarget: true, SPITarget: true, UART: true, Strip: true, I2CResponder: true };
-          if (thinBusFirst[className] && ctorArgs && ctorArgs.length >= 1) {
-            const busArg = ctorArgs[0];
-            if (ts.isIdentifier(busArg)) {
-              const inst = halInstances.get(busArg.text);
-              fieldValues.set("_bus", inst?.fieldValues.get("_bus") ?? busArg.text);
-              fieldValues.set("_port", inst?.fieldValues.get("_port") ?? inst?.fieldValues.get("_bus") ?? busArg.text);
-            } else if (ts.isStringLiteral(busArg)) {
-              fieldValues.set("_bus", busArg.text);
-              fieldValues.set("_port", busArg.text);
-            } else {
-              fieldValues.set("_bus", busArg.getText());
-              fieldValues.set("_port", busArg.getText());
-            }
-          }
-          if (className === "SPITarget" && ctorArgs && ctorArgs.length >= 2) {
-            const csArg = ctorArgs[1];
-            if (ts.isIdentifier(csArg)) {
-              const inst = halInstances.get(csArg.text);
-              fieldValues.set("_cs", inst?.fieldValues.get("_pin") ?? inst?.fieldValues.get("pin") ?? csArg.text);
-            } else {
-              fieldValues.set("_cs", csArg.getText());
-            }
-          }
-          if ((className === "I2CTarget" || className === "I2CResponder") && ctorArgs && ctorArgs.length >= 2 && ts.isNumericLiteral(ctorArgs[1])) {
-            fieldValues.set("_address", ctorArgs[1].text);
-          }
-          const thinBusOpts: Record<string, true> = { I2CTarget: true, SPITarget: true, UART: true, Thread: true, Strip: true, CAN: true, I2CResponder: true };
-          if (thinBusOpts[className] && ctorArgs && ctorArgs.length >= 2) {
-            // I2CTarget/UART: (bus, opts?); SPITarget: (bus, cs, opts?).
-            const optsArg = ctorArgs.length === 2 ? ctorArgs[1] : ctorArgs[2];
-            if (optsArg && ts.isObjectLiteralExpression(optsArg)) {
-              for (const prop of optsArg.properties) {
-                if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
-                const name = prop.name.text;
-                if (ts.isNumericLiteral(prop.initializer)) {
-                  fieldValues.set(`_${name}`, prop.initializer.text.replace(/_/g, ""));
-                } else if (
-                  prop.initializer.kind === ts.SyntaxKind.TrueKeyword
-                  || prop.initializer.kind === ts.SyntaxKind.FalseKeyword
-                ) {
-                  // Boolean flags (CAN's loopback) — numeric-friendly text so
-                  // resolveNumericArg folds them (true → 1, false → 0).
-                  fieldValues.set(`_${name}`, prop.initializer.kind === ts.SyntaxKind.TrueKeyword ? "1" : "0");
-                } else {
-                  fieldValues.set(`_${name}`, prop.initializer.getText());
-                }
-              }
-            }
-          }
-
-          // Thin-class field DEFAULTS (the singleton __default_fields channel
-          // does not reach constructed instances). Fill only absent fields —
-          // an omitted opts object must resolve to these sentinels, not leak
-          // `this->_gain` text into the ops (string args pass through raw).
-          const thinFieldDefaults: Record<string, Record<string, string>> = {
-            ADC: { _gain: "", _reference: "" },
-            I2CTarget: { _hz: "0" },
-            SPITarget: { _hz: "1000000", _mode: "0" },
-            UART: { _baud: "115200", _rxBufferBytes: "64" },
-            I2CResponder: { _rxBufferBytes: "64", _txBufferBytes: "32" },
-            DAC: { _resolution: "0" },
-            Sensor: { _resolution: "12" },
-            CAN: { _hz: "500000", _loopback: "0" },
-            I2S: { _hz: "16000", _channels: "2", _bits: "16", _blockFrames: "64" },
-          };
-          // WiFi absent-fact sentinels: fields whose class initializer is
-          // `opts.x?.y` render as raw `this->_x` when the fact was omitted.
-          // "undefined" is what dropUndefined() strips at the plugin case,
-          // so the op omits the fact entirely.
-          if (className === "WiFi") {
-            const wifiDefaults: Record<string, string> = {
-              _psk: "undefined", _ipAddr: "undefined", _gateway: "undefined",
-              _netmask: "undefined", _timeoutMs: "15000", _channel: "0",
-              _band: "0", _ps: "0",
-            };
-            for (const [k, v] of Object.entries(wifiDefaults)) {
-              if (!fieldValues.has(k)) fieldValues.set(k, v);
-            }
-          }
-          const thinDefs = thinFieldDefaults[className];
-          if (thinDefs) {
-            for (const [k, v] of Object.entries(thinDefs)) {
-              if (!fieldValues.has(k)) fieldValues.set(k, v);
-            }
-          }
-
-          if (ctorArgs) {
-            // Resolve a Pin-identifier ctor arg to its _pin number, for any HAL
-            // class whose first constructor field is _pin (Pin itself, plus
-            // pin-bearing wrappers like RmtChannel). Mirrors the Pin branch
-            // above but keyed off the class's registered ctor field map so new
-            // pin-keyed classes work without a per-class branch here.
-            const ctorFieldMap = getHALCtorFieldMap(className);
-            const firstFieldIsPin = ctorFieldMap && Array.from(ctorFieldMap.keys())[0] === "_pin";
-            for (const arg of ctorArgs) {
-              if (ts.isIdentifier(arg) && (className === "Pin" || firstFieldIsPin)) {
-                const existing = halInstances.get(arg.text);
-                if (existing && existing.fieldValues.has("_pin")) {
-                  fieldValues.set("_pin", existing.fieldValues.get("_pin")!);
-                } else {
-                  fieldValues.set("_pin", arg.text);
-                }
-              }
-            }
-          }
-
-          halInstances.set(varName, { className, fieldValues });
-          continue; // skip declaration
+      if (ts.isNewExpression(declaration.initializer)) {
+        if (registerHalCtorInstance(varName, declaration.initializer, sourceText, diagnostics)) {
+          continue; // skip declaration — the HAL instance owns it
         }
       } else if (ts.isCallExpression(declaration.initializer) && ts.isPropertyAccessExpression(declaration.initializer.expression)) {
         const method = declaration.initializer.expression.name.text;
@@ -1478,11 +1515,16 @@ export function variableStatementToIR(
               cppType: renderCppType(vectorIr) as any,
               initializer: undefined,
             });
+            // The declaration is a std::vector (this arm), so the seed pushes
+            // must be push_back — a synthesized `.push` callee renders
+            // verbatim (std::vector has no push member) while source-level
+            // pushes lower correctly, an inconsistency that failed g++ only
+            // for the literal's own elements.
             for (let ei = 0; ei < elements.length; ei++) {
               lowered.push({
                 kind: "call",
                 sourceSpan: loweredDeclaration.sourceSpan,
-                callee: `${varName}.push`,
+                callee: `${varName}.push_back`,
                 args: [expressionToIR(elements[ei], sourceText, diagnostics)],
               });
             }

@@ -2568,7 +2568,7 @@ struct __tc_StaticArray {
         kind: 'polyfill',
         id: 'vector_methods',
         domain: 'embedded' as const,
-        requiredIncludes: ['<vector>', '<string>'],
+        requiredIncludes: ['<vector>', '<string>', '<algorithm>'],
         forwardDeclarations: [],
         helperStructs: [],
         helperFunctions: [`
@@ -2602,6 +2602,38 @@ template <typename T>
 int __tc_unshift(std::vector<T>& v, const T& val) { v.insert(v.begin(), val); return static_cast<int>(v.size()); }
 template <typename T>
 void __tc_reverse(std::vector<T>& v) { size_t i = 0U; size_t j = v.size(); while (j > (i + 1U)) { j -= 1U; T tmp = v[i]; v[i] = v[j]; v[j] = tmp; i += 1U; } }
+// JS callback-arg array methods on std::vector receivers. The IR lowering
+// (VECTOR_CALLBACK_METHOD_HELPERS) emits these call sites on EVERY
+// vector-capable target — until now only the hosted shim defined them, so
+// sort(fn)/map(fn)/filter(fn) call sites on Zephyr hit the static-array
+// unsupported gate even though the target ships vectors.
+// JS semantics: a comparator returns <0 to order a before b; find returns a
+// value-initialized T() for "not found"; map's element type is deduced from
+// the callable's return (decltype is unevaluated — v[0] never executes).
+template <typename T, typename F>
+void __tc_sort_fn(std::vector<T>& v, F comp) { std::sort(v.begin(), v.end(), [&comp](const T& a, const T& b) { return comp(a, b) < 0; }); }
+template <typename T, typename F>
+std::vector<T> __tc_filter(const std::vector<T>& v, F pred) { std::vector<T> result; for (size_t i = 0U; i < v.size(); i++) { if (pred(v[i])) { result.push_back(v[i]); } } return result; }
+template <typename T, typename F>
+auto __tc_map(const std::vector<T>& v, F fn) -> std::vector<decltype(fn(v[0]))> { using R = decltype(fn(v[0])); std::vector<R> result; for (size_t i = 0U; i < v.size(); i++) { result.push_back(fn(v[i])); } return result; }
+template <typename T, typename U, typename F>
+U __tc_reduce(const std::vector<T>& v, F fn, U init) { U acc = init; for (size_t i = 0U; i < v.size(); i++) { acc = fn(acc, v[i]); } return acc; }
+template <typename T, typename F>
+T __tc_reduce_no_init(std::vector<T>& v, F fn) { T acc = v[0]; for (size_t i = 1U; i < v.size(); i++) { acc = fn(acc, v[i]); } return acc; }
+template <typename T, typename F>
+T __tc_find(const std::vector<T>& v, F pred) { for (size_t i = 0U; i < v.size(); i++) { if (pred(v[i])) { return v[i]; } } return T(); }
+template <typename T, typename F>
+int __tc_findIndex(const std::vector<T>& v, F pred) { for (int i = 0; i < static_cast<int>(v.size()); i++) { if (pred(v[static_cast<size_t>(i)])) { return i; } } return -1; }
+template <typename T, typename F>
+bool __tc_every(const std::vector<T>& v, F pred) { for (size_t i = 0U; i < v.size(); i++) { if (!pred(v[i])) { return false; } } return true; }
+template <typename T, typename F>
+bool __tc_some(const std::vector<T>& v, F pred) { for (size_t i = 0U; i < v.size(); i++) { if (pred(v[i])) { return true; } } return false; }
+// Math.max(...vals) / Math.min(...vals) — the variadic fold over an array.
+// Same empty-input convention as __tc_reduce_no_init (v[0]).
+template <typename T>
+T __tc_max_vec(const std::vector<T>& v) { T m = v[0]; for (size_t i = 1U; i < v.size(); i++) { if (v[i] > m) { m = v[i]; } } return m; }
+template <typename T>
+T __tc_min_vec(const std::vector<T>& v) { T m = v[0]; for (size_t i = 1U; i < v.size(); i++) { if (v[i] < m) { m = v[i]; } } return m; }
 #endif
 `],
         shimMacros: [],

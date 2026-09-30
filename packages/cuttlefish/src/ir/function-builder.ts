@@ -44,6 +44,7 @@ type DestructuredParamResult = {
 function processDestructuredParameter(
   parameter: ts.ParameterDeclaration,
   typeAliasNodes: Map<string, ts.TypeNode>,
+  fileName: string,
   sourceText: string,
   diagnostics: Diagnostic[],
   paramIndex: number,
@@ -76,7 +77,7 @@ function processDestructuredParameter(
         : accessExpr;
       extractionStatements.push({
         kind: "var_decl",
-        sourceSpan: makeSourceSpan(element, sourceText, sourceText),
+        sourceSpan: makeSourceSpan(element, fileName, sourceText),
         leadingComments: [],
         trailingComments: [],
         name: varName,
@@ -102,7 +103,7 @@ function processDestructuredParameter(
             : { kind: "raw", value: nestedAccess };
           extractionStatements.push({
             kind: "var_decl",
-            sourceSpan: makeSourceSpan(nested, sourceText, sourceText),
+            sourceSpan: makeSourceSpan(nested, fileName, sourceText),
             leadingComments: [],
             trailingComments: [],
             name: nestedVarName,
@@ -134,7 +135,7 @@ function processDestructuredParameter(
           : accessExpr;
         extractionStatements.push({
           kind: "var_decl",
-          sourceSpan: makeSourceSpan(element, sourceText, sourceText),
+          sourceSpan: makeSourceSpan(element, fileName, sourceText),
           leadingComments: [],
           trailingComments: [],
           name: varName,
@@ -212,7 +213,7 @@ export function functionDeclarationToIR(
         ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
       });
     } else if (ts.isObjectBindingPattern(parameter.name) || ts.isArrayBindingPattern(parameter.name)) {
-      const result = processDestructuredParameter(parameter, typeAliasNodes, sourceText, diagnostics, paramIndex);
+      const result = processDestructuredParameter(parameter, typeAliasNodes, fileName, sourceText, diagnostics, paramIndex);
       if (result) {
         parameters.push(result.syntheticParam);
         destructuredParamStatements.push(...result.extractionStatements);
@@ -349,7 +350,7 @@ export function variableAsFunctionToIR(
           ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
         });
       } else if (ts.isObjectBindingPattern(parameter.name) || ts.isArrayBindingPattern(parameter.name)) {
-        const result = processDestructuredParameter(parameter, typeAliasNodes, sourceText, diagnostics, index);
+        const result = processDestructuredParameter(parameter, typeAliasNodes, fileName, sourceText, diagnostics, index);
         if (result) {
           parameters.push(result.syntheticParam);
           destructuredParamStatements.push(...result.extractionStatements);
@@ -576,7 +577,7 @@ export function hoistNestedFunction(
         ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
       });
     } else if (ts.isObjectBindingPattern(parameter.name) || ts.isArrayBindingPattern(parameter.name)) {
-      const result = processDestructuredParameter(parameter, typeAliases ?? new Map(), sourceText, diagnostics, paramIndex);
+      const result = processDestructuredParameter(parameter, typeAliases ?? new Map(), fileName, sourceText, diagnostics, paramIndex);
       if (result) {
         parameters.push(result.syntheticParam);
         destructuredParamStatements.push(...result.extractionStatements);

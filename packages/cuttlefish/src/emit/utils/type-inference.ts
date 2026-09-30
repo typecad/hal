@@ -122,6 +122,29 @@ export function inferObjectFieldType(
     return defaultIntType;
   }
 
+  // A closure-valued record field (`read: (): number => ...` in an object
+  // literal) is a callable member — `std::function<R(P...)>`. It used to
+  // fall through to defaultIntType, so the synthesized struct declared
+  // `int read;` while the constructor initializer pushed a lambda into it
+  // (g++: "cannot convert ... to int"). Only fully-typed lambdas can spell
+  // the std::function form; an untyped arrow keeps the numeric fallback
+  // (and fails loudly at g++ rather than lying about the type).
+  if (value.kind === "lambda") {
+    const lam = value as unknown as {
+      params?: { name?: string; cppType?: string }[];
+      returnType?: string;
+    };
+    const params = lam.params ?? [];
+    if (params.length > 0 && params.every(p => p && p.cppType && p.cppType !== "auto" && p.cppType !== "void")
+      && lam.returnType && lam.returnType !== "auto" && lam.returnType !== "void") {
+      return `std::function<${lam.returnType}(${params.map(p => p.cppType).join(", ")})>`;
+    }
+    if (params.length === 0 && lam.returnType && lam.returnType !== "auto" && lam.returnType !== "void") {
+      return `std::function<${lam.returnType}()>`;
+    }
+    return defaultIntType;
+  }
+
   return defaultIntType;
 }
 

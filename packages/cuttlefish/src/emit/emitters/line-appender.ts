@@ -72,6 +72,7 @@ export function appendRenderedStatement(
   statement: StatementIR,
   indent: string,
   scopeState: EmissionScopeState,
+  trailingContinueLabel?: string,
 ): void {
   const { statementRenderer, exprRenderer, fixPointerFieldAccess, reservedNames } = ctx;
 
@@ -83,7 +84,18 @@ export function appendRenderedStatement(
     appendSourceLine(ctx, `${indent}${rendered}`, { tsSpan: statement.sourceSpan, nodeKind: statement.kind });
     appendSourceLine(ctx, `${indent}{`);
     const nestedScope = cloneEmissionScopeState(scopeState);
-    for (const nested of statement.body) appendRenderedStatement(ctx, nested, `${indent}  `, nestedScope);
+    if (trailingContinueLabel) {
+      // The continue target sits OUTSIDE an inner block holding the body's
+      // declarations: a forward goto must not jump INTO the scope of an
+      // initialized variable ("jump to label crosses initialization"), and
+      // the natural `continue L` sites appear before later declarations.
+      appendSourceLine(ctx, `${indent}  {`);
+      for (const nested of statement.body) appendRenderedStatement(ctx, nested, `${indent}    `, nestedScope);
+      appendSourceLine(ctx, `${indent}  }`);
+      appendSourceLine(ctx, `${indent}  __continue_${trailingContinueLabel}: ;`);
+    } else {
+      for (const nested of statement.body) appendRenderedStatement(ctx, nested, `${indent}  `, nestedScope);
+    }
     appendSourceLine(ctx, `${indent}}`);
     emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(ctx, line));
     return;
@@ -127,7 +139,16 @@ export function appendRenderedStatement(
       const safeName = escapeCppKeyword(statement.variable.name, reservedNames);
       appendSourceLine(ctx, `${indent}  const char* ${safeName} = ${idxVar}_keys[${idxVar}];`);
     }
-    for (const nested of statement.body) appendRenderedStatement(ctx, nested, `${indent}  `, nestedScope);
+    if (trailingContinueLabel) {
+      // See the while branch: the body's declarations live in an inner block
+      // so goto __continue_<label> never crosses an initialization.
+      appendSourceLine(ctx, `${indent}  {`);
+      for (const nested of statement.body) appendRenderedStatement(ctx, nested, `${indent}    `, nestedScope);
+      appendSourceLine(ctx, `${indent}  }`);
+      appendSourceLine(ctx, `${indent}  __continue_${trailingContinueLabel}: ;`);
+    } else {
+      for (const nested of statement.body) appendRenderedStatement(ctx, nested, `${indent}  `, nestedScope);
+    }
     appendSourceLine(ctx, `${indent}}`);
     emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(ctx, line));
     return;
@@ -137,7 +158,16 @@ export function appendRenderedStatement(
     appendSourceLine(ctx, `${indent}do`, { tsSpan: statement.sourceSpan, nodeKind: statement.kind });
     appendSourceLine(ctx, `${indent}{`);
     const nestedScope = cloneEmissionScopeState(scopeState);
-    for (const nested of statement.body) appendRenderedStatement(ctx, nested, `${indent}  `, nestedScope);
+    if (trailingContinueLabel) {
+      // See the while branch: isolate the body's declarations in an inner
+      // block so goto __continue_<label> never crosses an initialization.
+      appendSourceLine(ctx, `${indent}  {`);
+      for (const nested of statement.body) appendRenderedStatement(ctx, nested, `${indent}    `, nestedScope);
+      appendSourceLine(ctx, `${indent}  }`);
+      appendSourceLine(ctx, `${indent}  __continue_${trailingContinueLabel}: ;`);
+    } else {
+      for (const nested of statement.body) appendRenderedStatement(ctx, nested, `${indent}  `, nestedScope);
+    }
     const renderedCondition = exprRenderer.render(statement.condition, ctx.fixPointerFieldAccess, scopeState.knownVariableTypes);
     appendSourceLine(ctx, `${indent}} while (${renderedCondition});`);
     emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(ctx, line));
@@ -327,10 +357,21 @@ export function appendRenderedStatement(
 
   if (statement.kind === "labeled") {
     emitCommentLines(statement.leadingComments, indent, (line) => appendSourceLine(ctx, line));
-    appendSourceLine(ctx, `${indent}${statement.label}:`, { tsSpan: statement.sourceSpan, nodeKind: statement.kind });
+    // The user's TS label is documentary — the goto targets are the machine
+    // labels below. A real C++ `label:` that no goto targets is a
+    // -Wunused-label warning (and AUTOSAR noise).
+    appendSourceLine(ctx, `${indent}/* ${statement.label}: */`, { tsSpan: statement.sourceSpan, nodeKind: statement.kind });
     const nestedScope = cloneEmissionScopeState(scopeState);
+    // A `continue <label>` (legal in TS only when the label names an
+    // enclosing LOOP) lowers to `goto __continue_<label>` — see the continue
+    // branch in statement-renderer. The target label must sit at the END of
+    // the labeled loop's body, INSIDE the loop, so the increment/condition
+    // still run (that is what makes it continue, not break). Thread the label
+    // into the loop's own emission when the labeled body is that single loop.
+    const isLoopKind = (k: string) => k === "while" || k === "for" || k === "for_of" || k === "for_in" || k === "do_while";
+    const threadLabel = statement.body.length === 1 && isLoopKind(statement.body[0].kind);
     for (let i = 0; i < statement.body.length; i++) {
-      appendRenderedStatement(ctx, statement.body[i], indent, nestedScope);
+      appendRenderedStatement(ctx, statement.body[i], indent, nestedScope, threadLabel ? statement.label : undefined);
     }
     // Emit a no-op statement (`;`) after the label so it is never the last
     // token before a closing brace. Without this, g++ warns "label at end of
@@ -339,7 +380,7 @@ export function appendRenderedStatement(
     // The __attribute__((unused)) suppresses the -Wunused-label false
     // positive (the label IS a goto target from the labelled break, but the
     // compiler may prove the goto unreachable on some code paths).
-    appendSourceLine(ctx, `${indent}__attribute__((unused)) __break_${statement.label}: ;`);
+    appendSourceLine(ctx, `${indent}__break_${statement.label}: ;`);
     emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(ctx, line));
     return;
   }

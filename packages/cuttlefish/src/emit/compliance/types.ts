@@ -18,6 +18,7 @@ export type DeviationKind =
   | "polyfill"
   | "freestanding-function"
   | "raw-array"
+  | "engine-lowering"
   | "other";
 
 /** A single AUTOSAR C++14 rule entry in the curated subset. */

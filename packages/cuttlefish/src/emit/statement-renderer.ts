@@ -561,7 +561,15 @@ export class StatementRenderer {
       }
 
       if (statement.kind === "continue") {
-        return statement.label ? `continue /* ${statement.label}: labeled continue uses normal continue in C++ */;` : "continue;";
+        // A labeled continue can only target an enclosing LOOP (TS enforces
+        // this), and the target may be an OUTER loop — a plain `continue`
+        // would continue the INNERMOST one (silent wrong-code: `continue
+        // outer` inside a nested loop continued the inner loop instead).
+        // Lower to `goto __continue_<label>`; the labeled-loop emission
+        // (line-appender) places that label at the end of the loop's body,
+        // inside the loop, so the increment/condition still run — continue
+        // semantics.
+        return statement.label ? `goto __continue_${statement.label};` : "continue;";
       }
 
       if (statement.kind === "do_while") {
@@ -765,6 +773,11 @@ export class StatementRenderer {
     // plain renderer means the await sits outside an async state machine
     // (top-level await, or a position the state-machine splitter doesn't
     // support). Fall back to the blocking form of the op they carry.
+    if (statement.callee === "__ASYNC_YIELD__") {
+      // Outside a state machine the blocking form is the runtime call itself
+      // (a no-op pump touch on targets without a runtime).
+      return "__cuttlefish_async_yield();".replace(/;$/, forHeader ? "" : ";");
+    }
     if ((statement.callee === "__WIFI_WAIT__" || statement.callee === "__HTTP_WAIT__" || statement.callee === "__BLE_WAIT__" || statement.callee === "__HAL_WAIT__")
         && statement.args[0]?.kind === "hal-expr") {
       const resolved = routeHALOp(statement.args[0].operation, this.strategy);
@@ -840,10 +853,16 @@ export class StatementRenderer {
     const isConst = statement.storage === "const" || ownershipKind === 'shared';
     // Emit C++ reference for non-primitive Shared<T>/Mutable<T> from named variables.
     // Primitives pass by value (no overhead). Temporary/literal initializers fall back to copy.
-    const isRef = (ownershipKind === 'shared' || ownershipKind === 'mutable')
+    const isRef = ((ownershipKind === 'shared' || ownershipKind === 'mutable')
       && !isPrimitiveCppType(statement.cppType)
       && !isIndirectType(statement.cppType, this.strategy)
-      && statement.initializer?.kind === 'identifier';
+      && statement.initializer?.kind === 'identifier')
+      // JS element-binding semantics: `const t = tasks[i]` mutated through
+      // member writes is a REFERENCE in JS (the ownership pass flagged it —
+      // a mutable copy compiles but silently loses every write).
+      || ((statement as unknown as { isReferenceBinding?: boolean }).isReferenceBinding === true
+        && !isPrimitiveCppType(statement.cppType)
+        && !isIndirectType(statement.cppType, this.strategy));
     const declaration = `${volatilePrefix}${this.renderTypedName(transformedType, statement.name, isConst, isRef)}`;
     
     if (statement.initializer) {

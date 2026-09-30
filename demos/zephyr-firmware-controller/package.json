@@ -1,0 +1,19 @@
+{
+  "name": "zephyr-firmware-controller",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload",
+    "monitor": "typecad-hal build --compile --upload --monitor",
+    "dev": "typecad-hal build --watch"
+  },
+  "dependencies": {
+    "@typecad/cuttlefish": "*",
+    "@typecad/hal": "*",
+    "@typecad/framework-zephyr": "*"
+  },
+  "description": "Black Pill fan-controller firmware — boot self-test, persistent calibrated config with checksum, cooperative tick scheduler (sensor EMA + debounce + hysteresis + slew-limited PWM), latched alarms, serial command interpreter, watchdog"
+}

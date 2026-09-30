@@ -181,6 +181,8 @@ export function hostedPolyfillIRs(): RuntimePolyfillIR[] {
           'template<typename T, typename F> int __tc_findIndex(const std::vector<T>& v, F pred) { for (int i = 0; i < static_cast<int>(v.size()); i++) if (pred(v[i])) return i; return -1; }',
           'template<typename T, typename F> bool __tc_every(const std::vector<T>& v, F pred) { for (const auto& x : v) if (!pred(x)) return false; return true; }',
           'template<typename T, typename F> bool __tc_some(const std::vector<T>& v, F pred) { for (const auto& x : v) if (pred(x)) return true; return false; }',
+          'template<typename T> T __tc_max_vec(const std::vector<T>& v) { T m = v[0]; for (size_t i = 1; i < v.size(); i++) if (v[i] > m) m = v[i]; return m; }',
+          'template<typename T> T __tc_min_vec(const std::vector<T>& v) { T m = v[0]; for (size_t i = 1; i < v.size(); i++) if (v[i] < m) m = v[i]; return m; }',
           // ── Map helper methods (Object.keys/values/entries) ──────────────
           'template<typename K, typename V> std::vector<K> __tc_mapKeys(const std::map<K, V>& m) { std::vector<K> keys; for (const auto& p : m) keys.push_back(p.first); return keys; }',
           'template<typename K, typename V> std::vector<V> __tc_mapValues(const std::map<K, V>& m) { std::vector<V> vals; for (const auto& p : m) vals.push_back(p.second); return vals; }',

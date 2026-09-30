@@ -11,7 +11,6 @@ describe('fs init block', () => {
     expect(lines).toContain('FIXED_PARTITION_ID(storage_partition)');
     expect(lines).toContain('.mnt_point = "/lfs"');
     // Helpers the lowering calls into.
-    expect(lines).toContain('__tc_fs_begin');
     expect(lines).toContain('__tc_fs_read_text');
     expect(lines).toContain('__tc_fs_write_text');
     expect(lines).toContain('__tc_fs_exists');

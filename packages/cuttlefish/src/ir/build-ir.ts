@@ -8,11 +8,12 @@ import { EnumIR, ClassIR, FunctionIR, ImportIR, InterfaceIR, NamespaceIR, Progra
 import { isStringEnum } from "../api/shared/index.js";
 import type { ParameterIR } from "../api/shared/ir-core.js";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils.js";
-import { buildFunctionReturnTypeMap, CppTypeHint, typeNodeToCppType } from "./type-resolution.js";
+import { buildFunctionReturnTypeMap, CppTypeHint, typeNodeToCppType, inlineTypeLiteralStructNames } from "./type-resolution.js";
 import { getCurrentIrTypeScope } from "./symbol-types.js";
 import { tryResolveBoardDefFile, findGeneratedBoard, readGeneratedBoardConstants, BoardConstants } from "./board-resolver.js";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage.js";
 import { runProgramValidations } from "./validation-orchestrator.js";
+import { registerHalCtorInstance } from "./transformers/variables.js";
 import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, arrayPushCounts, peripheralAliasMap, pinAliasMap, mcuPinForwardMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, objectTypeAliasNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, isrHandlerFunctions, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers, userDeclaredVarNames } from "./build-ir-state.js";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir.js";
 import { registerUIModuleImport, registerElementValue, recordClickHandler, recordBinding } from "./transformers/ui-call-resolver.js";
@@ -244,9 +245,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
   scanDeclarations(source);
 
   resetHALResolver();
-  registerFieldMap.clear();
-
-  // Sink for HAL ops resolved to C++ text during this file's IR build (the
+  registerFieldMap.clear();  // Sink for HAL ops resolved to C++ text during this file's IR build (the
   // template-inlining seams). Lifted onto ProgramIR.resolvedHalOps below so
   // per-file scans see inlined ops; see CompilationContext.resolvedHalOpsSink.
   const resolvedHalOps: HALOpIR[] = [];
@@ -407,6 +406,54 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
       structFields,
     });
     functionReturnTypes.set(statement.name.text, structName as CppTypeHint);
+  }
+  // Inline TYPE-LITERAL parameter annotations (`function board(limit:
+  // { take: number })`, class methods too) — the parameter twin of the return
+  // synthesis above. Without it the annotation resolved "auto" which
+  // normalizeTypeHintForUse collapses to "double", so `limit.take` in the
+  // body failed at g++ ("request for member 'take' in 'limit', which is of
+  // non-class type 'double'"). Synthesize `_<owner>_<param>_t`, register the
+  // struct in the alias IR list, and map the literal NODE to the name so
+  // every typeNodeToCppType call site (function-builder's parameter loops,
+  // field inference) resolves it.
+  const synthesizeLiteralParamStruct = (
+    owner: string,
+    parameter: ts.ParameterDeclaration,
+  ): void => {
+    if (!parameter.type || !ts.isTypeLiteralNode(parameter.type)) return;
+    if (!ts.isIdentifier(parameter.name)) return;
+    const structName = `_${owner}_${parameter.name.text}_t`;
+    const structFields = parameter.type.members
+      .filter(ts.isPropertySignature)
+      .filter(m => ts.isIdentifier(m.name!))
+      .map(m => ({
+        name: (m.name as ts.Identifier).text,
+        cppType: typeNodeToCppType(m.type, typeAliasNodes),
+      }));
+    if (structFields.length === 0) return;
+    typeAliases.push({
+      name: structName,
+      sourceSpan: makeSourceSpan(parameter, fileName, sourceText),
+      leadingComments: [],
+      trailingComments: [],
+      cppType: structName,
+      structFields,
+    });
+    inlineTypeLiteralStructNames.set(parameter.type, structName);
+  };
+  for (const statement of source.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name) {
+      for (const parameter of statement.parameters) {
+        synthesizeLiteralParamStruct(statement.name.text, parameter);
+      }
+    } else if (ts.isClassDeclaration(statement) && statement.name) {
+      for (const member of statement.members) {
+        if (!ts.isMethodDeclaration(member) || !ts.isIdentifier(member.name)) continue;
+        for (const parameter of member.parameters) {
+          synthesizeLiteralParamStruct(`${statement.name.text}_${member.name.text}`, parameter);
+        }
+      }
+    }
   }
   // Expose return types on the compilation context so UI callbacks / timers
   // can resolve helper types without every call site threading the map.
@@ -831,6 +878,42 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
       }
       return;
     }
+
+  // PRE-REGISTER every top-level `const x = new <HALClass>(...)` into
+  // halInstances BEFORE any function body lowers. Function declarations are
+  // hoisted and lower first, and a HAL method call inside a function that ran
+  // before its instance registered resolved against NOTHING — the fallback
+  // half-inlined the method body with unsubstituted this-fields
+  // (`adcReadMv(PA1, , , this->_channel…)`) and no diagnostic. Registration is
+  // idempotent: the real declaration lowering re-runs it (and reports the
+  // ctor diagnostics there — the prescan passes a throwaway sink).
+  {
+    const prescanDiagSink: Diagnostic[] = [];
+    // THIN peripherals only: these are the classes whose method bodies inline
+    // to ops with no downstream resolver, where a function-body use before
+    // registration produced silent garbage. Composite classes (Request, BLE,
+    // WiFi, Mqtt…) stage state onto their instance through the declaration
+    // lowering itself and are perturbed by an early registration — their
+    // function-body uses resolve through their own machinery.
+    const prescanClasses = new Set([
+      "GPIO", "PWM", "Servo", "ADC", "DAC", "Watchdog", "Counter",
+      "I2CTarget", "SPITarget", "UART", "USBConsole", "Strip",
+      "I2CResponder", "Power", "Clock", "CAN", "I2S",
+    ]);
+    const registerHalDecls = (node: ts.Node): void => {
+      if (ts.isVariableStatement(node)) {
+        for (const decl of node.declarationList.declarations) {
+          if (ts.isIdentifier(decl.name) && decl.initializer && ts.isNewExpression(decl.initializer)
+            && ts.isIdentifier(decl.initializer.expression)
+            && prescanClasses.has(decl.initializer.expression.text)) {
+            registerHalCtorInstance(decl.name.text, decl.initializer, sourceText, prescanDiagSink);
+          }
+        }
+      }
+      ts.forEachChild(node, registerHalDecls);
+    };
+    registerHalDecls(source);
+  }
 
     // Handle re-exports: export * from "./module.js" or export { a, b } from "./module.js"
     if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {

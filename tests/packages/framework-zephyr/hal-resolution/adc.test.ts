@@ -54,49 +54,45 @@ describe('adc channel resolution', () => {
 });
 
 describe('adc init block', () => {
-  it('emits CUTTLEFISH_ADC markers + the SAADC device + per-channel setup', () => {
+  // The op lowering (adc.read/adc.read_mv) owns channel setup via its inline
+  // first-call guard — the CONSTRUCTION facts (instance gain/reference) are
+  // authoritative, so a shared descriptor-default setup here would be a
+  // second, drifting mechanism (and was, as dead -Wunused-function code).
+  // The init block emits only what the ops consume.
+  it('emits CUTTLEFISH_ADC markers + the device handle + vref/resolution defines', () => {
     const lines = adcInitLines(TEST_CHIP).join('|');
     expect(lines).toContain('// CUTTLEFISH_ADC_BEGIN');
     expect(lines).toContain('// CUTTLEFISH_ADC_END');
     expect(lines).toContain('DEVICE_DT_GET(DT_NODELABEL(adc))');
-    expect(lines).toContain('adc_channel_setup');
-    expect(lines).toContain('__tc_adc0_setup');
-    // resolution + vref defines
+    expect(lines).not.toContain('__tc_adc0_setup');
+    expect(lines).not.toContain('adc_channel_setup');
     expect(lines).toContain('#define __TC_ADC_RESOLUTION 12');
     expect(lines).toContain('#define __TC_ADC_VREF_MV 3000');
   });
 });
 
-describe('per-use ADC channel gating (unused functions must not be emitted)', () => {
-  it('emits setup functions only for the channels the program reads', () => {
-    // Only PA1 (channel 1) read: the other nine descriptor channels' static
-    // setup functions would trip -Wunused-function in the single TU.
+describe('per-use controller gating (device handles only where reads land)', () => {
+  it('emits a device handle only for the controller the used channels sit on', () => {
+    // All routes are adc1: the adc1 handle is emitted, the probe-default
+    // primary alias is not — DEVICE_DT_GET on an unenabled node is a
+    // compile error, so over-emission matters.
     const used = new Set<number>([1]);
     const lines = adcInitLines(STM32_ADC_ALL, used).join('\n');
-    expect(lines).toContain('__tc_adc1_setup');
-    expect(lines).not.toContain('__tc_adc0_setup');
-    expect(lines).not.toContain('__tc_adc9_setup');
+    expect(lines).toContain('DEVICE_DT_GET(DT_NODELABEL(adc1))');
+    // adc1 IS the primary here — the unsuffixed primary handle carries it;
+    // no SECOND controller handle may appear.
+    expect(lines).toContain('__tc_adc_dev');
+    expect(lines).not.toMatch(/__tc_adc_\\w+_dev/);
   });
 
-  it('emits every descriptor channel when no usage set is given (probe path)', () => {
+  it('keeps the primary handle when no usage set is given (probe path)', () => {
     const lines = adcInitLines(STM32_ADC_ALL).join('\n');
-    expect(lines).toContain('__tc_adc0_setup');
-    expect(lines).toContain('__tc_adc9_setup');
+    expect(lines).toContain('__tc_adc_dev');
   });
 });
 
-describe('SoC-aware ADC channel setup (descriptor-driven gain/reference)', () => {
-  it('uses the descriptor gain/reference (STM32: ADC_GAIN_1 + ADC_REF_INTERNAL)', () => {
-    const lines = adcInitLines(STM32_ADC).join('\n');
-    expect(lines).toContain('.gain = ADC_GAIN_1,');
-    expect(lines).toContain('.reference = ADC_REF_INTERNAL,');
-    expect(lines).toContain('DEVICE_DT_GET(DT_NODELABEL(adc1))');
-  });
-
-
-  it("defaults to the nRF SAADC scheme when the descriptor omits gain/reference (XIAO regression)", () => {
-    const lines = adcInitLines(TEST_CHIP).join('\n');
-    expect(lines).toContain('.gain = ADC_GAIN_1_4,');
+describe('op-level setup carries descriptor-default gain/reference', () => {
+  it('the XIAO default scheme rides the OP guard (single mechanism)', () => {
     const out = lowerAdc({ operation: 'adc.read_mv', pin: 2, gain: '', reference: '' } as any, TEST_CHIP);
     expect(out.expression).toContain('adc_raw_to_millivolts(3000, ADC_GAIN_1_4, 12');
   });
@@ -178,8 +174,9 @@ describe('multi-controller ADC (channel indices collide across controllers)', ()
     const lines = adcInitLines(ESP32S3_TWO_UNITS, new Set([11])).join('\n');
     expect(lines).toContain('static const struct device* __tc_adc_adc1_dev = DEVICE_DT_GET(DT_NODELABEL(adc1));');
     expect(lines).not.toContain('__tc_adc_dev = DEVICE_DT_GET(DT_NODELABEL(adc0));');
-    // adc1 channel 0 must not reuse adc0 channel 0's __tc_adc0_setup symbol.
-    expect(lines).toContain('__tc_adc_adc1_0_setup');
+    // Collision-safety now lives in the labeled DEVICE handle only (the
+    // per-channel setup symbols are gone — the op guard owns setup).
+    expect(lines).not.toMatch(/__tc_adc_\\w+\\d+_setup/);
     expect(lines).not.toContain('__tc_adc0_setup');
     // Channels on BOTH controllers: both handles appear.
     const both = adcInitLines(ESP32S3_TWO_UNITS, new Set([1, 11])).join('\n');

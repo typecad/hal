@@ -42,6 +42,9 @@ export const POLYFILL_HELPER_MAP: Record<string, string[]> = {
 
   // Math methods
   'Math.random(':   ['__tc_random'],
+  // Math.max(...arr)/Math.min(...arr) lower to the vector fold helpers
+  '__tc_max_vec(':  ['__tc_max_vec'],
+  '__tc_min_vec(':  ['__tc_min_vec'],
 
   // Array methods
   '.join(':         ['__tc_join'],

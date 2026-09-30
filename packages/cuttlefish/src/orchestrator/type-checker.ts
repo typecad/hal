@@ -102,6 +102,16 @@ export function typeCheckFiles(
     compilerOptions.rootDirs = [...rootDirs];
   }
 
+  // The engine's decorator surface (@register/@bits on HAL register classes —
+  // PropertyDecorator-shaped factories) only type-checks under LEGACY
+  // decorator semantics: the standard TS5 decorator spec cannot decorate
+  // fields at all, so a project tsconfig without experimentalDecorators
+  // rejects the documented API with "Unable to resolve signature of property
+  // decorator". The transpiler's own register-decorators lowering requires
+  // the legacy model — force the flag rather than leaking the engine's
+  // contract into every project template.
+  compilerOptions.experimentalDecorators = true;
+
   // Create a TypeScript program with the transpile graph files, using compiler options from tsconfig
   const program = ts.createProgram(rootNames, compilerOptions);
 
@@ -758,7 +768,7 @@ export function runSemanticGates(
             node,
             `Member access '${node.getText()}' on a union type '${typeStr}' is not supported — the union lowers to std::variant, but member access doesn't lower to std::get_if/std::holds_alternative.`,
             "TS2CPP_UNION_MEMBER_ACCESS",
-            "Use a struct with a discriminator field, or narrow via a type guard before access.",
+            "Member access on the union — including the discriminant read a type guard would use — is not lowered on this target. Model the data as ONE struct with a discriminator field (kind: string plus every variant's fields), or as a class hierarchy.",
           );
         }
       }

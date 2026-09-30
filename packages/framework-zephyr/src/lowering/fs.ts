@@ -68,7 +68,6 @@ export function fsInitLines(): string[] {
     '    return buf;',
     '}',
     '',
-    'static bool __tc_fs_begin(void) { __tc_fs_ensure_mount(); return true; }',
     '',
     'static const char* __tc_fs_read_text(const char* path) {',
     '    __tc_fs_ensure_mount();',

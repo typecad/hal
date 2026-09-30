@@ -20,11 +20,11 @@ import { callbackContextLabel, unsupportedStatementHint } from "./callback-conte
 import { tryLowerArrayAndStringMethods } from "./array-methods.js";
 import { expressionToIR, castEnumArgsForCallParams, resolveExprCppType } from "../expression-to-ir.js";
 import { castMapKeyIfNeeded } from "../map-key-cast.js";
-import { userDeclaredVarNames } from "../build-ir-state.js";
+import { userDeclaredVarNames, arrayLiteralSizes } from "../build-ir-state.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import { lowerStatementList } from "../statement-to-ir.js";
 import { renderExprAsText, calleeToText } from "../render-expr.js";
-import { parsedIsPointer, parsedIsMap, parsedIsSet } from "../../api/shared/cpp-type-ir.js";
+import { parsedIsPointer, parsedIsMap, parsedIsSet, parsedIsVector } from "../../api/shared/cpp-type-ir.js";
 
 /**
  * Resolve a `screen.<id>` or `screen.groups.<screenId>.<id>` element receiver
@@ -192,10 +192,14 @@ export function callToStatement(
   // explicitly: USB0.writeLine(...) or UART0.writeLine(...). Sourced at IR
   // build time so the diagnostic points at the user's statement and the
   // real pipeline aborts before emit.
+  // A user-DECLARED `console` binding (`const console = new UART(...)`) is
+  // their own object — the gate exists for the TypeScript console carry-over
+  // API, which only applies when the name is NOT a program binding.
   if (
     ts.isPropertyAccessExpression(call.expression) &&
     ts.isIdentifier(call.expression.expression) &&
-    call.expression.expression.text === "console"
+    call.expression.expression.text === "console" &&
+    !userDeclaredVarNames.has("console")
   ) {
     diagnostics.push(makeDiagnostic(
       sourceText,
@@ -715,12 +719,27 @@ export function callToStatement(
     const objExpr = call.expression.expression;
     if (ts.isIdentifier(objExpr) && mutableArrayVars.has(objExpr.text)) {
       if (methodName === "push") {
+        // The verbatim `.push` callee assumes a __tc_StaticArray receiver (its
+        // member exists). A receiver whose resolved scope type is a
+        // std::vector (a `T[]` parameter, an annotated non-literal local) has
+        // NO push member — emit push_back or g++ fails ("no member named
+        // 'push'"). Unknown types keep .push (the literal-promotion default on
+        // StaticArray targets).
+        const recvType = getCurrentIrTypeScope()?.locals.get(objExpr.text)
+          ?? getCurrentIrTypeScope()?.globals.get(objExpr.text);
+        // Vector by resolution, or by elimination on a vector-capable target:
+        // only literal-initialized arrays promote to __tc_StaticArray there
+        // (parameters and annotated non-literal locals are std::vector).
+        const isVectorRecv = (recvType !== undefined && parsedIsVector(recvType.trim()))
+          || (recvType === undefined
+            && (getContext().activeStrategy?.getStdLibSupport?.().hasVector ?? true)
+            && !arrayLiteralSizes.has(objExpr.text));
         return {
           kind: "call",
           sourceSpan: makeSourceSpan(call, fileName, sourceText),
           leadingComments: comments.leadingComments,
           trailingComments: comments.trailingComments,
-          callee: `${objExpr.text}.push`,
+          callee: `${objExpr.text}.${isVectorRecv ? "push_back" : "push"}`,
           args: call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
         };
       }

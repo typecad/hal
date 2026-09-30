@@ -587,6 +587,25 @@ const AWAITABLE_HAL_OPS = new Set<string>([
  */
 function awaitedNetMarker(stmt: StatementIR | undefined): StatementIR | undefined {
   if (!stmt) return undefined;
+  // `await Async.yield()` resolves to a raw hal-op (the Async class bodies are
+  // rawCpp markers). Without a marker rewrite it fell through to the blocking
+  // renderer as an UNREGISTERED op — `/* unhandled hal-op: raw */` — so the
+  // yield silently didn't yield. The marker lowers in the state machine to a
+  // bare state yield (resume next pump pass = let the other tasks run once).
+  if (stmt.kind === "hal-op" && stmt.operation.operation === "raw") {
+    const code = (stmt.operation as { code?: string }).code ?? "";
+    if (code.includes("__cuttlefish_async_yield")) {
+      return {
+        kind: "call",
+        sourceSpan: stmt.sourceSpan,
+        leadingComments: stmt.leadingComments,
+        trailingComments: stmt.trailingComments,
+        callee: "__ASYNC_YIELD__",
+        args: [],
+        isAwaited: true,
+      };
+    }
+  }
   if (stmt.kind === "hal-op" && AWAITABLE_HAL_OPS.has(stmt.operation.operation)) {
     const opName = stmt.operation.operation;
     const callee = opName.startsWith("http.") ? "__HTTP_WAIT__"

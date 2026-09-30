@@ -63,7 +63,13 @@ export function gpioIntTokenToMacro(intFlags: string): string {
 export function interruptInitLines(chip: ZephyrChipDescriptor, usedPins?: ReadonlySet<number>): string[] {
   const pins = chip.gpio.interruptPins ?? [];
   const lines: string[] = ['// CUTTLEFISH_INT_BEGIN'];
-  for (const pin of pins) {
+  // Only scaffold DT-aliased pins the program ACTUALLY attaches interrupts
+  // to. The descriptor list carries every aliased pin (buttons AND LEDs) —
+  // scaffolding all of them emitted dead callback structs + trampolines for
+  // plain outputs (-Wunused-function/-Wunused-variable on every program that
+  // uses an LED but no interrupt on it).
+  const attached = usedPins ? pins.filter((p) => usedPins.has(p.pin)) : pins;
+  for (const pin of attached) {
     const v = dtSpecVar(pin.dtSpec);
     lines.push(
       `static const struct gpio_dt_spec ${v} = GPIO_DT_SPEC_GET(DT_ALIAS(${pin.dtSpec}), gpios);`,

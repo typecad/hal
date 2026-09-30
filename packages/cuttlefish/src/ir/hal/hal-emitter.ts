@@ -1108,6 +1108,53 @@ export function buildSnprintfFromConcat(
           formatString += "%g";
           args.push(`static_cast<double>(${text})`);
           estimatedLength += 16;
+        } else if (
+          part.kind === "template_string"
+          && (part.expression as { kind?: string }).kind === "raw"
+          && /&\s\d+UL$/.test(text.trim())
+        ) {
+          // A @register bitfield read (`(*ChipId >> 12) & 15UL`) — the raw
+          // text is UNSIGNED LONG (the UL literal suffix); the %d default
+          // mismatched the vararg (-Wformat=, garbage on the stack). %lu
+          // matches.
+          formatString += "%lu";
+          args.push(text);
+          estimatedLength += 12;
+        } else if (
+          part.kind === "template_string"
+          && (part.expression as { kind?: string }).kind === "ternary"
+        ) {
+          // A conditional in a template (`${c ? x.toFixed(2) : "0.00"}`)
+          // renders as `(c ? a : b)` — isStringHelperText anchors at ^__tc_
+          // and misses it, so the %d default fired while the argument is a
+          // std::string (-Wformat=). Decide from the BRANCHES: a string arm
+          // dominates (JS string|number conditionals are string-typed).
+          // Both-literal arms are a const char* conditional (no .c_str()).
+          const tern = (part.expression as unknown as { whenTrue: ExpressionIR; whenFalse: ExpressionIR });
+          const trueText = renderExprAsText(tern.whenTrue);
+          const falseText = renderExprAsText(tern.whenFalse);
+          const trueIsStr = isStringHelperText(trueText) || /^"/.test(trueText.trim());
+          const falseIsStr = isStringHelperText(falseText) || /^"/.test(falseText.trim());
+          if (trueIsStr || falseIsStr) {
+            formatString += "%s";
+            const bothLiterals = trueIsStr && falseIsStr && /^"/.test(trueText.trim()) && /^"/.test(falseText.trim());
+            args.push(bothLiterals ? text : `(${text}).c_str()`);
+            estimatedLength += 32;
+          } else if (/^-?\d+$/.test(trueText.trim()) && /^-?\d+$/.test(falseText.trim())) {
+            // Both arms are integer literals (`flag ? 1 : 0`) — the value is
+            // an INT; %.15g would be a -Wformat= mismatch and garbage on
+            // varargs. The JS number-repr %.15g convention applies to DOUBLE
+            // arms (a Map read), not to this shape.
+            formatString += "%d";
+            args.push(text);
+            estimatedLength += 12;
+          } else {
+            // %.15g — the established JS number-repr convention (see the
+            // map-value-read branch); a Map read in either arm stays double.
+            formatString += "%.15g";
+            args.push(text);
+            estimatedLength += 24;
+          }
         } else if (isStringHelperText(text)) {
           // Raw text of a lowered string method (`__tc_toFixed(x, 2)`,
           // `__tc_toUpperCase(s)`, …) — the helpers return std::string BY

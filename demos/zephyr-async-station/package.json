@@ -1,0 +1,19 @@
+{
+  "name": "zephyr-async-station",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload",
+    "monitor": "typecad-hal build --compile --upload --monitor",
+    "dev": "typecad-hal build --watch"
+  },
+  "dependencies": {
+    "@typecad/cuttlefish": "*",
+    "@typecad/hal": "*",
+    "@typecad/framework-zephyr": "*"
+  },
+  "description": "Black Pill environment station — cooperative async/await tasks (sampler, alarmer, reporter) over the static promise runtime, chip-ID read through a @register bitfield class, hysteresis alarm with latched peak history"
+}

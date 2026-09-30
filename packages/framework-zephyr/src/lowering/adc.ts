@@ -7,9 +7,11 @@
 // `adc_read`. The channel index comes from the chip descriptor's pin→channel
 // map (XIAO D0–D3 = AIN0–AIN3).
 //
-// Channel setup is emitted in adcInitLines() (one per channel used); the ops
-// then just read. A static `adc_channel_cfg` + a per-channel "configured" flag
-// guards the setup, so repeated reads don't reconfigure.
+// Channel setup is NOT emitted here — each adc.read/adc.read_mv op inlines
+// its own first-call guard built from the INSTANCE's gain/reference opts (the
+// construction facts are authoritative over descriptor defaults). This block
+// emits what the ops consume: per-controller device handles and the
+// vref/resolution defines.
 // ---------------------------------------------------------------------------
 
 import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
@@ -107,8 +109,6 @@ export function adcInitLines(
   // driver requires exactly ADC_GAIN_1 + ADC_REF_INTERNAL (Zephyr maps
   // "internal" to the VREF+ pad) with vref-mv = VDDA. The descriptor carries
   // the SoC's pair so the emitted channel setup validates in the driver.
-  const gain = chip.adc?.gain ?? 'ADC_GAIN_1_4';
-  const reference = chip.adc?.reference ?? 'ADC_REF_INTERNAL';
   const owns = (c: { controller?: string }, label: string) => (c.controller ?? primary) === label;
   const channels = (chip.adc?.channels ?? []).filter(
     (c) =>
@@ -143,26 +143,10 @@ export function adcInitLines(
   for (const label of extraControllers) {
     lines.push(`static const struct device* __tc_adc_${label}_dev = DEVICE_DT_GET(DT_NODELABEL(${label}));`);
   }
-  for (const c of channels) {
-    const n = c.channel;
-    const dev = adcDevSymbol(c.controller ?? primary, primary);
-    const sym = c.controller && c.controller !== primary ? `__tc_adc_${c.controller}_${n}` : `__tc_adc${n}`;
-    lines.push(
-      `static bool ${sym}_ready = false;`,
-      `static void ${sym}_setup(void) {`,
-      `    if (${sym}_ready) return;`,
-      `    const struct adc_channel_cfg cfg = {`,
-      `        .gain = ${gain},`,
-      `        .reference = ${reference},`,
-      `        .acquisition_time = ADC_ACQ_TIME_DEFAULT,`,
-      `        .channel_id = ${n},`,
-      `        .differential = 0,`,
-      `    };`,
-      `    adc_channel_setup(${dev}, &cfg);`,
-      `    ${sym}_ready = true;`,
-      `}`,
-    );
-  }
+  // (Per-channel __tc_adc<N>_setup() functions used to be emitted here with
+  // per-use gating — the op lowering's inline guard superseded them, leaving
+  // dead definitions that tripped -Wunused-function on every ADC program.
+  // Two parallel setup mechanisms drift; the op guard is the one mechanism.)
   lines.push(`#define __TC_ADC_VREF_MV ${vref}`);
   lines.push(`#define __TC_ADC_RESOLUTION ${res}`);
   lines.push('// CUTTLEFISH_ADC_END');

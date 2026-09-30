@@ -1509,11 +1509,19 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       const t = scopedTypeOf(n.expression);
       return t === "std::string" || t === "const char*" || t === "char*";
     };
+    // A const bound to a string element (`const op = c.src[c.pos]`) carries
+    // the char type into the comparison — without this the identifier fell
+    // to the strcmp path and rendered `("+").c_str()` (a char-array literal
+    // has no members).
+    const isCharExpr = (n: ts.Expression): boolean => {
+      if (isStrElement(n)) return true;
+      return scopedTypeOf(n) === "char";
+    };
     const asStrLit = (n: ts.Expression): string | undefined =>
       ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n) ? n.text : undefined;
     if (isComparison) {
-      const leftIsChar = isStrElement(expr.left);
-      const rightIsChar = isStrElement(expr.right);
+      const leftIsChar = isCharExpr(expr.left);
+      const rightIsChar = isCharExpr(expr.right);
       const leftLit = asStrLit(expr.left);
       const rightLit = asStrLit(expr.right);
       const charSide = leftIsChar ? expr.left : rightIsChar ? expr.right : undefined;
@@ -1597,7 +1605,8 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     if (
       ts.isPropertyAccessExpression(expr.expression) &&
       ts.isIdentifier(expr.expression.expression) &&
-      expr.expression.expression.text === "console"
+      expr.expression.expression.text === "console" &&
+      !userDeclaredVarNames.has("console")
     ) {
       diagnostics.push(makeDiagnostic(
         sourceText,
@@ -2224,6 +2233,16 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
             : "0";
           return { kind: "raw", value: `static_cast<int>((static_cast<long long>(${a})) * (static_cast<long long>(${b})))` };
         } else if ((mathMethod === "max" || mathMethod === "min") && expr.arguments && expr.arguments.length >= 1) {
+          // `Math.max(...vals)` — the everyday variadic fold over an array.
+          // The ternary fold below maps arguments INDIVIDUALLY and a bare
+          // SpreadElement has no top-level expression handler, so it lowered
+          // to the unsupported-expr placeholder. A sole spread argument folds
+          // over the vector through a helper (same empty-input convention as
+          // __tc_reduce_no_init: v[0]).
+          if (expr.arguments.length === 1 && ts.isSpreadElement(expr.arguments[0])) {
+            const vecIR = expressionToIR((expr.arguments[0] as ts.SpreadElement).expression, sourceText, diagnostics, pointerVars);
+            return { kind: "raw", value: `__tc_${mathMethod}_vec(${renderExprAsText(vecIR)})` };
+          }
           const op = mathMethod === "max" ? ">" : "<";
           const args = expr.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
           let result = args[0];
@@ -2578,10 +2597,15 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   }
 
   if (ts.isIdentifier(expr)) {
-    // Resolve tracked HAL instances to their resolved values
+    // Resolve tracked HAL instances to their resolved values.
+    // PIN CONSTANTS only (className Pin — board pin imports and Pin.fromPort
+    // results): the identifier lowers to the pin number/alias text. A
+    // CONSTRUCTED peripheral (`const fan = new PWM(PA8, ...)` — className PWM)
+    // must keep its NAME: substituting its _pin turned the receiver of a
+    // failed method resolution into `8->setDuty(...)`, a silent miscompile
+    // with no diagnostic. Peripheral instances never lower to a number.
     const halInst = halInstances.get(expr.text);
-    if (halInst) {
-      // For Pin instances, resolve to the pin number
+    if (halInst && halInst.className === "Pin") {
       if (halInst.fieldValues.has("_pin")) {
         return { kind: "raw", value: halInst.fieldValues.get("_pin")! };
       }

@@ -55,6 +55,7 @@ const PLAIN_AWAIT_CALLEES = new Set<string>([
 /** Marker callees the awaited-call classifier recognizes. */
 type AwaitMarker =
   | { kind: "plain" }
+  | { kind: "pass" }
   | { kind: "edge"; pin: string; edge: "rising" | "falling"; timeout: number | null }
   | { kind: "tap"; nodeIndex: number }
   | { kind: "net"; info: NetWaitInfo };
@@ -640,6 +641,12 @@ export function generateAsyncTaskClass(
       const op = (stmt.args[0] as Extract<ExpressionIR, { kind: "hal-expr" }>).operation;
       return { kind: "net", info: netWaitInfo(op, strategy) };
     }
+    if (stmt.callee === "__ASYNC_YIELD__") {
+      // Async.yield(): resume on the NEXT pump pass — the other tasks run
+      // once between the yield and the resume. No gate: run() returns after
+      // arming the state, and the resume label falls through immediately.
+      return { kind: "pass" };
+    }
     return { kind: "plain" };
   };
 
@@ -675,6 +682,8 @@ export function generateAsyncTaskClass(
       if (marker.info.timeoutExpr !== null) {
         emittedLines.push(renameRawText(`${pad}_waitUntil = ${now} + ${marker.info.timeoutExpr};`));
       }
+    } else if (marker.kind === "pass") {
+      // No start statements — the yield IS the state transition below.
     } else {
       // Plain timed wait (await delay(ms)) — arm its deadline. Anything whose
       // callee is not a known timer shape has no cooperative lowering here:
@@ -721,6 +730,12 @@ export function generateAsyncTaskClass(
           ? `(${info.pollCond}) || ${deadline}`
           : info.pollCond;
       emittedLines.push(renameRawText(`${pad}if (!(${cond})) { return; }`));
+    } else if (marker.kind === "pass") {
+      // No gate — the resume happens on the next pump pass by construction
+      // (run() returned; the pump calls it again after the other tasks ran).
+      // The label still needs A statement after it (a case label at the end
+      // of a compound statement is ill-formed) — the empty statement.
+      emittedLines.push(renameRawText(`${pad};`));
     } else {
       emittedLines.push(renameRawText(`${pad}if (${now} < _waitUntil) { return; }`));
     }

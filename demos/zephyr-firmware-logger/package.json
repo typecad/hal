@@ -1,0 +1,19 @@
+{
+  "name": "zephyr-firmware-logger",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload",
+    "monitor": "typecad-hal build --compile --upload --monitor",
+    "dev": "typecad-hal build --watch"
+  },
+  "dependencies": {
+    "@typecad/cuttlefish": "*",
+    "@typecad/hal": "*",
+    "@typecad/framework-zephyr": "*"
+  },
+  "description": "Black Pill utility-meter logger — ISR pulse counting, ring-buffered samples, CSV log on the flash filesystem, lifetime totals in settings, background flusher thread, serial console, watchdog"
+}

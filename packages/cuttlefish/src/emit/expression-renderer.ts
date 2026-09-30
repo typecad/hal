@@ -94,6 +94,24 @@ interface ExpressionRendererContext {
 /**
  * Renders ExpressionIR nodes to C++ code strings.
  */
+/**
+ * Function name → the C++ type of each parameter the param-mutation pass
+ * (emit/utils/param-mutation.ts) stamps ownershipKind='mutable'. A mutable
+ * record parameter lowers to a non-const `T&`, and a brace-init temporary
+ * (`bump({ "ab", 0 })`) cannot bind to it — g++: "cannot bind non-const
+ * lvalue reference ... to an rvalue". The renderer hoists object-literal
+ * args at those positions into named temporaries (JS semantics are safe
+ * here: the literal has no other name, so the callee's mutation is
+ * unobservable to the caller). setup.ts populates this once per emit.
+ */
+const mutableRecordParamsByFunction = new Map<string, string[]>();
+const hoistedTempArgs = new WeakSet<object>();
+
+export function setMutableRecordParamsForEmit(params: Map<string, string[]>): void {
+  mutableRecordParamsByFunction.clear();
+  for (const [k, v] of params) mutableRecordParamsByFunction.set(k, v);
+}
+
 export class ExpressionRenderer {
   private readonly strategy: PlatformStrategy;
   private readonly boardConstants?: BoardConstants;
@@ -990,6 +1008,32 @@ export class ExpressionRenderer {
       case "ternary":
       case "raw": {
         const rendered = this.render(expr, exprTransformer);
+        // A TERNARY's format is decided by its BRANCHES, not by the rendered
+        // text: `(c ? x.toFixed(2) : "0.00")` does not START with `__tc_`, so
+        // the helper regex below misses it and the group's %d default fires
+        // (-Wformat=: "%d expects int, argument is std::string"). Infer both
+        // arms and let a string arm dominate (JS string|number ternaries are
+        // string-typed); .c_str() wraps the whole parenthesized conditional
+        // only when the ternary's common type really is std::string (a
+        // both-literals conditional is const char* and has no members).
+        if (expr.kind === "ternary") {
+          const trueFmt = this.inferFormatSpecifier(expr.whenTrue, exprTransformer, knownVariableTypes);
+          const falseFmt = this.inferFormatSpecifier(expr.whenFalse, exprTransformer, knownVariableTypes);
+          const strBranch = trueFmt?.format === "%s" ? trueFmt : falseFmt?.format === "%s" ? falseFmt : undefined;
+          if (strBranch) {
+            const inferredCommon = this.inferExpressionCppType(expr, knownVariableTypes);
+            const needsCStr = inferredCommon === "std::string" || inferredCommon === "__tc_str_ptr";
+            return {
+              format: "%s",
+              arg: needsCStr ? `(${rendered}).c_str()` : `(${rendered})`,
+              estimatedLength: Math.max(strBranch.estimatedLength, 16),
+            };
+          }
+          const numericBranch = trueFmt ?? falseFmt;
+          if (numericBranch && numericBranch.format !== "%s") {
+            return { ...numericBranch, arg: rendered };
+          }
+        }
         // String-returning helpers (__tc_toUpperCase, etc.) use %s.
         // On hosted targets these return std::string, so snprintf needs
         // .c_str(). On targets WITHOUT std::string (e.g. Arduino AVR) the
@@ -1558,7 +1602,15 @@ export class ExpressionRenderer {
       // are the norm for enum-holding locals.
       const asStrcmpOperand = (text: string, t: string | undefined): string => {
         const nt = t ? this.strategy.normalizeCppType(t) : undefined;
-        return nt === "std::string" ? `(${text}).c_str()` : text;
+        // A STRING LITERAL is already a const char[] — wrapping it in
+        // `.c_str()` is invalid C++ ("request for member 'c_str' in
+        // '(\"ok\")'"). Only a rendered std::string VALUE needs the
+        // conversion; a literal is identified by its rendered form (the
+        // string IR node renders as a double-quoted literal).
+        if (nt === "std::string" && !/^\(?"[^"]*"\)?$/.test(text.trim())) {
+          return `(${text}).c_str()`;
+        }
+        return text;
       };
 
       // String equality: any C-string operand compared with == / != must use
@@ -1796,6 +1848,27 @@ export class ExpressionRenderer {
   }
 
   private renderMethodCall(expr: Extract<ExpressionIR, { kind: "method-call" }>, exprTransformer?: (expr: string) => string): string {
+    // A free-function call lowers to a method-call IR node with a BARE callee
+    // (no "." / "->" / "::"). When the param-mutation pass stamped one of its
+    // record parameters mutable, the C++ parameter is a non-const `T&` — and a
+    // brace-init object-literal argument cannot bind to it (g++: "cannot bind
+    // non-const lvalue reference ... to an rvalue"). Hoist such arguments
+    // into NAMED temporaries emitted as prelude lines (JS semantics are safe:
+    // the literal has no other name, so the callee's mutation is unobservable
+    // to the caller). The WeakSet makes the substitution idempotent across
+    // re-renders of the same IR node.
+    const bareCallee = /^[A-Za-z_]\w*$/.test(expr.callee);
+    const mutableParamTypes = bareCallee ? mutableRecordParamsByFunction.get(expr.callee) : undefined;
+    if (mutableParamTypes && expr.args.length > 0) {
+      expr.args = expr.args.map((a, i) => {
+        const paramType = mutableParamTypes[i];
+        if (!paramType || a.kind !== "object" || hoistedTempArgs.has(a)) return a;
+        const tmp = `__mutarg_${expr.callee}_${this._snprintfCounter.value++}`;
+        hoistedTempArgs.add(a);
+        this._preludeLines.push(`${paramType} ${tmp} = ${this.render(a, exprTransformer)};`);
+        return { kind: "identifier", value: tmp } as ExpressionIR;
+      });
+    }
     let argsText = expr.args.map(a => this.render(a, exprTransformer)).join(", ");
     // Rest-parameter functions (`...vals: number[]`) lower to ONE
     // `const std::vector<T>&` parameter — plain args must be collected into a

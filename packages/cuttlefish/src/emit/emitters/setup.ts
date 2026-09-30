@@ -25,6 +25,8 @@ import {
 import { ExpressionRenderer } from "../expression-renderer.js";
 import { StatementRenderer } from "../statement-renderer.js";
 import { stampMutableRecordParams } from "../utils/param-mutation.js";
+import { setMutableRecordParamsForEmit } from "../expression-renderer.js";
+const mutableRecordParamsForEmit = new Map<string, string[]>();
 import {
   isCuttlefishSDKImport,
   emitCommentLines,
@@ -723,6 +725,8 @@ export function buildEmitterContext(
 
   const mappedFunctions: MappedFunction[] = program.functions.map((fn) => {
     const fnName = mapEmittedFnName(fn.originalName);
+    // (see the parameters stamp below — the same mutable-record positions
+    // feed the expression renderer's object-literal temp hoist)
     return {
       name: fnName,
       returnType: resolveTemplateReturnType(
@@ -736,7 +740,19 @@ export function buildEmitterContext(
       // same demotion the ownership analysis applies to const locals: the
       // const& borrow unlocks to a mutable reference (info-level, not a
       // g++ "assignment of member in read-only object" error).
-      parameters: stampMutableRecordParams(fn.parameters, fn.statements),
+      parameters: (() => {
+        const stamped = stampMutableRecordParams(fn.parameters, fn.statements);
+        // Sparse by position: only MUTABLE positions carry a type, so the
+        // renderer hoists object literals exactly there.
+        const mutableAt: string[] = [];
+        stamped.forEach((p, i) => {
+          if (p.ownershipKind === "mutable") mutableAt[i] = p.cppType;
+        });
+        if (mutableAt.length > 0) {
+          mutableRecordParamsForEmit.set(fn.originalName, mutableAt);
+        }
+        return stamped;
+      })(),
       isAsync: fn.isAsync,
       typeParameters: fn.typeParameters,
       typeParameterConstraints: fn.typeParameterConstraints,
@@ -751,6 +767,10 @@ export function buildEmitterContext(
       }),
     };
   });
+  // Publish the collected mutable-record parameter positions to the
+  // expression renderer (call-site object-literal temp hoist). Call sites in
+  // IR carry ORIGINAL names, so the registry is keyed by originalName.
+  setMutableRecordParamsForEmit(mutableRecordParamsForEmit);
 
   const knownFunctionReturnTypes = new Map<string, string>(options.crossModuleFunctionReturnTypes);
   for (const fn of mappedFunctions) {
@@ -1330,6 +1350,47 @@ function collectUserVarNames(program: ProgramIR): Set<string> {
   );
   if (variantInAliases || variantInFunctions) {
     includes.push("<variant>");
+  }
+  // std::function (closure-typed returns/vars/fields — `(x): number => …`
+  // factories, `const f = makeScale(2)`) needs <functional>. Same scan shape
+  // as <variant>: signatures alone miss the top-level `const f` whose cppType
+  // carries `std::function<...>` — without the header g++ reports "'function'
+  // in namespace 'std' does not name a template type".
+  const functionTypeInAliases = program.typeAliases.some((a) => (a.cppType ?? "").includes("std::function"));
+  const functionTypeInFunctions = program.functions.some(
+    (f) => (f.returnType ?? "").includes("std::function")
+      || f.parameters.some((p) => (p.cppType ?? "").includes("std::function")),
+  );
+  const functionTypeInVars = program.topLevelStatements.some(
+    (s) => s.kind === "var_decl"
+      && typeof (s as { cppType?: string }).cppType === "string"
+      && ((s as { cppType: string }).cppType).includes("std::function"),
+  );
+  const functionTypeInFields = program.classes.some(
+    (c) => c.fields.some(
+      (f) => typeof (f as { cppType?: string }).cppType === "string"
+        && ((f as { cppType: string }).cppType).includes("std::function"),
+    ),
+  );
+  // Synthesized alias structs (type Task = { ... run: () => void }) emit into
+  // the HEADER with the field's std::function type spelled out in a
+  // structField — the alias's own cppType is just "Task", so the scans above
+  // miss it and the header fails ("'function' in namespace 'std' does not
+  // name a template type"). Interface fields ride the same emission.
+  const functionTypeInStructFields = program.typeAliases.some(
+    (a) => (a.structFields ?? []).some(
+      (f) => typeof f.cppType === "string" && f.cppType.includes("std::function"),
+    ),
+  )
+    || program.interfaces.some(
+      (i) => i.fields.some(
+        (f) => typeof (f as { cppType?: string }).cppType === "string"
+          && ((f as { cppType: string }).cppType).includes("std::function"),
+      ),
+    );
+  if (functionTypeInAliases || functionTypeInFunctions || functionTypeInVars
+    || functionTypeInFields || functionTypeInStructFields) {
+    includes.push("<functional>");
   }
   // String enums lower to const char* and use strcmp() for === comparisons.
   // Header name is platform-specific: <cstring> on hosted, <string.h> on AVR.

@@ -3,6 +3,7 @@ import { Diagnostic } from "../../types.js";
 import { PointerTracker } from "../build-ir-state.js";
 import { StatementIR, ExpressionIR, HALOpIR } from "../../api/index.js";
 import { resolveHALReceiver, processHALMethodBody, isHALSingleton, HALInstance } from "../hal-resolver.js";
+import { nestedFunctionAliases, halInstances } from "../build-ir-state.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
 import { collectChainedHALEmits, emitLinesToIR, halOpsToIR } from "./hal-emit-helpers.js";
@@ -14,6 +15,14 @@ import { makeSourceSpan, makeDiagnostic } from "../ast-node-utils.js";
  * Handles all HAL classes: Pin, I2CBus, SPIBus, UART, WDTClass,
  * plus device accessor patterns (I2CTarget, SPITarget) and namespace methods (Pulse, Shift, Random).
  */
+/** Thin peripheral classes: a failed method resolution has no fallback —
+ * fail loudly instead of emitting pin-substitution garbage. */
+const THIN_PERIPHERAL_CLASSES = new Set([
+  "GPIO", "PWM", "Servo", "ADC", "DAC", "Watchdog", "Counter",
+  "I2CTarget", "SPITarget", "UART", "USBConsole", "Strip",
+  "I2CResponder", "Power", "Clock", "CAN", "I2S", "Keyboard", "Mouse",
+]);
+
 export function tryResolveHALMethod(
   call: ts.CallExpression,
   fileName: string,
@@ -36,7 +45,18 @@ export function tryResolveHALMethod(
     return null;
   }
 
-  const argIRs = call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
+  // A spread argument is NOT an expression node expressionToIR can lower on
+  // its own (the fallback fires TS2CPP_UNSUPPORTED_EXPR on the bare
+  // SpreadElement). The generic call path (expression-to-ir's sawSpreadArg
+  // convention) passes the spread's EXPRESSION — mirror that here so a
+  // Math.max(...vals) scanned as a HAL candidate doesn't poison the
+  // diagnostic list on its way to the real (non-HAL) lowering.
+  const argIRs = call.arguments.map(a => expressionToIR(
+    ts.isSpreadElement(a) ? a.expression : a,
+    sourceText,
+    diagnostics,
+    pointerVars,
+  ));
 
   // Try HAL class method resolution via resolver
   if (instance) {
@@ -103,6 +123,39 @@ export function tryResolveHALMethod(
         };
       }
       if (result.returnValue) return emitLinesToIR([`${result.returnValue};`], call, fileName, sourceText);
+    } else if (
+      ts.isPropertyAccessExpression(call.expression)
+      && instance.className
+      && !nestedFunctionAliases.has(call.expression.expression.getText())
+      && halInstances.has(call.expression.expression.getText())
+      // Thin peripheral classes have NO downstream resolver — a null here
+      // previously fell into pin-substitution garbage. Composite classes
+      // (Request, BLE, WiFi…) DO have later handling (their state-staging
+      // methods return null here by design), so they keep the old flow.
+      && THIN_PERIPHERAL_CLASSES.has(instance.className)
+    ) {
+      // The receiver IS a registered HAL instance but its method body resolved
+      // to nothing (an unimplemented semantic mapping). Historically this fell
+      // through to the generic method-call builder, which rendered the
+      // receiver through pin substitution — `8->setDuty(x)` — silent garbage
+      // at g++ time with no pointer back to the cause. Fail LOUDLY instead.
+      // (Guarded to real instance receivers: a BARE call lowered through the
+      // global-function pseudo-instance — `sampleSensor()` inside a lambda —
+      // is a user function, not a HAL method.)
+      diagnostics.push(makeDiagnostic(
+        sourceText,
+        call.pos,
+        `${instance.className}.${method}() did not lower — the method has no semantic mapping on this framework. This is a transpiler bug; the call emitted nothing.`,
+        "error",
+        "hal-method-unresolved",
+      ));
+      return {
+        kind: "block",
+        sourceSpan: makeSourceSpan(call, fileName, sourceText),
+        leadingComments: [],
+        trailingComments: [],
+        body: [],
+      };
     }
   }
 
@@ -140,7 +193,18 @@ export function tryResolveHALMethod(
             }
           }
           const deviceInstance = { className: deviceClassName, fieldValues: deviceFieldValues };
-          const argIRs = call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
+          // A spread argument is NOT an expression node expressionToIR can lower on
+  // its own (the fallback fires TS2CPP_UNSUPPORTED_EXPR on the bare
+  // SpreadElement). The generic call path (expression-to-ir's sawSpreadArg
+  // convention) passes the spread's EXPRESSION — mirror that here so a
+  // Math.max(...vals) scanned as a HAL candidate doesn't poison the
+  // diagnostic list on its way to the real (non-HAL) lowering.
+  const argIRs = call.arguments.map(a => expressionToIR(
+    ts.isSpreadElement(a) ? a.expression : a,
+    sourceText,
+    diagnostics,
+    pointerVars,
+  ));
 
           const result = processHALMethodBody(deviceInstance, method, argIRs);
           if (result) {
@@ -181,7 +245,18 @@ export function resolveHALCallForVarInit(
 
   const method = call.expression.name.text;
   const receiver = call.expression.expression;
-  const argIRs = call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
+  // A spread argument is NOT an expression node expressionToIR can lower on
+  // its own (the fallback fires TS2CPP_UNSUPPORTED_EXPR on the bare
+  // SpreadElement). The generic call path (expression-to-ir's sawSpreadArg
+  // convention) passes the spread's EXPRESSION — mirror that here so a
+  // Math.max(...vals) scanned as a HAL candidate doesn't poison the
+  // diagnostic list on its way to the real (non-HAL) lowering.
+  const argIRs = call.arguments.map(a => expressionToIR(
+    ts.isSpreadElement(a) ? a.expression : a,
+    sourceText,
+    diagnostics,
+    pointerVars,
+  ));
 
   const instance = resolveHALReceiver(receiver);
   if (instance) {
@@ -254,7 +329,18 @@ export function tryResolveHALExpression(
 
   const method = call.expression.name.text;
   const receiver = call.expression.expression;
-  const argIRs = call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars));
+  // A spread argument is NOT an expression node expressionToIR can lower on
+  // its own (the fallback fires TS2CPP_UNSUPPORTED_EXPR on the bare
+  // SpreadElement). The generic call path (expression-to-ir's sawSpreadArg
+  // convention) passes the spread's EXPRESSION — mirror that here so a
+  // Math.max(...vals) scanned as a HAL candidate doesn't poison the
+  // diagnostic list on its way to the real (non-HAL) lowering.
+  const argIRs = call.arguments.map(a => expressionToIR(
+    ts.isSpreadElement(a) ? a.expression : a,
+    sourceText,
+    diagnostics,
+    pointerVars,
+  ));
 
   const instance = resolveHALReceiver(receiver);
   if (instance) {

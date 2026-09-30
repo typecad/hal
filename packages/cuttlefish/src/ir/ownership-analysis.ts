@@ -1114,6 +1114,21 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
             const constEntry = constVars.get(baseName);
             if (constEntry && constEntry.stmt.storage === 'const') {
               constEntry.stmt.storage = 'let';
+              // JS binding semantics: when the local was initialized from an
+              // ELEMENT of a container (`const t = tasks[i]`), the local is a
+              // REFERENCE in JS — member writes must reach tasks[i]. A non-
+              // const copy compiles but silently writes the copy (the task
+              // scheduler's `t.last = now` never landed). Mark the declaration
+              // for reference-binding emission.
+              const lowered = constEntry.stmt as unknown as {
+                isReferenceBinding?: boolean;
+                initializer?: { kind?: string };
+              };
+              if (lowered.initializer
+                && (lowered.initializer.kind === 'element-access'
+                  || lowered.initializer.kind === 'raw')) {
+                lowered.isReferenceBinding = true;
+              }
               diagnostics.push({
                 severity: 'info',
                 message: `'${baseName}' is declared 'const' but its contents are mutated via index assignment — demoted to non-const in C++ so the mutation compiles.`,
@@ -1137,6 +1152,21 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
             const constEntry = constVars.get(baseName);
             if (constEntry && constEntry.stmt.storage === 'const') {
               constEntry.stmt.storage = 'let';
+              // JS binding semantics: when the local was initialized from an
+              // ELEMENT of a container (`const t = tasks[i]`), the local is a
+              // REFERENCE in JS — member writes must reach tasks[i]. A non-
+              // const copy compiles but silently writes the copy (the task
+              // scheduler's `t.last = now` never landed). Mark the declaration
+              // for reference-binding emission.
+              const lowered = constEntry.stmt as unknown as {
+                isReferenceBinding?: boolean;
+                initializer?: { kind?: string };
+              };
+              if (lowered.initializer
+                && (lowered.initializer.kind === 'element-access'
+                  || lowered.initializer.kind === 'raw')) {
+                lowered.isReferenceBinding = true;
+              }
               diagnostics.push({
                 severity: 'info',
                 message: `'${baseName}' is declared 'const' but a field is mutated via member assignment — demoted to non-const in C++ so the mutation compiles.`,
@@ -1164,6 +1194,21 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
             const constEntry = constVars.get(baseName);
             if (constEntry && constEntry.stmt.storage === 'const') {
               constEntry.stmt.storage = 'let';
+              // JS binding semantics: when the local was initialized from an
+              // ELEMENT of a container (`const t = tasks[i]`), the local is a
+              // REFERENCE in JS — member writes must reach tasks[i]. A non-
+              // const copy compiles but silently writes the copy (the task
+              // scheduler's `t.last = now` never landed). Mark the declaration
+              // for reference-binding emission.
+              const lowered = constEntry.stmt as unknown as {
+                isReferenceBinding?: boolean;
+                initializer?: { kind?: string };
+              };
+              if (lowered.initializer
+                && (lowered.initializer.kind === 'element-access'
+                  || lowered.initializer.kind === 'raw')) {
+                lowered.isReferenceBinding = true;
+              }
               diagnostics.push({
                 severity: 'info',
                 message: `'${baseName}' is declared 'const' but a field is mutated via ++/-- — demoted to non-const in C++ so the mutation compiles.`,

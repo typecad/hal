@@ -176,14 +176,20 @@ describe("top-level const collections mutated from other bodies", () => {
 });
 
 describe("honest diagnostics for unlowerable methods on StaticArray targets", () => {
-  it("array.filter fails the transpile with a targeted diagnostic", () => {
+  it("array.filter lowers on a vector receiver (the gap is closed)", () => {
+    // The packet-lab round shipped the __tc_* vector callback helpers on
+    // Zephyr and made the decline gate table-derived: a plain array literal
+    // (a std::vector) now LOWERS filter instead of failing with
+    // array-filter-unsupported. The diagnostic remains for receivers that
+    // genuinely cannot grow (a __tc_StaticArray from a promoted literal).
     const out = transpile(`
       const a = [1, 2, 3];
       const b = a.filter((v) => v > 1);
+      let n = b.length;
       while (true) {}
     `, { strategy: zephyr(), target: 'zephyr' });
     const diags = (out.diagnostics ?? []).filter((d: any) => d.severity === 'error');
-    expect(diags.some((d: any) => d.code === 'array-filter-unsupported')).toBe(true);
+    expect(diags.some((d: any) => d.code === 'array-filter-unsupported')).toBe(false);
   });
 
   it("array.join lowers instead of diagnosing (one string model)", () => {

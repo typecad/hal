@@ -196,6 +196,11 @@ export interface EmitterContext {
   promotedVarDecls: Map<string, { cppType: string; index: number }>;
   callbackFunctions: CallbackFunction[];
   filteredTopLevelExecutables: StatementIR[];
+  /** Struct-definition `__EMIT__` statements hoisted out of the top-level
+   *  executable stream — they name element types of file-scope declarations
+   *  and must render in the declaration phase, before the globals that use
+   *  them (see top-level-prep.ts). */
+  topLevelStructDefinitions?: StatementIR[];
   filteredTopLevelDeclarations: StatementIR[];
   emittedTopLevelStatements: StatementIR[];
   compiletimeVarNames: Set<string>;

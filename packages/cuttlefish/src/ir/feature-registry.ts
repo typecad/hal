@@ -325,9 +325,18 @@ const CONTEXT_LINT_RULES: ReadonlyArray<LintRule> = [
     message: "[transpiler] static initializer blocks (static { ... }) are not supported. Initialize static fields in their declaration or the constructor.",
     source: "context",
   },
+  // Promise VALUE positions only — the return annotation of an async
+  // function (`async function f(): Promise<void>`) is supported (the async
+  // state-machine lowering erases it), and the plain Identifier selector
+  // flagged that annotation, contradicting the async-support note below.
   {
-    selector: "Identifier[name='Promise']",
-    message: "[transpiler] Promise is not supported (no promise runtime on bare metal). Use synchronous return values or callbacks.",
+    selector: "NewExpression > Identifier[name='Promise']",
+    message: "[transpiler] new Promise(...) has no runtime on bare metal — await inside async functions instead.",
+    source: "context",
+  },
+  {
+    selector: "MemberExpression[object.name='Promise']",
+    message: "[transpiler] Promise statics (.resolve/.all/.race/...) have no runtime on bare metal — await inside async functions instead.",
     source: "context",
   },
   {
@@ -874,11 +883,27 @@ export function checkContextSensitive(node: ts.Node, sourceText: string): Diagno
     if (ts.isIdentifier(typeName)) {
       const name = typeName.text;
       if (name === "Promise") {
-        return {
-          message: "Promise<T> has no deterministic embedded C++ runtime representation.",
-          hint: "Use a synchronous result type or an explicit callback interface instead.",
-          code: "TS2CPP_NO_EQUIVALENT",
-        };
+        // The RETURN TYPE of an async function is the one Promise shape the
+        // transpiler fully supports: the function lowers to a cooperative
+        // state-machine task (async-state-machine.ts) and the annotation is
+        // erased. Rejecting it made every idiomatically annotated
+        // `async function f(): Promise<void>` unpumpable while the bare
+        // `async function f()` worked — a pure gate/emitter contradiction.
+        // Promise as a VALUE (new Promise / .then / Promise-typed locals)
+        // remains unsupported.
+        const parent = node.parent;
+        const parentIsAsyncFn = parent !== undefined
+          && (ts.isFunctionDeclaration(parent) || ts.isMethodDeclaration(parent)
+            || ts.isArrowFunction(parent) || ts.isFunctionExpression(parent))
+          && (parent as { type?: ts.TypeNode }).type === node
+          && !!(parent as { modifiers?: ts.NodeArray<ts.ModifierLike> }).modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword);
+        if (!parentIsAsyncFn) {
+          return {
+            message: "Promise<T> has no deterministic embedded C++ runtime representation.",
+            hint: "Await inside async functions (their Promise return annotation is fine); do not hold Promise values in variables, parameters, or fields.",
+            code: "TS2CPP_NO_EQUIVALENT",
+          };
+        }
       }
       if (UNSUPPORTED_RUNTIME_GLOBALS.has(name)) {
         return {

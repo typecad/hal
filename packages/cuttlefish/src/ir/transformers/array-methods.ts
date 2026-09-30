@@ -268,6 +268,26 @@ function renderArrayMethodReceiver(
   pointerVars: any,
 ): string {
   const ir = expressionToIR(receiverNode, sourceText, diagnostics, pointerVars);
+  // A template_string receiver is a ToString conversion. When it wraps a
+  // NUMERIC value (`m.toString().padStart(2, "0")` — no-arg toString on a
+  // number lowers to a template_string), the raw IR-side render emits the
+  // bare number and the helper gets a double where it needs a std::string
+  // (g++: "invalid initialization of const std::string& from const double").
+  // Route numerics through the JS-repr helper; string-typed inners keep their
+  // text.
+  if (ir.kind === "template_string") {
+    const inner = ir.expression as { kind?: string; value?: string };
+    const innerIsStringy = inner?.kind === "string"
+      || (inner?.kind === "identifier"
+        && (() => {
+          const t = getCurrentIrTypeScope()?.locals.get(String(inner.value))
+            ?? getCurrentIrTypeScope()?.globals.get(String(inner.value));
+          return t === "std::string" || t === "const char*" || t === "char*";
+        })());
+    if (!innerIsStringy) {
+      return `__tc_numToStr_js(${renderExprAsText(ir.expression as never)})`;
+    }
+  }
   const text = renderExprAsText(ir);
   // Only an inline array literal needs type-qualification for deduction.
   if (ir.kind === "array" && ir.elementType && ir.elementType !== "auto") {
@@ -520,20 +540,21 @@ export function tryLowerArrayAndStringMethods(
           // string-method path below (which runs later) owns these receivers.
           const isStringLikeType = trimmed === "std::string" || trimmed === "const char*" || trimmed === "char*";
           // A std::vector receiver on a vector-capable target is NOT an
-          // error: the vector-receiver lowering below handles push/includes/
-          // indexOf natively (annotated `T[]` declarations lower to
-          // std::vector on Zephyr too — only array LITERALS become
-          // __tc_StaticArray there). `join` too — every in-tree target that
-          // ships vectors also ships the __tc_join vector helper (Zephyr:
-          // vector_methods polyfill; native: hosted-shim), so the fold has a
-          // real lowering. The JS mutators (pop/shift/unshift/reverse) ride
-          // the same helpers. Only flag when the target genuinely cannot
-          // grow the container.
+          // error: the vector-receiver lowering below handles it natively
+          // (annotated `T[]` declarations lower to std::vector on Zephyr too
+          // — only array LITERALS become __tc_StaticArray there). Which
+          // methods those are is DERIVED from the actual lowering tables —
+          // VECTOR_VALUE_METHOD_LOWERINGS + VECTOR_CALLBACK_METHOD_HELPERS —
+          // plus `push` (special-cased to push_back in the structural
+          // section). The list used to be hand-copied here and omitted every
+          // callback method, so `.sort(fn)` on a std::vector fired this gate
+          // ("no lowering on this target") while the callback table happily
+          // lowered it — the gate and the tables had drifted apart.
           const vectorHandled = parsedIsVector(trimmed)
             && (getContext().activeStrategy?.getStdLibSupport?.().hasVector ?? true)
-            && (methodName === "push" || methodName === "includes" || methodName === "indexOf" || methodName === "join"
-              || methodName === "pop" || methodName === "shift" || methodName === "unshift" || methodName === "reverse"
-              || methodName === "slice");
+            && (VECTOR_VALUE_METHOD_LOWERINGS[methodName] !== undefined
+              || VECTOR_CALLBACK_METHOD_HELPERS[methodName] !== undefined
+              || methodName === "push");
           const arrayish = !vectorHandled && !isStringLikeType && (parsedIsVector(trimmed) || parsedIsStaticArray(trimmed)
             || trimmed.endsWith("[]") || mutableArrayVars.has(recvNode.text)
             || activeCArrayVars.has(recvNode.text));
@@ -611,14 +632,48 @@ export function tryLowerArrayAndStringMethods(
     }
     const isVectorReceiver = receiverType !== undefined
       && (parsedIsVector(receiverType.trim()) || receiverType === "std::vector<auto>");
-    if (isVectorReceiver
-      && (methodName === "push" || methodName === "includes" || methodName === "indexOf" || methodName === "join"
-        || methodName === "pop" || methodName === "shift" || methodName === "unshift" || methodName === "reverse"
-        || methodName === "slice")) {
+    // Table-derived membership (same rule as the decline gate above): every
+    // method with a lowering for std::vector receivers — value methods AND
+    // callback methods. This block serves EVERY vector-capable target; the
+    // hosted-only block below additionally covers non-identifier receivers
+    // (inline array literals), which lower to std::vector only there.
+    const hasVectorLowering = VECTOR_VALUE_METHOD_LOWERINGS[methodName] !== undefined
+      || VECTOR_CALLBACK_METHOD_HELPERS[methodName] !== undefined
+      || methodName === "push";
+    if (isVectorReceiver && hasVectorLowering) {
+      // Callback-arg methods FIRST: they must stay structured method-call IR
+      // nodes (a raw node is opaque to the emit-time callback hoister, which
+      // needs to name the lambda). Mirror of the hosted block's dispatch.
+      const cbHelper = VECTOR_CALLBACK_METHOD_HELPERS[methodName];
+      if (cbHelper && expr.arguments.length > 0 && !ts.isSpreadElement(expr.arguments[0])) {
+        const cbReceiverIR = expressionToIR(receiverNode, sourceText, diagnostics, pointerVars);
+        const cbArgIRs = expr.arguments.map(arg => expressionToIR(arg, sourceText, diagnostics, pointerVars));
+        return { kind: "method-call", callee: cbHelper, args: [cbReceiverIR, ...cbArgIRs] };
+      }
+      if (methodName === "sort" && expr.arguments.length === 0) {
+        const receiverText0 = renderExprAsText(expressionToIR(receiverNode, sourceText, diagnostics, pointerVars));
+        return { kind: "raw", value: `__tc_sort(${receiverText0})` };
+      }
+      if (methodName === "reduce" && expr.arguments.length === 1) {
+        const receiverText0 = renderExprAsText(expressionToIR(receiverNode, sourceText, diagnostics, pointerVars));
+        const cbText = renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars));
+        return { kind: "raw", value: `__tc_reduce_no_init(${receiverText0}, ${cbText})` };
+      }
       const receiverText = renderExprAsText(expressionToIR(receiverNode, sourceText, diagnostics, pointerVars));
       if (methodName === "push") {
-        const argsText = expr.arguments.map(arg => renderPushArgForElement(arg, receiverNode, sourceText, diagnostics, pointerVars)).join(", ");
-        return { kind: "raw", value: `${receiverText}.push_back(${argsText})` };
+        // JS push is variadic (`out.push(ESC, b ^ XOR)`) and returns the new
+        // length. One arg lowers to push_back directly; several lower to a
+        // comma expression that keeps the return contract (the last operand
+        // is the new size, as number).
+        const argsText = expr.arguments.map(arg => renderPushArgForElement(arg, receiverNode, sourceText, diagnostics, pointerVars));
+        if (argsText.length === 0) {
+          return { kind: "raw", value: `static_cast<int>(${receiverText}.size())` };
+        }
+        if (argsText.length === 1) {
+          return { kind: "raw", value: `${receiverText}.push_back(${argsText[0]})` };
+        }
+        const pushes = argsText.map(a => `${receiverText}.push_back(${a})`).join(", ");
+        return { kind: "raw", value: `(${pushes}, static_cast<int>(${receiverText}.size()))` };
       }
       if (methodName === "includes") {
         const argText = expr.arguments.length > 0
