@@ -70,7 +70,10 @@ describe('bench-supervisor demo findings', () => {
       UART0.writeLine(handler);
     `);
 
-    expect(r.cpp).toMatch(/m\.count\(static_cast<double>\(Verb::Dump\)\) != 0 \? m\.at\(static_cast<double>\(Verb::Dump\)\) : "-"/);
+    // The fallback is cast to the map VALUE type (std::string) — the whole
+// conditional yields the value type, so a %d-formatted read cannot print
+// the fallback's int bits (fuzz round: m.get(k) ?? -1 printed 0).
+    expect(r.cpp).toMatch(/m\.count\(static_cast<double>\(Verb::Dump\)\) != 0 \? m\.at\(static_cast<double>\(Verb::Dump\)\) : static_cast<std::string>\("-"\)/);
     // never the throwing .at() wrapped in cuttlefish_nullish
     expect(r.cpp).not.toMatch(/cuttlefish_nullish\(m\.at/);
   });

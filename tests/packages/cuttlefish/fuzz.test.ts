@@ -204,7 +204,7 @@ function assertCompiler(): void {
   if (probe.error || probe.status !== 0) {
     throw new Error(
       `C++ compiler '${GXX}' not usable (status=${probe.status}, error=${probe.error?.message ?? "none"}). ` +
-      `Set DIFF_GXX to the full path, e.g. `$env:DIFF_GXX="C:\msys64\ucrt64\bin\g++.exe"`.`,
+      `Set DIFF_GXX to the full g++ path (e.g. C:\\msys64\\ucrt64\\bin\\g++.exe).`,
     );
   }
 }
