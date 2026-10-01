@@ -134,7 +134,10 @@ describe("packet-lab demo findings (Zephyr)", () => {
     `, { strategy: zephyr(), target: 'zephyr' });
     expect(noErr(out)).toHaveLength(0);
     expect(out.cpp).not.toMatch(/main_isr_/);           // not hoisted
-    expect(out.cpp).toMatch(/return \[&\]\(double x\) -> double \{ return x \* k; \};/);
+// Capture switched to by-value ([=]): an escaping lambda capturing a
+    // parameter by reference dangles after the factory returns (fuzz:
+    // scaled=49 vs 21). JS factories need the copy.
+    expect(out.cpp).toMatch(/return \[=\]\(double x\) -> double \{ return x \* k; \};/);
     expect(out.cpp).toContain("#include <functional>"); // std::function ships its header
   });
 

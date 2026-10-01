@@ -682,6 +682,73 @@ export function callToStatement(
   // handled here (mutableArrayVars branch below); the std::vector case was left
   // as a raw `out.push` callee and patched to `push_back` by a regex in the
   // native strategy's normalizeRawExpression. Demo #22 / Tier-2 cleanup.
+  // Inline array-literal forEach: `[1, 2, 3].forEach(fn)` — a brace-list has
+  // no member functions, so the verbatim emission was uncompilable. Bind the
+  // literal to a temporary and emit an index loop; the lambda body lowers
+  // here because lowerStatementList IS in scope (the earlier assumption that
+  // it needed threading was wrong — the import already exists).
+  if (ts.isPropertyAccessExpression(call.expression)
+      && call.expression.name.text === "forEach"
+      && ts.isArrayLiteralExpression(call.expression.expression)
+      && call.arguments.length === 1
+      && (ts.isArrowFunction(call.arguments[0]) || ts.isFunctionExpression(call.arguments[0]))) {
+    const arrowFn = call.arguments[0] as ts.ArrowFunction | ts.FunctionExpression;
+    const tempName = `__tc_foreach_src_${call.getStart()}`;
+    const span = makeSourceSpan(call, fileName, sourceText);
+    const litIR = expressionToIR(call.expression.expression, sourceText, diagnostics, pointerVars);
+    // Force a std::vector temp: the literal alone may lower to a C array
+    // (int [3] — no .size()). The element type comes from the array IR's
+    // own inference (the same one that type-qualifies __tc_* receivers).
+    const elem = litIR.kind === "array" && litIR.elementType && litIR.elementType !== "auto"
+      ? litIR.elementType : "int";
+    const bindDecl: StatementIR = {
+      kind: "var_decl",
+      sourceSpan: span,
+      leadingComments: [],
+      trailingComments: [],
+      name: tempName,
+      storage: "const",
+      cppType: `std::vector<${elem}>` as never,
+      initializer: { kind: "raw", value: renderExprAsText(litIR) } as never,
+    };
+    const firstParam = arrowFn.parameters[0];
+    const paramName = firstParam && ts.isIdentifier(firstParam.name) ? firstParam.name.text : "__tc_v";
+    const loopBody: StatementIR[] = [{
+      kind: "var_decl", sourceSpan: span, name: paramName, storage: "const", cppType: "auto",
+      initializer: { kind: "raw", value: `${tempName}[__tc_i]` },
+    } as StatementIR];
+    if (ts.isBlock(arrowFn.body)) {
+      loopBody.push(...lowerStatementList(
+        arrowFn.body.statements, fileName, sourceText, diagnostics,
+        new Map(), new Map(), "<foreach-literal>", undefined, pointerVars,
+      ));
+    } else {
+      loopBody.push({
+        kind: "var_decl", sourceSpan: span, name: "__tc_result", storage: "let", cppType: "auto",
+        initializer: expressionToIR(arrowFn.body as ts.Expression, sourceText, diagnostics, pointerVars),
+      } as StatementIR);
+    }
+    return {
+      kind: "block",
+      sourceSpan: span,
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      body: [
+        bindDecl,
+        {
+          kind: "for",
+          sourceSpan: span,
+          leadingComments: [],
+          trailingComments: [],
+          initializer: { kind: "var_decl", sourceSpan: span, name: "__tc_i", storage: "let", cppType: "int", initializer: { kind: "number", value: 0 } },
+          condition: { kind: "binary", left: { kind: "identifier", value: "__tc_i" }, operator: "<", right: { kind: "raw", value: `static_cast<int>(${tempName}.size())` } as never },
+          increment: { kind: "update", sourceSpan: span, target: "__tc_i", operator: "++", prefix: false },
+          body: loopBody,
+        },
+      ],
+    };
+  }
+
   const lowered = tryLowerArrayAndStringMethods(call, sourceText, diagnostics, pointerVars);
   if (lowered) {
     if (lowered.kind === "method-call") {

@@ -1880,7 +1880,7 @@ export class ExpressionRenderer {
     const params = expr.params.map(p => `${p.cppType} ${p.name}`).join(", ");
     const ret = expr.returnType && expr.returnType !== "auto" ? ` -> ${expr.returnType}` : "";
     if (expr.isExpressionBody && expr.body.length === 1 && expr.body[0].kind === "return" && "value" in expr.body[0]) {
-      return `[&](${params})${ret} { return ${this.render((expr.body[0] as any).value, exprTransformer)}; }`;
+      return `[=](${params})${ret} { return ${this.render((expr.body[0] as any).value, exprTransformer)}; }`;
     }
     const bodyStr = expr.body.map(s => {
       if (s.kind === "return" && s.value) return `  return ${this.render(s.value, exprTransformer)};`;
@@ -1893,7 +1893,7 @@ export class ExpressionRenderer {
       if (s.kind === "call") return `  ${this.render(s as any, exprTransformer)};`;
       return `  /* ${s.kind} */`;
     }).join("\n");
-    return `[&](${params})${ret} {\n${bodyStr}\n}`;
+    return `[=](${params})${ret} {\n${bodyStr}\n}`;
   }
 
   private renderMethodCall(expr: Extract<ExpressionIR, { kind: "method-call" }>, exprTransformer?: (expr: string) => string): string {

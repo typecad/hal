@@ -244,7 +244,7 @@ export const CORPUS: DiffCase[] = [
 // needing its own inference/polyfill fix. A case listed here still runs and
 // is reported, but does not fail the suite - the work queue, not a waiver.
 const KNOWN_DIVERGENCES = new Set([
-  "closures-over-params", "generic-bounds", "recursive-descent",
+  "generic-bounds", "recursive-descent",
   "map-and-set", "statics-and-getters", "value-vs-reference",
 ]);
 
