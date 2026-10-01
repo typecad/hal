@@ -69,7 +69,7 @@ export function runNative(ts: string, dir: string, tag: string): string {
   return run.stdout ?? "";
 }
 
-const CORPUS: DiffCase[] = [
+export const CORPUS: DiffCase[] = [
   {
     name: "array-sort-mutation",
     ts: `
