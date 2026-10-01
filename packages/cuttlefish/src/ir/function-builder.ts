@@ -30,7 +30,7 @@ import {
   hoistedNestedClasses,
   nestedClassAliases,
   nestedFunctionAliases,
-  restParamFunctions,
+  restParamFunctions, activeFunctionTypeParams,
 } from "./build-ir-state.js";
 import { getCurrentIrTypeScope } from "./symbol-types.js";
 import { renderExprAsText } from "./render-expr.js";
@@ -222,6 +222,11 @@ export function functionDeclarationToIR(
     }
   }
 
+  const fnTypeParams = node.typeParameters
+    ? node.typeParameters.map(tp => tp.name.text)
+    : undefined;
+  for (const tp of fnTypeParams ?? []) activeFunctionTypeParams.add(tp);
+
   const bodyStatements = lowerStatementList(
     node.body?.statements ?? [],
     fileName,
@@ -238,9 +243,6 @@ export function functionDeclarationToIR(
     ? [...destructuredParamStatements, ...bodyStatements]
     : bodyStatements;
 
-  const fnTypeParams = node.typeParameters
-    ? node.typeParameters.map(tp => tp.name.text)
-    : undefined;
 
   const restParam = parameters.find(p => p.isRest);
   if (restParam && restParam.cppType.includes("std::vector<")) {
@@ -249,6 +251,8 @@ export function functionDeclarationToIR(
   }
 
   const fnDecorators = extractAsilFromComments(node, sourceText);
+
+  for (const tp of fnTypeParams ?? []) activeFunctionTypeParams.delete(tp);
 
   return {
     originalName: node.name.text,
@@ -555,6 +559,7 @@ export function hoistNestedFunction(
   // on template argument deduction which only the C++ compiler can do).
   const hasTypeParams = !!(statement.typeParameters && statement.typeParameters.length > 0);
   functionReturnTypes.set(originalName, (hasTypeParams ? "auto" : returnType) as CppTypeHint);
+  for (const tp of statement.typeParameters ?? []) activeFunctionTypeParams.add(tp.name.text);
   functionReturnTypes.set(mangledName, returnType as CppTypeHint);
 
   const localVariableTypes = new Map<string, CppTypeHint>();
@@ -587,6 +592,8 @@ export function hoistNestedFunction(
   }
 
   // Lower the body — recursive call to lowerStatementListCallback
+  for (const tp of statement.typeParameters ?? []) activeFunctionTypeParams.add(tp.name.text);
+
   const bodyStatements = lowerStatementList(
     statement.body?.statements ?? [],
     fileName,
@@ -619,6 +626,8 @@ export function hoistNestedFunction(
       }
     }
   }
+
+  for (const tp of statement.typeParameters ?? []) activeFunctionTypeParams.delete(tp.name.text);
 
   hoistedNestedFunctions.push({
     originalName: mangledName,

@@ -517,6 +517,22 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
           functionReturnTypes.set(fnName, returnType);
         }
       }
+      // Cross-module object-literal type aliases and interfaces: the
+      // null-comparison fold classifies a value via
+      // objectTypeAliasNames/topLevelInterfaceNames — a reading bound to a
+      // cross-file `read(): DhtReading | null` stayed unclassifiable and the
+      // compare emitted CUTTLEFISH_UNDEFINED against a value struct.
+      const collectImportedAliases = (node: ts.Node): void => {
+        if (ts.isTypeAliasDeclaration(node) && node.name
+          && ts.isTypeLiteralNode(node.type)) {
+          objectTypeAliasNames.add(node.name.text);
+        }
+        if (ts.isInterfaceDeclaration(node) && node.name) {
+          topLevelInterfaceNames.add(node.name.text);
+        }
+        ts.forEachChild(node, collectImportedAliases);
+      };
+      collectImportedAliases(importedParsed);
     } catch {
       // Non-fatal — file might not be readable or parseable
     }

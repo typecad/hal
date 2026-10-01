@@ -13,6 +13,8 @@ import { escapeCppKeyword } from "../utils/strings.js";
 import { tryLowerRegisterRead } from "./transformers/register-assignment.js";
 import { tryLowerArrayAndStringMethods } from "./transformers/array-methods.js";
 import { collectReturns, inferExprCppType, typeNodeToCppType, type CppTypeHint } from "./type-resolution.js";
+import { activeFunctionTypeParams } from "./build-ir-state.js";
+import { applyStringMethodRewrites } from "../api/shared/string-method-registry.js";
 import { castMapKeyIfNeeded } from "./map-key-cast.js";
 import { HELPER_RETURN_TYPES, helperNameFromText, helperReturnTypeForText } from "../api/shared/helper-return-types.js";
 import { parseCppType, elementOf, renderCppType, isPointer, bareType, parsedIsPointer, parsedIsVector, parsedIsMap, parsedIsSet, parsedIsTuple, parsedIsStdString, parsedElementString, parsedBareString, isVector, isMap, isSet, isContainer } from "../api/shared/cpp-type-ir.js";
@@ -981,7 +983,12 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       const argsText = node.arguments.map((arg) => formatExpressionText(arg)).join(", ");
       if (isOptionalChainNode(node) && ts.isPropertyAccessExpression(node.expression)) {
         const calleeText = renderMemberAccessText(node.expression.expression, node.expression.name.text);
-        return renderOptionalGuardedAccess(node.expression.expression, `${calleeText}(${argsText})`);
+        const guarded = renderOptionalGuardedAccess(node.expression.expression, `${calleeText}(${argsText})`);
+        // A prototype method through `?.` (`lastTempC?.toFixed(1)`) renders as
+        // `recv.toFixed(...)` — no member on a double. The shared text
+        // rewriter (the same one strategy.normalizeRawExpression applies)
+        // routes it to the __tc_* helper inside the guard.
+        return applyStringMethodRewrites(guarded, {});
       }
       const calleeText = formatExpressionText(node.expression);
       return `${calleeText}(${argsText})`;
@@ -1294,7 +1301,12 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         value: `(${lookup.receiver}.count(${lookup.key}) != 0 ? ${lookup.receiver}.at(${lookup.key}) : ${right})`,
       };
     }
-    const left = renderExprAsText(expressionToIR(expr.left, sourceText, diagnostics, pointerVars));
+    const leftIR = expressionToIR(expr.left, sourceText, diagnostics, pointerVars);
+    // A `?.` chain on the left (`lastTempC?.toFixed(1) ?? '-'`) lowers its raw
+    // guard through the text rewriter — the prototype method inside the guard
+    // (`recv.toFixed(...)`) has no C++ member and must route to its __tc_*
+    // helper even inside the nullish wrapper.
+    const left = renderExprAsText(leftIR);
     const right = renderExprAsText(expressionToIR(expr.right, sourceText, diagnostics, pointerVars));
     return { kind: "raw", value: `cuttlefish_nullish(${left}, ${right})` };
   }
@@ -1488,6 +1500,11 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       if (name.startsWith("std::") || name === "String") return undefined;
       if (topLevelClassNames.has(name) || classTypeNames.has(name)) return undefined; // pointer — == is identity, correct
       if (activeEnumNames.has(name) || activeStringEnumNames.has(name)) return undefined;
+      // A TYPE PARAMETER of the generic function being lowered (`v < lo`
+      // with v: T) resolves to the bare name "T" here and used to classify
+      // as a user struct — every comparison in a generic body errored
+      // struct-equality-unsupported. C++ templates compare deduced types.
+      if (activeFunctionTypeParams.has(name)) return undefined;
       return name;
     };
     if (isComparison) {
@@ -1717,16 +1734,23 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         "Optional chaining (?.) is lowered with an approximate null guard in C++; semantics may differ from TypeScript.",
         "warning", "TS2CPP_OPTIONAL_CHAINING"
       ));
-      if (ts.isPropertyAccessExpression(expr.expression)) {
+      if (ts.isPropertyAccessExpression(expr.expression)
+        && !ALL_STRING_METHODS.has(expr.expression.name.text)) {
         const argsText = expr.arguments
           .map(arg => renderExprAsText(expressionToIR(arg, sourceText, diagnostics, pointerVars)))
           .join(", ");
         const calleeText = renderMemberAccessText(expr.expression.expression, expr.expression.name.text);
         return {
           kind: "raw",
-          value: renderOptionalGuardedAccess(expr.expression.expression, `${calleeText}(${argsText})`),
+          value: applyStringMethodRewrites(renderOptionalGuardedAccess(expr.expression.expression, `${calleeText}(${argsText})`), {}),
         };
       }
+      // A string/number PROTOTYPE method through `?.` (`lastTempC?.toFixed(1)`)
+      // falls THROUGH to the generic method lowering below — intercepting it
+      // here rendered `lastTempC.toFixed(1)` verbatim (no member on a double).
+      // On the value-typed receivers these methods operate on, the optional
+      // guard is a no-op (nothing can be null), so the plain lowering has the
+      // same semantics AND routes to the __tc_* helper.
       // Bare-identifier optional call: `fn?.()`. Without this branch the call
       // falls through to the generic path and emits `fn()` unconditionally —
       // calling an empty std::function throws std::bad_function_call. Wrap the

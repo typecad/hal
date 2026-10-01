@@ -1,10 +1,19 @@
 import ts from "typescript";
 
 export function getRegisterAddress(node: ts.ClassDeclaration): number | undefined {
-  const decorators = (ts as any).canHaveDecorators?.(node)
+  let decorators: readonly ts.Decorator[] | undefined = (ts as any).canHaveDecorators?.(node)
     ? (ts as any).getDecorators?.(node)
     : (node as any).decorators;
-  if (!decorators) return undefined;
+  if (!decorators || decorators.length === 0) {
+    // A STANDARD-mode parse (no experimentalDecorators in the parse context —
+    // the raw buildProgramIR/test path) stores decorators in `modifiers`
+    // instead of the legacy `decorators` slot. The register machinery reads
+    // them syntactically, so accept either shape.
+    decorators = node.modifiers?.filter(
+      (m): m is ts.Decorator => m.kind === ts.SyntaxKind.Decorator,
+    );
+  }
+  if (!decorators || decorators.length === 0) return undefined;
 
   for (const dec of decorators as ts.NodeArray<ts.Decorator>) {
     if (!ts.isCallExpression(dec.expression)) continue;
@@ -24,10 +33,15 @@ export function getRegisterAddress(node: ts.ClassDeclaration): number | undefine
 }
 
 export function getBitsRange(node: ts.PropertyDeclaration): { hi: number; lo: number } | undefined {
-  const decorators = (ts as any).canHaveDecorators?.(node)
+  let decorators: readonly ts.Decorator[] | undefined = (ts as any).canHaveDecorators?.(node)
     ? (ts as any).getDecorators?.(node)
     : (node as any).decorators;
-  if (!decorators) return undefined;
+  if (!decorators || decorators.length === 0) {
+    decorators = node.modifiers?.filter(
+      (m): m is ts.Decorator => m.kind === ts.SyntaxKind.Decorator,
+    );
+  }
+  if (!decorators || decorators.length === 0) return undefined;
 
   for (const dec of decorators as ts.NodeArray<ts.Decorator>) {
     if (!ts.isCallExpression(dec.expression)) continue;

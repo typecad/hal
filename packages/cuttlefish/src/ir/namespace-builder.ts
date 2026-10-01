@@ -5,6 +5,7 @@ import { extractNodeComments, makeSourceSpan } from "./ast-node-utils.js";
 import { CppTypeHint, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveFunctionReturnType } from "./type-resolution.js";
 import { expressionToIR } from "./expression-to-ir.js";
 import { lowerStatementList } from "./statement-to-ir.js";
+import { activeFunctionTypeParams } from "./build-ir-state.js";
 import { classDeclarationToIR, enumDeclarationToIR, interfaceDeclarationToIR, typeAliasDeclarationToIR } from "./declaration-builders.js";
 import { RegisterClassIR } from "../api/index.js";
 import { PointerTracker } from "./build-ir-state.js";
@@ -121,6 +122,15 @@ export function namespaceToIR(
         }
       }
 
+      // Generic namespace functions (`namespace M { export function f<T>() }`)
+      // lower their body here — the struct-equality gate must know the
+      // function's type parameters BEFORE the body's comparisons lower,
+      // exactly like functionDeclarationToIR.
+      const nsFnTypeParams = nsNode.typeParameters
+        ? nsNode.typeParameters.map(tp => tp.name.text)
+        : undefined;
+      for (const tp of nsFnTypeParams ?? []) activeFunctionTypeParams.add(tp);
+
       const bodyStatements = lowerStatementList(
         nsNode.body?.statements ?? [],
         fileName,
@@ -133,9 +143,8 @@ export function namespaceToIR(
         pointerVars,
       );
 
-      const nsFnTypeParams = nsNode.typeParameters
-        ? nsNode.typeParameters.map(tp => tp.name.text)
-        : undefined;
+      for (const tp of nsFnTypeParams ?? []) activeFunctionTypeParams.delete(tp);
+
       const nsFnReturnType = nsNode.type
         ? typeNodeToCppType(nsNode.type, typeAliasNodes)
         : resolveFunctionReturnType(nsNode.name.text, functionReturnTypes);

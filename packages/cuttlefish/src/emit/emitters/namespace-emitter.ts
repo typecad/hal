@@ -1,6 +1,6 @@
 import type { ExpressionIR, ParameterIR } from "../../api/index.js";
 import { emitCommentLines } from "../utils/index.js";
-import { appendSourceLine, appendRenderedStatement } from "./line-appender.js";
+import { appendSourceLine, appendHeaderLine, appendRenderedStatement } from "./line-appender.js";
 import { createChildEmissionScope } from "../snprintf-helpers.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import { isStringEnum } from "../../api/shared/index.js";
@@ -8,7 +8,7 @@ import { resolveEnumValues, narrowestEnumUnderlying } from "../utils/cpp-helpers
 import type { EmitterContext } from "./emitter-context.js";
 
 export function emitNamespaces(ctx: EmitterContext): void {
-  const { program, strategy, reservedNames, mappedFunctions, topLevelScope, exprRenderer, statementRenderer } = ctx;
+  const { program, strategy, reservedNames, mappedFunctions, topLevelScope, exprRenderer, statementRenderer, effectiveEmitMode } = ctx;
   const normalizeCppTypeForTarget = (cppType: string) => strategy.normalizeCppType(cppType);
   const renderExpression = (expr: ExpressionIR, calleeTransformer?: (callee: string) => string) =>
     exprRenderer.render(expr, calleeTransformer);
@@ -251,13 +251,80 @@ export function emitNamespaces(ctx: EmitterContext): void {
       appendSourceLine(ctx, "");
     }
 
-    // Namespace functions
+    // Namespace functions — CROSS-MODULE visibility rules:
+    //  · every function DECLares in the module HEADER inside the namespace
+    //    (main.cpp's `Metrics::dewPointC(...)` needs the declaration; the
+    //    namespace used to exist only in the .cpp — "'Metrics' has not been
+    //    declared" at every cross-file call site);
+    //  · template members DEFINE in the header (a template definition in a
+    //    .cpp is invisible to other TUs — undefined reference at link time);
+    //  · the .cpp gets forward declarations at the TOP of its namespace
+    //    block (C++ name lookup is declaration-order — a sibling calling a
+    //    later-defined member failed with "'clamp' was not declared").
+    const isTemplateFn = (f: typeof ns.functions[number]): boolean =>
+      !!f.typeParameters && f.typeParameters.length > 0;
+
+    // Header pass — split mode only. Single-file output has no header: the
+    // definitions stay in the .cpp (the forward declarations below keep
+    // sibling calls order-independent).
+    const splitMode = effectiveEmitMode === "split";
+    if (splitMode) {
+      appendHeaderLine(ctx, `namespace ${ns.name} {`);
+    }
     for (const fn of ns.functions) {
+      const parameterList = renderParameters(fn.parameters, true);
+      if (!splitMode) continue;
+      emitCommentLines(fn.leadingComments, "  ", (line) => appendHeaderLine(ctx, line));
+      if (isTemplateFn(fn)) {
+        // Full definition in the header (buffer swap: appendRenderedStatement
+        // is hardwired to the source buffer — see class-emitter's swap).
+        const swapLines = ctx.sourceLines;
+        ctx.sourceLines = ctx.headerLines;
+        ctx.headerLines = swapLines;
+        const swapMaps = ctx.sourceMapEntries;
+        ctx.sourceMapEntries = ctx.headerMapEntries;
+        ctx.headerMapEntries = swapMaps;
+        appendSourceLine(ctx, `  template<typename ${fn.typeParameters!.join(", typename ")}>`);
+        appendSourceLine(ctx, `  ${normalizeCppTypeForTarget(fn.returnType)} ${fn.originalName}(${renderParameters(fn.parameters)}) {`);
+        const templateScope = createChildEmissionScope(topLevelScope, fn.parameters);
+        for (const statement of fn.statements) {
+          appendRenderedStatement(ctx, statement, "    ", templateScope);
+        }
+        appendSourceLine(ctx, "  }");
+        ctx.headerLines = ctx.sourceLines;
+        ctx.sourceLines = swapLines;
+        ctx.headerMapEntries = ctx.sourceMapEntries;
+        ctx.sourceMapEntries = swapMaps;
+      } else {
+        appendHeaderLine(ctx, `  ${normalizeCppTypeForTarget(fn.returnType)} ${fn.originalName}(${parameterList});`);
+      }
+      emitCommentLines(fn.trailingComments, "  ", (line) => appendHeaderLine(ctx, line));
+    }
+    if (splitMode) {
+      appendHeaderLine(ctx, `} // namespace ${ns.name}`);
+      appendHeaderLine(ctx, "");
+    }
+
+    // .cpp forward declarations inside the namespace block.
+    const cppDeclared = ns.functions.filter(fn => !isTemplateFn(fn));
+    if (cppDeclared.length > 0) {
+      for (const fn of cppDeclared) {
+        const parameterList = renderParameters(fn.parameters, true);
+        if (isTemplateFn(fn)) continue;
+        if (fn.typeParameters && fn.typeParameters.length > 0) {
+          appendSourceLine(ctx, `  template<typename ${fn.typeParameters.join(", typename ")}>`);
+        }
+        appendSourceLine(ctx, `  ${normalizeCppTypeForTarget(fn.returnType)} ${fn.originalName}(${parameterList});`);
+      }
+      appendSourceLine(ctx, "");
+    }
+
+    // Definitions — template members skip only in split mode (their
+    // definition lives in the header, visible to every TU).
+    for (const fn of ns.functions) {
+      if (isTemplateFn(fn) && splitMode) continue;
       const parameterList = renderParameters(fn.parameters);
       emitCommentLines(fn.leadingComments, "  ", (line) => appendSourceLine(ctx, line));
-      if (fn.typeParameters && fn.typeParameters.length > 0) {
-        appendSourceLine(ctx, `  template<typename ${fn.typeParameters.join(", typename ")}>`);
-      }
       appendSourceLine(ctx, `  ${normalizeCppTypeForTarget(fn.returnType)} ${fn.originalName}(${parameterList}) {`);
       const namespaceFunctionScope = createChildEmissionScope(topLevelScope, fn.parameters);
       for (const statement of fn.statements) {

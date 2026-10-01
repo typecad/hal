@@ -949,6 +949,7 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
 
   // Analyze functions
   for (const fn of program.functions) {
+    result.declaredTypes.push(fn.returnType as string);
     if (fn.isGenerator) result.hasGenerators = true;
     result.declaredTypes.push(fn.returnType);
     for (const parameter of fn.parameters) {
@@ -975,6 +976,61 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     analyzeStatement(statement, result, strategy);
   }
 
+  // Namespace bodies: functions/classes inside `export namespace M { ... }`
+  // are invisible to every gate below unless their statements are walked —
+  // a metrics module living entirely in a namespace had hasStdMathCalls and
+  // usesStdString stay false, so its module header/cpp shipped without
+  // <cmath>/<string> ("'log' is not a member of 'std'").
+  const walkNamespace = (ns: typeof program.namespaces[number]): void => {
+    for (const fn of ns.functions) {
+      // Return types ride declaredTypes too — a string-returning namespace
+      // function must register usesStdString or its module header ships
+      // without <string> ("'string' in namespace 'std' does not name a type").
+      result.declaredTypes.push(fn.returnType as string);
+      for (const parameter of fn.parameters) {
+        result.declaredTypes.push(parameter.cppType);
+      }
+      for (const statement of fn.statements) {
+        analyzeStatement(statement, result, strategy);
+      }
+    }
+    for (const enumDef of ns.enums) {
+      for (const member of enumDef.members) {
+        if (typeof member.value === "string") {
+          // string-enum members register through the normal enum path elsewhere
+        }
+      }
+    }
+    for (const classDef of ns.classes) {
+      for (const field of classDef.fields) {
+        result.declaredTypes.push(field.cppType);
+      }
+      for (const method of classDef.methods) {
+        for (const parameter of method.parameters) {
+          result.declaredTypes.push(parameter.cppType);
+        }
+        for (const statement of method.statements) {
+          analyzeStatement(statement, result, strategy);
+        }
+      }
+      // Getter returns count too — a `get health(): string` needs <string> in
+      // its module header the same way a method does.
+      for (const getter of classDef.getters) {
+        result.declaredTypes.push(getter.returnType as string);
+        for (const statement of getter.statements) {
+          analyzeStatement(statement, result, strategy);
+        }
+      }
+      if (classDef.constructor) {
+        for (const statement of classDef.constructor.statements) {
+          analyzeStatement(statement, result, strategy);
+        }
+      }
+    }
+    for (const child of ns.children ?? []) walkNamespace(child);
+  };
+  for (const ns of program.namespaces) walkNamespace(ns);
+
   // Analyze classes
   for (const classDef of program.classes) {
     for (const field of classDef.fields) {
@@ -992,6 +1048,12 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
         result.declaredTypes.push(parameter.cppType);
       }
       for (const statement of method.statements) {
+        analyzeStatement(statement, result, strategy);
+      }
+    }
+    for (const getter of classDef.getters) {
+      result.declaredTypes.push(getter.returnType);
+      for (const statement of getter.statements) {
         analyzeStatement(statement, result, strategy);
       }
     }

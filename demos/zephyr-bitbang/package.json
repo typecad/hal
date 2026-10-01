@@ -1,0 +1,19 @@
+{
+  "name": "zephyr-bitbang",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload",
+    "monitor": "typecad-hal build --compile --upload --monitor",
+    "dev": "typecad-hal build --watch"
+  },
+  "dependencies": {
+    "@typecad/cuttlefish": "*",
+    "@typecad/hal": "*",
+    "@typecad/framework-zephyr": "*"
+  },
+  "description": "Black Pill bit-banged DHT22 station — multi-file program: a one-wire driver module (microsecond busy-wait timing, Uint8Array bit packing, CRC-8), a Metrics namespace (dew point, comfort bands), a generic clamp, optional chaining, and a @register power-gate write"
+}

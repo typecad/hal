@@ -795,6 +795,26 @@ export function inferExprCppType(
       if (["toUpperCase", "toLowerCase", "trim", "replace", "charAt", "substring", "slice", "padStart", "padEnd", "repeat", "toFixed", "toString"].includes(protoMethod)) {
         return "std::string";
       }
+      if (expr.expression.expression.kind === ts.SyntaxKind.ThisKeyword) {
+        // `const r = this.read()` — the class's own method return. Without
+        // this arm the binding registered "auto", and the struct-vs-null
+        // fold (which reads the scope type) skipped it — `r != null` emitted
+        // CUTTLEFISH_UNDEFINED against a value struct ("no match for
+        // operator!="). A union return strips to its concrete struct, the
+        // same rule the declared-type path applies.
+        for (const [className, classDef] of topLevelClasses) {
+          const classMethod = classDef.methods.find((m) => m.name === (expr.expression as ts.PropertyAccessExpression).name.text);
+          if (classMethod) {
+            const rt = String(classMethod.returnType);
+            const stripped = rt.includes("|")
+              ? rt.split("|").map(part => part.trim()).find(part => part !== "null" && part.length > 0)
+              : rt;
+            if (stripped && stripped.length > 0) {
+              return stripped as CppTypeHint;
+            }
+          }
+        }
+      }
       if (ts.isIdentifier(expr.expression.expression)) {
         const className = expr.expression.expression.text;
         if (className === "Math") {
@@ -1281,6 +1301,17 @@ export function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, C
         // declaration will then fall back to `auto`/template deduction rather
         // than emitting a literal `T` (which is not a valid C++ type).
         const typeParamNames = new Set((fn.typeParameters ?? []).map(tp => tp.name.text));
+        if (typeParamNames.has(annotatedType)) {
+          // `function clamp<T>(...): T` — store the type-parameter NAME. The
+          // emitter already prefixes generic functions with
+          // `template<typename T>` (definition, forward declarations, and the
+          // split-mode header routing), so literal `T` is a VALID C++ return
+          // type deduced at each call site. The old mapping to "auto" left
+          // resolveFunctionReturnType falling through to "void" — every
+          // generic with a type-parameter return compiled as a void function.
+          result.set(fn.name.text, annotatedType);
+          continue;
+        }
         const resolvedAnnotated = typeParamNames.has(annotatedType) ? "auto" : annotatedType;
         if (resolvedAnnotated !== "auto") {
           // Promote int → float when the function body returns float expressions

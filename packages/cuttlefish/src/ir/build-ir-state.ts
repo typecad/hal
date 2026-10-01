@@ -103,6 +103,10 @@ export class CompilationContext {
   objectTypeAliasNames = new Set<string>();
   classTypeNames = new Set<string>();
   activeEnumNames = new Set<string>();
+  /** Type-parameter names of the function whose body is currently lowering —
+   *  the struct-equality gate consults this so a generic's `T` is never
+   *  mistaken for a user struct (v < lo fired struct-equality-unsupported). */
+  activeFunctionTypeParams = new Set<string>();
   // Every user-declared VARIABLE name in the current file (top-level, function
   // locals, parameters) — pre-scanned before lowering so reserved-name
   // escaping applies to references regardless of lowering order.
@@ -330,6 +334,7 @@ export const topLevelInterfaceNames = createSetProxy(ctx => ctx.topLevelInterfac
 export const objectTypeAliasNames = createSetProxy(ctx => ctx.objectTypeAliasNames);
 export const classTypeNames = createSetProxy(ctx => ctx.classTypeNames);
 export const activeEnumNames = createSetProxy(ctx => ctx.activeEnumNames);
+export const activeFunctionTypeParams = createSetProxy(ctx => ctx.activeFunctionTypeParams);
 export const userDeclaredVarNames = createSetProxy(ctx => ctx.userDeclaredVarNames);
 export const activeStringEnumNames = createSetProxy(ctx => ctx.activeStringEnumNames);
 
@@ -497,6 +502,7 @@ export function resetBuildState(): void {
   typeAliasNodes.clear();
   classTypeNames.clear();
   activeEnumNames.clear();
+  activeFunctionTypeParams.clear();
   activeStringEnumNames.clear();
   topLevelClasses.clear();
   crossModuleFunctionReturns.clear();

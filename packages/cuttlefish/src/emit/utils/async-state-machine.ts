@@ -538,7 +538,12 @@ export function generateAsyncTaskClass(
   const hoistRenames: Array<[RegExp, string]> = [];
   for (const [name, local] of hoisted.entries()) {
     const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    hoistRenames.push([new RegExp(`\\b${esc}\\b`, "g"), local.member]);
+    // The negative lookbehind excludes MEMBER positions (`Metrics::comfort`,
+    // `obj.field`) - the word-boundary rename previously hit the member name
+    // inside a qualified callee and produced `Metrics::_v_comfort` (a member
+    // of the namespace that does not exist). Only BARE identifier references
+    // to the hoisted local rename.
+    hoistRenames.push([new RegExp(`(?<=[^.:>\\w])${esc}\\b`, "g"), local.member]);
     // A reserved-named local (`const auto = ...`) renders under its ESCAPED
     // spelling in pre-rendered raw text — identifier lowering applies
     // escapeCppKeyword at IR build — while the hoist maps the ORIGINAL name.

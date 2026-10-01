@@ -929,7 +929,13 @@ export function resolveCtorFieldValues(
     } else if (ts.isPropertyAccessExpression(arg)) {
       fieldValues.set(fieldName, arg.getText());
     } else {
-      return null;
+      // Any other expression form (a binary flag token list
+      // `GPIO.OUTPUT | GPIO.PULL_UP`, a computed pin) carries its lowering in
+      // its TEXT — the same convention the variable-declaration capture uses.
+      // Returning null here rejected the ENTIRE instance, and the class fell
+      // back to a naive `GPIO* f = new GPIO(...)` member emission: ops stayed
+      // verbatim and the output named a HAL class that does not exist in C++.
+      fieldValues.set(fieldName, arg.getText());
     }
   }
   return fieldValues;
