@@ -371,7 +371,7 @@ function mapLookupForNullish(
   sourceText: string,
   diagnostics: Diagnostic[],
   pointerVars: PointerTracker,
-): { receiver: string; key: string } | undefined {
+): { receiver: string; key: string; valueType?: string } | undefined {
   if (!ts.isCallExpression(expr) || !ts.isPropertyAccessExpression(expr.expression)) {
     return undefined;
   }
@@ -393,12 +393,19 @@ function mapLookupForNullish(
   if (!receiverType || !parsedIsMap(receiverType)) {
     return undefined;
   }
+  // The value type rides with the guard: `(m.count(k) != 0 ? m.at(k) : fb)`
+  // yields the MAP's value type for every branch (a double map unifies the
+  // int fallback to double), so a `%d`-formatted fallback read 0 instead of
+  // its own value. The consumer casts its fallback to this type.
+  const valueIr = elementOf(parseCppType(receiverType));
+  const valueType = valueIr ? renderCppType(valueIr) : undefined;
   // Enum-key casting through the ONE shared implementation (see
   // ir/map-key-cast.ts) — the `??` lowering previously carried its own copy.
   const keyText = renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars));
   return {
     receiver: renderExprAsText(expressionToIR(receiver, sourceText, diagnostics, pointerVars)),
     key: castMapKeyIfNeeded(keyText, expr.arguments[0], receiverType, resolveExprCppType),
+    valueType,
   };
 }
 
@@ -1296,10 +1303,14 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     const lookup = mapLookupForNullish(expr.left, sourceText, diagnostics, pointerVars);
     if (lookup) {
       const right = renderExprAsText(expressionToIR(expr.right, sourceText, diagnostics, pointerVars));
-      return {
-        kind: "raw",
-        value: `(${lookup.receiver}.count(${lookup.key}) != 0 ? ${lookup.receiver}.at(${lookup.key}) : ${right})`,
-      };
+      // The whole conditional yields the MAP's value type (a double map
+      // unifies an int fallback to double) — without the explicit cast the
+      // fallback read 0 through a %d vararg on the value's double bits
+      // (fuzz divergence case-0: m.get('k0') ?? -1 printed 0).
+      const guarded = lookup.valueType
+        ? `(${lookup.receiver}.count(${lookup.key}) != 0 ? ${lookup.receiver}.at(${lookup.key}) : static_cast<${lookup.valueType}>(${right}))`
+        : `(${lookup.receiver}.count(${lookup.key}) != 0 ? ${lookup.receiver}.at(${lookup.key}) : ${right})`;
+      return { kind: "raw", value: guarded };
     }
     const leftIR = expressionToIR(expr.left, sourceText, diagnostics, pointerVars);
     // A `?.` chain on the left (`lastTempC?.toFixed(1) ?? '-'`) lowers its raw

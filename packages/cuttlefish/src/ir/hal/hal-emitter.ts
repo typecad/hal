@@ -2,7 +2,7 @@
 import { ExpressionIR, HALOpIR } from "../../api/index.js";
 import { requiredIncludes, registeredCallbacks, isrHandlerFunctions, activeStringVars, TYPED_ARRAY_ELEMENT_MAP, getContext, floatVariables, halInstances, getCurrentBoardConstants, markHalOpResolved, topLevelClasses, crossModuleFunctionReturns, activeEnumNames, activeStringEnumNames, typeAliasNodes } from "../build-ir-state.js";
 import { getCurrentIrTypeScope } from "../symbol-types.js";
-import { parsedElementString, parseCppType, renderCppType } from "../../api/shared/cpp-type-ir.js";
+import { parsedElementString, parseCppType, renderCppType, elementOf } from "../../api/shared/cpp-type-ir.js";
 import { HELPER_RETURN_TYPES, helperNameFromText } from "../../api/shared/helper-return-types.js";import { renderExprAsText } from "../render-expr.js";
 import { escapeCppKeyword, escapeCppStringLiteral } from "../../utils/strings.js";
 import { HALInstance, halClassRegistry, halGlobalFunctions, HALMethodEntry } from "./hal-parser.js";
@@ -1268,6 +1268,25 @@ export function buildSnprintfFromConcat(
             staticType = field?.cppType as string | undefined;
           }
           pushTyped(staticType, text);
+        } else if (/\(\w+\.count\([^)]*\) != 0 \? \w+\.at\(/.test(text)) {
+          // Count-guarded `??` over a map — every branch yields the map's
+          // value type (the fallback is explicitly cast); %g, never the %d
+          // default (a double-map read printed 0 through %d bits).
+          const recvName = text.match(/\((\w+)\.count/)?.[1];
+          const mapType = recvName
+            ? getCurrentIrTypeScope()?.locals.get(recvName) ?? getCurrentIrTypeScope()?.globals.get(recvName)
+            : undefined;
+          const valIr = mapType ? elementOf(parseCppType(mapType)) : undefined;
+          const valType = valIr ? renderCppType(valIr) : undefined;
+          if (valType === "std::string") {
+            formatString += "%s";
+            args.push(`(${text}).c_str()`);
+            estimatedLength += 32;
+          } else {
+            formatString += "%g";
+            args.push(text);
+            estimatedLength += 24;
+          }
         } else if (/[.>](?:at|get)\(/.test(text)) {
           // A std::map value read (`m.get(k)` lowers to `m.at(k)` / `m[k]`),
           // including a ternary over one (`m.has(k) ? m.get(k) : 0`): resolve

@@ -1124,8 +1124,23 @@ export class ExpressionRenderer {
         }
         // A std::map value read (`m.get(k)` lowers to `m.at(k)` / `m[k]`)
         // holds a JS number → %g, never the %d default. (`count`/`has` are
-        // integer/bool and keep the default.)
+        // integer/bool and keep the default.) The count-guarded `??` form
+        // (`(m.count(k) != 0 ? m.at(k) : fb)`) yields the map's VALUE type
+        // for every branch after the fallback cast — %d on its double bits
+        // printed 0 (fuzz divergence case-0).
         if (/[.>](?:at|get)\([^()]*\)\s*$/.test(rendered)) {
+          return { format: "%.15g", arg: rendered, estimatedLength: 24 };
+        }
+        if (expr.kind === "raw" && /^\(\w+\.count\([^)]*\) != 0 \? \w+\.at\(/.test(rendered)) {
+          const recvName = rendered.match(/^\((\w+)\.count/)?.[1];
+          const mapType = recvName
+            ? (effectiveKnownVariableTypes?.get(recvName)?.cppType ?? this.knownVariableTypes?.get(recvName)?.cppType)
+            : undefined;
+          const valIr = mapType ? elementOf(parseCppType(mapType)) : undefined;
+          const valType = valIr ? renderCppType(valIr) : undefined;
+          if (valType && this.isStringLikeCppType(valType)) {
+            return { format: "%s", arg: `(${rendered}).c_str()`, estimatedLength: 64 };
+          }
           return { format: "%.15g", arg: rendered, estimatedLength: 24 };
         }
         // A STRUCT FIELD read (`p.tag`, `_v_p.tag` — including an async

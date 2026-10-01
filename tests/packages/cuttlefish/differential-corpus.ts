@@ -32,7 +32,7 @@ interface DiffResult {
   detail?: string;
 }
 
-function runNode(ts: string, dir: string): string {
+export function runNode(ts: string, dir: string): string {
   // Strip TS annotations with the real compiler — the same source both sides.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const tsCompiler = require("typescript");
@@ -51,12 +51,12 @@ const REPORT_SHIM = `#include <cstdio>
 void report(const std::string& s) { std::printf("%s\\n", s.c_str()); }
 `;
 
-function runNative(ts: string, dir: string, tag: string): string {
+export function runNative(ts: string, dir: string, tag: string): string {
   const { cpp } = transpileNative(ts);
   const cppFile = path.join(dir, `${tag}.cpp`);
   fs.writeFileSync(cppFile, REPORT_SHIM + cpp);
   const bin = path.join(dir, `${tag}.exe`);
-  const compile = spawnSync(GXX, ["-std=c++17", cppFile, "-o", bin], {
+  const compile = spawnSync(GXX, ["-std=c++20", cppFile, "-o", bin], {
     encoding: "utf8", timeout: 120000, maxBuffer: 8 * 1024 * 1024,
   });
   if (compile.status !== 0) {
