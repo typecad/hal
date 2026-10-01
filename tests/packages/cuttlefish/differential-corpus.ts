@@ -59,8 +59,8 @@ export function runNative(ts: string, dir: string, tag: string): string {
   const compile = spawnSync(GXX, ["-std=c++20", cppFile, "-o", bin], {
     encoding: "utf8", timeout: 120000, maxBuffer: 8 * 1024 * 1024,
   });
-  if (compile.status !== 0) {
-    throw new Error(`native compile failed:\n${(compile.stderr ?? "").slice(0, 1200)}`);
+  if (compile.status !== 0 || compile.error) {
+    throw new Error(`native compile failed (status=${compile.status}, error=${compile.error?.message ?? "none"}):\n${(compile.stderr ?? "").slice(0, 1200)}`);
   }
   const run = spawnSync(bin, { encoding: "utf8", timeout: 15000 });
   if (run.status !== 0) {

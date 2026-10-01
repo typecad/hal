@@ -195,8 +195,23 @@ function runNativeForFuzz(ts: string, dir: string, tag: string): { out: string; 
   return { out: run.stdout ?? "", errors: errCount, detail: "" };
 }
 
+
+// Compiler probe: a missing g++ surfaces as status=null with EMPTY stderr,
+// which read as a bare "compile failed" with no reason. Fail loudly with the
+// remedy instead. PowerShell does not inherit Git Bash's PATH.
+function assertCompiler(): void {
+  const probe = spawnSync(GXX, ["--version"], { encoding: "utf8" });
+  if (probe.error || probe.status !== 0) {
+    throw new Error(
+      `C++ compiler '${GXX}' not usable (status=${probe.status}, error=${probe.error?.message ?? "none"}). ` +
+      `Set DIFF_GXX to the full path, e.g. `$env:DIFF_GXX="C:\msys64\ucrt64\bin\g++.exe"`.`,
+    );
+  }
+}
+
 describe("fuzz — generated programs, Node oracle vs native", () => {
   it(`no divergences in ${CASES} generated cases (seed ${SEED})`, () => {
+    assertCompiler();
     const rnd = mulberry32(SEED);
     fs.mkdirSync(FINDINGS, { recursive: true });
     const seenCpp = new Set<string>();

@@ -51,7 +51,7 @@ function runNativeOut(ts: string, dir: string, tag: string): string {
   fs.writeFileSync(cppFile, shim + cpp);
   const bin = path.join(dir, `${tag}.exe`);
   const compile = spawnSync(GXX, ["-std=c++20", cppFile, "-o", bin], { encoding: "utf8", timeout: 120000, maxBuffer: 8 * 1024 * 1024 });
-  if (compile.status !== 0) throw new Error(`compile failed: ${(compile.stderr ?? "").slice(0, 200)}`);
+  if (compile.status !== 0) throw new Error(`compile failed (status=${compile.status}, error=${compile.error?.message ?? "none"}): ${(compile.stderr ?? "").slice(0, 200)}`);
   const run = spawnSync(bin, { encoding: "utf8", timeout: 15000 });
   if (run.status !== 0) throw new Error(`run exit ${run.status}`);
   return run.stdout ?? "";
@@ -59,8 +59,23 @@ function runNativeOut(ts: string, dir: string, tag: string): string {
 
 const norm = (t: string): string[] => t.split("\n").map(l => l.replace(/\r$/, "")).filter(l => l.length > 0);
 
+
+// Compiler probe: a missing g++ surfaces as status=null with EMPTY stderr,
+// which read as a bare "compile failed" with no reason. Fail loudly with the
+// remedy instead. PowerShell does not inherit Git Bash's PATH.
+function assertCompiler(): void {
+  const probe = spawnSync(GXX, ["--version"], { encoding: "utf8" });
+  if (probe.error || probe.status !== 0) {
+    throw new Error(
+      `C++ compiler '${GXX}' not usable (status=${probe.status}, error=${probe.error?.message ?? "none"}). ` +
+      `Set DIFF_GXX to the full g++ path (e.g. C:\\msys64\\ucrt64\\bin\\g++.exe).`,
+    );
+  }
+}
+
 describe("mutation fuzz — corpus mutants through the differential harness", () => {
   it(`no divergences in ${MUT_CASES} mutants (seed ${MUT_SEED})`, () => {
+    assertCompiler();
     const rnd = mulberry32(MUT_SEED);
     fs.mkdirSync(OUT, { recursive: true });
     const findings: string[] = [];
