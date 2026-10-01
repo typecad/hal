@@ -1357,6 +1357,30 @@ export function buildFunctionReturnTypeMap(source: ts.SourceFile): Map<string, C
         .filter((item) => item !== "auto");
 
       if (inferredTypes.length === 0) {
+        // JS numbers ARE doubles: a function whose returns are all
+        // numeric-shaped (bare identifiers of params, arithmetic over them,
+        // lambdas over numeric bodies) returns a NUMBER in JS even when no
+        // operand carries a concrete type. Defaulting to void made
+        // `function clamp(v, lo, hi)` and closure factories compile as
+        // void on the native target and every call site discarded the
+        // result (differential corpus: generic-bounds, closures-over-params).
+        // A closure FACTORY (every return is a lambda with a numeric body)
+        // returns a callable: std::function<double(P...)> with the lambda's
+        // own params deduced numeric. makeScale(k) in the differential
+        // corpus is the canonical shape.
+        if (returns.length > 0 && returns.every((item) => {
+          const e = item.expression as ts.Expression;
+          return e && (ts.isArrowFunction(e) || ts.isFunctionExpression(e));
+        })) {
+          const first = returns[0].expression as ts.ArrowFunction;
+          const paramTypes = first.parameters.map(() => "double");
+          result.set(fn.name.text,
+            `std::function<double(${paramTypes.join(", ")})>` as CppTypeHint);
+          continue;
+        }
+        if (returns.every((item) => isNumericShapedReturn(item.expression as ts.Expression))) {
+          result.set(fn.name.text, "double");
+        }
         continue;
       }
 
@@ -1450,4 +1474,46 @@ export function extractOwnershipKindFromTypeNode(
   }
 
   return undefined;
+}
+
+/** Numeric-shaped return expression: identifiers over untyped params,
+ *  arithmetic/comparison/ternary over numeric-shaped operands, Number()
+ *  calls, and lambdas whose body is numeric-shaped. A string literal,
+ *  template, or unknown call is NOT numeric-shaped. */
+function isNumericShapedReturn(expr: ts.Expression | undefined, depth = 0): boolean {
+  if (!expr || depth > 6) return false;
+  if (ts.isIdentifier(expr)) return true;
+  if (ts.isNumericLiteral(expr)) return true;
+  if (ts.isPrefixUnaryExpression(expr)) return isNumericShapedReturn(expr.operand, depth + 1);
+  if (ts.isPostfixUnaryExpression(expr)) return isNumericShapedReturn(expr.operand, depth + 1);
+  if (ts.isParenthesizedExpression(expr)) return isNumericShapedReturn(expr.expression, depth + 1);
+  if (ts.isConditionalExpression(expr)) {
+    return isNumericShapedReturn(expr.whenTrue, depth + 1) && isNumericShapedReturn(expr.whenFalse, depth + 1);
+  }
+  if (ts.isBinaryExpression(expr)) {
+    const op = expr.operatorToken.kind;
+    const arith = op === ts.SyntaxKind.PlusToken || op === ts.SyntaxKind.MinusToken
+      || op === ts.SyntaxKind.AsteriskToken || op === ts.SyntaxKind.SlashToken
+      || op === ts.SyntaxKind.PercentToken;
+    const cmp = op === ts.SyntaxKind.EqualsEqualsToken || op === ts.SyntaxKind.EqualsEqualsEqualsToken
+      || op === ts.SyntaxKind.ExclamationEqualsToken || op === ts.SyntaxKind.ExclamationEqualsEqualsToken
+      || op === ts.SyntaxKind.GreaterThanToken || op === ts.SyntaxKind.LessThanToken
+      || op === ts.SyntaxKind.GreaterThanEqualsToken || op === ts.SyntaxKind.LessThanEqualsToken;
+    if (!arith && !cmp) return false;
+    if (op === ts.SyntaxKind.PlusToken) {
+      // + could be string concat — only numeric if NEITHER side is string-shaped
+      return isNumericShapedReturn(expr.left, depth + 1) && isNumericShapedReturn(expr.right, depth + 1);
+    }
+    return isNumericShapedReturn(expr.left, depth + 1) && isNumericShapedReturn(expr.right, depth + 1);
+  }
+  if (ts.isArrowFunction(expr) || ts.isFunctionExpression(expr)) {
+    const body = expr.body;
+    if (ts.isExpression(body)) return isNumericShapedReturn(body, depth + 1);
+    const inner = collectReturns(body as ts.Block).filter((item) => item.expression);
+    return inner.length > 0 && inner.every((item) => isNumericShapedReturn(item.expression as ts.Expression, depth + 1));
+  }
+  if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression) && expr.expression.text === "Number") {
+    return true;
+  }
+  return false;
 }

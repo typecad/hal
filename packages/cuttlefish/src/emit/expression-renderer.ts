@@ -646,6 +646,9 @@ export class ExpressionRenderer {
         if (/^(?:std::)?(?:floor|ceil|round|abs|sqrt|sin|cos|tan|atan2|log|exp|pow|fmod)\b/.test(expr.callee)) {
           return "double";
         }
+        const fnVarType = effectiveKnownVariableTypes?.get(expr.callee)?.cppType;
+        const fnCall = fnVarType?.match(/^std::function<\s*([^,(]+)\s*\(/);
+        if (fnCall) return fnCall[1].trim();
         return this.knownFunctionReturnTypes?.get(expr.callee);
       }
       case "raw": {
@@ -1011,6 +1014,7 @@ export class ExpressionRenderer {
         }
         return { format: "%d", arg: rendered, estimatedLength: 12 };
       }
+
       case "method-call":
       case "property-access":
       case "binary":

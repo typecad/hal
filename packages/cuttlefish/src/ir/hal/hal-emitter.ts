@@ -1236,8 +1236,17 @@ export function buildSnprintfFromConcat(
           // default and printed a POINTER VALUE on device.
           const callExpr = part.expression as { callee: string };
           const fnReturn = crossModuleFunctionReturns.get(callExpr.callee);
+          // A local holding a std::function (`const d = makeScale(2)`) called
+          // as `d(7)` — its return type R rides the variable's type; the %d
+          // default printed the std::function's int-cast through -Wformat.
+          const fnVarType = callExpr.callee && /^[A-Za-z_]\w*$/.test(callExpr.callee)
+            ? getCurrentIrTypeScope()?.locals.get(callExpr.callee)
+            : undefined;
+          const fnCallReturn = fnVarType?.match(/^std::function<\s*([^,(]+)\s*\(/);
           if (fnReturn) {
             pushTyped(fnReturn, text);
+          } else if (fnCallReturn) {
+            pushTyped(fnCallReturn[1].trim(), text);
           } else {
             formatString += "%d";
             args.push(text);
