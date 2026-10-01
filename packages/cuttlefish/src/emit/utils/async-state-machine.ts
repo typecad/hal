@@ -644,7 +644,10 @@ export function generateAsyncTaskClass(
       stmt.args[0]?.kind === "hal-expr"
     ) {
       const op = (stmt.args[0] as Extract<ExpressionIR, { kind: "hal-expr" }>).operation;
-      return { kind: "net", info: netWaitInfo(op, strategy) };
+      const info = netWaitInfo(op, strategy, (operation) => {
+        options?.onUnsupportedAwait?.(`__HAL_WAIT__(${operation})`, undefined);
+      });
+      return { kind: "net", info };
     }
     if (stmt.callee === "__ASYNC_YIELD__") {
       // Async.yield(): resume on the NEXT pump pass — the other tasks run
@@ -1098,7 +1101,7 @@ function isZeroTimeout(v: unknown): boolean {
  * Falls back to running the blocking form as the "start" with an immediate
  * completion when the strategy can't lower the split ops.
  */
-function netWaitInfo(op: HALOpIR, strategy: PlatformStrategy): NetWaitInfo {
+function netWaitInfo(op: HALOpIR, strategy: PlatformStrategy, onUnhandled?: (operation: string) => void): NetWaitInfo {
   const o = op as any;
   const route = (routedOp: Record<string, unknown>): { code?: string; expression?: string } | undefined =>
     routeHALOp(routedOp as unknown as HALOpIR, strategy);
@@ -1147,6 +1150,9 @@ function netWaitInfo(op: HALOpIR, strategy: PlatformStrategy): NetWaitInfo {
 
   // Fallback: run the blocking form immediately and complete on the next tick.
   const blocking = routeHALOp(op, strategy);
+  if (!blocking || (!blocking.code && !blocking.expression)) {
+    onUnhandled?.(op.operation);
+  }
   const line = blocking?.code ?? (blocking?.expression ? `${blocking.expression};` : `/* unhandled awaited hal-op: ${op.operation} */`);
   return { startLines: [line], pollCond: null, timeoutExpr: "0" };
 }

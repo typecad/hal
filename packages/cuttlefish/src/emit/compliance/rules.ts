@@ -150,6 +150,11 @@ export const RULES: readonly RuleEntry[] = [
         justification: "Zephyr <zephyr/net/wifi_mgmt.h> declares wifi_security_type and wifi_frequency_bands as unscoped enums (platform-mandated API); the WiFi shim's join/connect signatures take them directly and cannot redeclare them scoped.",
         kind: "other",
       },
+      {
+        detect: /\benum\s+display_pixel_format\b/,
+        justification: "Zephyr <zephyr/drivers/display.h> declares display_pixel_format as an unscoped enum (platform-mandated API); the UI display adapter's set_pixel_format signature takes it directly and cannot redeclare it scoped.",
+        kind: "other",
+      },
     ],
   },
 

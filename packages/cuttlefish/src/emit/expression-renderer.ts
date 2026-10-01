@@ -349,8 +349,18 @@ export class ExpressionRenderer {
         // configures) must run even in expression position — wrap them with
         // the value in a GCC statement-expression.
         const prefix = (expr.prefixOps ?? [])
-          .map((op) => routeHALOp(op, this.strategy))
-          .map((r) => r?.code ?? `/* unhandled hal-op prefix: dropped */`)
+          .map((op) => {
+            const resolvedOp = routeHALOp(op, this.strategy);
+            if (!resolvedOp || (!resolvedOp.code && !resolvedOp.expression)) {
+              this._diagnostics.push({
+                severity: "warning",
+                code: "TS2CPP_UNHANDLED_HAL",
+                message: `HAL operation '${op.operation}' (side-effect prefix) is not registered with the platform strategy; its effect is dropped.`,
+              });
+              return `/* unhandled hal-op prefix: dropped */`;
+            }
+            return resolvedOp.code ?? resolvedOp.expression!;
+          })
           .join(' ');
         if (resolved?.expression) {
           rendered = prefix

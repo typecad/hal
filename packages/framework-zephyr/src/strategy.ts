@@ -2568,7 +2568,7 @@ struct __tc_StaticArray {
         kind: 'polyfill',
         id: 'vector_methods',
         domain: 'embedded' as const,
-        requiredIncludes: ['<vector>', '<string>', '<algorithm>'],
+        requiredIncludes: ['<vector>', '<string>', '<algorithm>', '<map>', '<set>', '<utility>'],
         forwardDeclarations: [],
         helperStructs: [],
         helperFunctions: [`
@@ -2628,6 +2628,39 @@ template <typename T, typename F>
 bool __tc_every(const std::vector<T>& v, F pred) { for (size_t i = 0U; i < v.size(); i++) { if (!pred(v[i])) { return false; } } return true; }
 template <typename T, typename F>
 bool __tc_some(const std::vector<T>& v, F pred) { for (size_t i = 0U; i < v.size(); i++) { if (pred(v[i])) { return true; } } return false; }
+// Bare sort (no comparator): matches the hosted shim's member-order form.
+template <typename T>
+void __tc_sort(std::vector<T>& v) { std::sort(v.begin(), v.end()); }
+// JS concat/fill/splice on std::vector receivers (the structural lowering
+// emits these for any vector-capable target).
+template <typename T>
+std::vector<T> __tc_concat(const std::vector<T>& a, const std::vector<T>& b) { std::vector<T> out = a; for (size_t i = 0U; i < b.size(); i++) { out.push_back(b[i]); } return out; }
+template <typename T>
+void __tc_fill(std::vector<T>& v, const T& val) { for (size_t i = 0U; i < v.size(); i++) { v[i] = val; } }
+template <typename T>
+void __tc_fill3(std::vector<T>& v, const T& val, int start, int end) { int n = static_cast<int>(v.size()); if (start < 0) { start += n; } if (end < 0) { end += n; } if (start < 0) { start = 0; } if (end > n) { end = n; } for (int i = start; i < end; i++) { v[static_cast<size_t>(i)] = val; } }
+template <typename T>
+std::vector<T> __tc_splice1(std::vector<T>& v, int start) { std::vector<T> removed(v.begin() + start, v.end()); v.erase(v.begin() + start, v.end()); return removed; }
+template <typename T>
+std::vector<T> __tc_splice2(std::vector<T>& v, int start, int deleteCount) { int n = static_cast<int>(v.size()); if (start < 0) { start += n; } int end = start + deleteCount; if (end > n) { end = n; } if (start < 0) { start = 0; } if (end < start) { end = start; } std::vector<T> removed(v.begin() + start, v.begin() + end); v.erase(v.begin() + start, v.begin() + end); return removed; }
+// Object.keys/values/entries + Set.values/entries over std::map/std::set.
+template <typename K, typename V>
+std::vector<K> __tc_mapKeys(const std::map<K, V>& m) { std::vector<K> keys; for (const auto& pair : m) { keys.push_back(pair.first); } return keys; }
+template <typename K, typename V>
+std::vector<V> __tc_mapValues(const std::map<K, V>& m) { std::vector<V> vals; for (const auto& pair : m) { vals.push_back(pair.second); } return vals; }
+template <typename K, typename V>
+std::vector<std::pair<K, V>> __tc_mapEntries(const std::map<K, V>& m) { std::vector<std::pair<K, V>> entries; for (const auto& pair : m) { entries.push_back(pair); } return entries; }
+template <typename T>
+std::vector<T> __tc_setValues(const std::set<T>& sset) { std::vector<T> vals; for (const auto& item : sset) { vals.push_back(item); } return vals; }
+template <typename T>
+std::vector<std::pair<T, T>> __tc_setEntries(const std::set<T>& sset) { std::vector<std::pair<T, T>> entries; for (const auto& item : sset) { entries.push_back(std::pair<T, T>(item, item)); } return entries; }
+template <typename K, typename V>
+std::map<K, V> __tc_fromEntries(const std::vector<std::pair<K, V>>& entries) { std::map<K, V> out; for (const auto& pair : entries) { out[pair.first] = pair.second; } return out; }
+// JSON.* - stringify of a string is the string; other scalars to text.
+inline std::string __tc_jsonStringify(const std::string& s) { return s; }
+template <typename T>
+std::string __tc_jsonStringify(const T& v) { char b[32]; (void)snprintf(b, sizeof(b), "%g", static_cast<double>(v)); return std::string(b); }
+inline std::string __tc_jsonParse(const std::string& s) { return s; }
 // Math.max(...vals) / Math.min(...vals) — the variadic fold over an array.
 // Same empty-input convention as __tc_reduce_no_init (v[0]).
 template <typename T>

@@ -1044,6 +1044,16 @@ export function inferExprCppType(
       return "double";
     }
 
+    // JS `/` is ALWAYS real division — `1 / 4` is 0.25 even with int
+    // operands (the lowering casts both operands to double). The int-arms
+    // rule below stamped the RESULT int for int/int division, so
+    // `const quarter = 1 / 4` declared `const long long quarter` and
+    // 0.25 truncated to 0 — silent wrong output. `/` therefore never
+    // returns an integral type.
+    if (operator === ts.SyntaxKind.SlashToken) {
+      return "double";
+    }
+
     if ((leftType === "int" || leftType === "bool" || leftType === "long long" || leftType === "unsigned long long") && (rightType === "int" || rightType === "bool" || rightType === "long long" || rightType === "unsigned long long")) {
       if (leftType === "long long" || rightType === "long long" || leftType === "unsigned long long" || rightType === "unsigned long long") {
         return "long long";

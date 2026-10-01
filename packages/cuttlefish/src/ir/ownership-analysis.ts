@@ -1240,13 +1240,33 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
             : rawCallee;
           const parenIdx = unwrapped.indexOf('(');
           const callee = parenIdx > 0 ? unwrapped.slice(0, parenIdx) : unwrapped;
+          // Helper-form mutators carry the receiver as the FIRST ARGUMENT
+          // (`__tc_sort(a)`, `__tc_splice2(v, 0, 2)` — the VECTOR_VALUE /
+          // CALLBACK lowerings) rather than a dotted receiver. Without this
+          // arm the dot parse found no receiver and a top-level
+          // `const a = [...]; a.sort()` kept `const std::vector` while the
+          // helper takes `std::vector<T>&` — a hard g++ error, and on the
+          // demoted paths silently-wrong semantics.
+          const HELPER_RECEIVER_MUTATORS = new Set([
+            '__tc_pop', '__tc_shift', '__tc_reverse', '__tc_unshift',
+            '__tc_sort', '__tc_sort_fn', '__tc_fill', '__tc_fill3',
+            '__tc_splice1', '__tc_splice2',
+          ]);
+          let receiver = '';
+          let method = callee.slice(callee.lastIndexOf('.') + 1);
           const dot = callee.lastIndexOf('.');
           if (dot > 0) {
-            // StaticArray member calls render with a parenthesized receiver
-            // (`(registry).push(x)`); normalize so the scope maps resolve.
-            const receiver = bareReceiver(callee.slice(0, dot));
-            const method = callee.slice(dot + 1);
-            if (MUTATING_METHODS.has(method)) {
+            receiver = bareReceiver(callee.slice(0, dot));
+          } else if (HELPER_RECEIVER_MUTATORS.has(callee) && parenIdx > 0) {
+            const argList = unwrapped.slice(parenIdx + 1);
+            const argMatch = /^[A-Za-z_][A-Za-z0-9_]*/.exec(argList);
+            if (argMatch) {
+              receiver = bareReceiver(argMatch[0]);
+              method = callee;
+            }
+          }
+          if (receiver) {
+            if (MUTATING_METHODS.has(method) || HELPER_RECEIVER_MUTATORS.has(method)) {
               const entry = letVars.get(receiver);
               if (entry) entry.everAssigned = true;
               // Demote a `const` binding whose contents are mutated via a

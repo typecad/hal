@@ -790,6 +790,11 @@ export class StatementRenderer {
       if (resolved) {
         return "";
       }
+      this._diagnostics.push({
+        severity: "warning",
+        code: "TS2CPP_UNHANDLED_HAL",
+        message: `HAL operation '${statement.args[0].operation.operation}' (awaited) is not registered with the platform strategy; emitting a placeholder comment.`,
+      });
       return `/* unhandled awaited hal-op: ${statement.args[0].operation.operation} */`;
     }
     // Handle emit() — compile-time C++ injection

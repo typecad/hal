@@ -1,0 +1,12 @@
+{
+  "demo": {},
+  "demo-canary": {},
+  "demo-mono-sim": {},
+  "demo-shadcn": {},
+  "demo-timed-wake": {},
+  "demo-timing": {},
+  "wifi-demo": {},
+  "zephyr-bench-console": {},
+  "zephyr-sht30-report": {},
+  "zephyr-ui": {}
+}
