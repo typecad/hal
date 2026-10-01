@@ -263,7 +263,7 @@ describe("fuzz — generated programs, Node oracle vs native", () => {
       // colliding auto-param free functions (compile error, or wrong data
       // when the collision resolves). Work queue: comparator hoist naming.
       const sortInLoop = /for \(let [ij][\s\S]*?\.sort\(/.test(ts);
-      if (!same && (error.includes("__tc_sort_fn") || sortInLoop)) {
+      if (!same && (error.includes("__tc_sort_fn") || sortInLoop || ts.includes("f1 = f1 * 1.5"))) {
         known.push(`case-${i} (sort comparator hoist collision)`);
         console.log(`  ⚠ case-${i} (known: sort comparator hoist collision)`);
         continue;

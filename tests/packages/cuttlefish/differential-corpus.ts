@@ -243,6 +243,10 @@ export const CORPUS: DiffCase[] = [
 // Known divergences: real bugs the harness surfaced on its FIRST run, each
 // needing its own inference/polyfill fix. A case listed here still runs and
 // is reported, but does not fail the suite - the work queue, not a waiver.
+// NEWEST FIND (seed 8888, case-163): f1 = 2.03 * 1.5 = 3.045 (binary
+// 3.0449999...). Node toFixed(2) -> 3.04 (below tie); native -> 3.05. The
+// native __tc_toFixed string path rounds this differently — root-cause the
+// exact emission (float-literal width? printf flag?) before the next fix.
 const KNOWN_DIVERGENCES = new Set([
   "generic-bounds", "recursive-descent",
   "map-and-set", "statics-and-getters", "value-vs-reference",
