@@ -153,7 +153,15 @@ function collectCallbackFromExpression(
     // template helpers deduce types via decltype instead of failing on a
     // void(auto) callable. Only drop a param when it has no cppType at all.
     const lamParams: { name: string; cppType: string }[] = (lam.params ?? [])
-      .filter((p: { name: string; cppType: string }) => p && p.name && p.cppType && p.cppType !== "void");
+      .filter((p: { name: string; cppType: string }) => p && p.name && p.cppType && p.cppType !== "void")
+      // An untyped param hoisted as `auto` makes the free function an
+      // abbreviated template — it can't be PASSED as a value (the comparator
+      // to __tc_sort_fn deduces F from a concrete signature, not from
+      // `auto main_isr_0(auto, auto)`; g++: "unresolved overloaded function
+      // type"). JS numbers are doubles: default hoisted auto params to
+      // double. (Inline [&] lambdas keep auto — they deduce at the call.)
+      .map((p: { name: string; cppType: string }) =>
+        p.cppType === "auto" ? { ...p, cppType: "double" } : p);
     const returnType =
       lam.returnType && lam.returnType !== "void"
         ? lam.returnType

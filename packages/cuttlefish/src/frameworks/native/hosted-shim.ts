@@ -158,7 +158,8 @@ export function hostedPolyfillIRs(): RuntimePolyfillIR[] {
           'inline std::string __tc_numToStr_js(double v) { char b[32]; (void)snprintf(b, sizeof(b), "%.15g", v); return std::string(b); }',
           'template<typename T> std::vector<T> __tc_slice2(const std::vector<T>& v, int start, int end) { if (end > static_cast<int>(v.size())) end = static_cast<int>(v.size()); return std::vector<T>(v.begin() + start, v.begin() + end); }',
           'template<typename T> std::vector<T> __tc_slice1(const std::vector<T>& v, int start) { return std::vector<T>(v.begin() + start, v.end()); }',
-          'template<typename T> std::vector<T> __tc_reverse(std::vector<T> v) { std::reverse(v.begin(), v.end()); return v; }',
+          'template<typename T> void __tc_reverse(std::vector<T>& v) { std::reverse(v.begin(), v.end()); }', // in-place: the statement form (a1.reverse();) must mutate — a by-value copy was silently discarded
+          'template<typename T> std::vector<T> __tc_reverse_copy(const std::vector<T>& v) { std::vector<T> out = v; std::reverse(out.begin(), out.end()); return out; }',
           // ── Overloaded includes/indexOf for std::vector ─────────────────
           'template<typename T> bool __tc_includes(const std::vector<T>& v, const T& val) { return std::find(v.begin(), v.end(), val) != v.end(); }',
           'template<typename T> int __tc_indexOf(const std::vector<T>& v, const T& val) { auto it = std::find(v.begin(), v.end(), val); return it != v.end() ? static_cast<int>(it - v.begin()) : -1; }',
