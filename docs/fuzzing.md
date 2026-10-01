@@ -48,6 +48,23 @@ the corpus as a hard assertion.
 - **Helper-form mutator demotion / in-place reverse / hoisted comparator
   params** — see the round-5..7 commits.
 
+### Recently fixed (regression-covered)
+
+- **Escaping-lambda capture** — renderLambda emitted `[&]`; a lambda RETURNED
+  from a factory captured its parameter by reference and dangled after
+  return (fuzz: scaled=49 vs 21). Now `[=]` — JS factories need the copy.
+  Shared-mutation closures over enclosing locals remain a documented
+  limitation.
+- **Inline-literal forEach** — `[1, 2, 3].forEach(fn)` emitted verbatim; now
+  binds the literal to a `std::vector` temp (element type from the array IR)
+  and emits an index loop, in call-statement (where the callback hoist runs
+  and lowerStatementList is in scope).
+- **std::function call format** — `${d(7)}` unwraps the std::function-holding
+  local's return R in inferFormatSpecifier.
+- **Map count-guard value type / toFixed rounding / division typing /
+  helper-mutator demotion / in-place reverse / hoisted comparator params** —
+  earlier rounds, all regression-covered.
+
 ### Open work queue (fix, then move the case to hard-assert)
 
 - **Closures format arm** — `${factoryResult(n)}` formats %d: the
