@@ -874,6 +874,26 @@ export class ExpressionRenderer {
     if (expr.kind === "template_string") {
       return this.inferFormatSpecifier(expr.expression, exprTransformer, knownVariableTypes);
     }
+    // A bare CALL on a std::function-holding local (`${d(7)}` where
+    // `const d = makeScale(2)`): the variable's std::function<R(P...)> names
+    // the return R — unwrap it before the %d default misprints the call
+    // through -Wformat (differential corpus: closures-over-params).
+    if ((expr.kind === "call" || (expr.kind === "method-call" && /^[A-Za-z_]\w*$/.test(expr.callee)))
+      && /^[A-Za-z_]\w*$/.test(expr.callee)) {
+      const fnVarType = effectiveKnownVariableTypes?.get(expr.callee)?.cppType;
+      const fnCall = fnVarType?.match(/^std::function<\s*([^,(]+)\s*\(/);
+      if (fnCall) {
+        const ret = fnCall[1].trim();
+        const rendered = this.render(expr, exprTransformer);
+        if (ret === "std::string") {
+          return { format: "%s", arg: `${rendered}.c_str()`, estimatedLength: 32 };
+        }
+        if (ret === "int") {
+          return { format: "%d", arg: rendered, estimatedLength: 12 };
+        }
+        return { format: "%.15g", arg: rendered, estimatedLength: 24 };
+      }
+    }
     // Namespace-const access (`Ns.MEMBER`) lowers to a `property-access` IR
     // node whose `property` is the member name. Resolve the member's type from
     // knownVariableTypes (namespace consts are registered there by bare name
