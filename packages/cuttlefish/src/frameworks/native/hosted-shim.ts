@@ -130,7 +130,7 @@ export function hostedPolyfillIRs(): RuntimePolyfillIR[] {
         helperStructs: [],
         helperFunctions: [
           'inline double __tc_random() { static std::mt19937 gen(std::random_device{}()); static std::uniform_real_distribution<double> dist(0.0, 1.0); return dist(gen); }',
-            'inline std::string __tc_toFixed(double val, int digits) { if (digits < 0) { digits = 0; } if (digits > 20) { digits = 20; } double adjusted = val + (val < 0 ? -1e-12 : 1e-12); std::ostringstream oss; oss << std::fixed << std::setprecision(digits) << adjusted; return oss.str(); }',
+            'inline std::string __tc_toFixed(double val, int digits) { if (digits < 0) { digits = 0; } if (digits > 20) { digits = 20; } double scale = 1.0; for (int i = 0; i < digits; i++) { scale *= 10.0; } double scaled = val * scale; if (scaled - floor(scaled) == 0.5 && val == floor(scaled) / scale + 0.5 / scale) { val += (val < 0 ? -0.5 : 0.5) / scale; } std::ostringstream oss; oss << std::fixed << std::setprecision(digits) << val; return oss.str(); }',
         ],
         shimMacros: [],
         dependencies: [],
