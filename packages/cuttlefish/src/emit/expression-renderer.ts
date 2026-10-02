@@ -15,6 +15,7 @@ import { escapeCppKeyword, escapeCppStringLiteral } from "../utils/strings.js";
 import { accessorGetterName } from "./utils/cpp-helpers.js";
 import { INTEGRAL_CPP_TYPE_RE } from "./utils/cpp-helpers.js";
 import { renderPeripheralProperty } from "../mapping/peripheral-names.js";
+import { getCurrentIrTypeScope } from "../ir/symbol-types.js";
 import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsStringLike, parsedElementString, parsedIsVector, needsCStrForStringLike, elementOf, snprintfTypeFormat, parsedIsVariant } from "../api/shared/cpp-type-ir.js";
 import { helperReturnTypeForText } from "../api/shared/helper-return-types.js";
 import { cppTypeForHalOp } from "./utils/hal-op-cpp-type.js";
@@ -835,7 +836,25 @@ export class ExpressionRenderer {
       }
       // Doubles/floats need JS-compatible formatting; std::to_string appends trailing zeros (3.000000).
       const partType = this.inferExpressionCppType(part, knownVariableTypes);
-      if (partType === "double" || partType === "float") {
+      if (JSON.stringify(part).includes('cuttlefish_nullish')) console.error('DBG-PART:', part.kind, partType, JSON.stringify(part).slice(0, 140));
+      // A nullish lowering (`cuttlefish_nullish(x, fb)`) whose FIRST argument
+      // is a numeric variable/expression resolves to that numeric type —
+      // without this the raw call fell to std::to_string and printed
+      // `7.000000` where JS prints `7`.
+      let nullishNumeric = false;
+      {
+        // The part may be the raw call or a paren wrapping it.
+        const nullishExpr = (part as unknown as { inner?: { kind: string; value?: string } }).inner;
+        if (nullishExpr && nullishExpr.kind === "raw" && nullishExpr.value && nullishExpr.value.includes("cuttlefish_nullish(")) {
+          const firstArg = /cuttlefish_nullish\(\s*([A-Za-z_]\w*)\s*,/.exec(nullishExpr.value);
+          if (firstArg) {
+            const t = getCurrentIrTypeScope()?.locals.get(firstArg[1])
+              ?? getCurrentIrTypeScope()?.globals.get(firstArg[1]);
+            nullishNumeric = t === "double" || t === "float" || t === "int" || t === "long long";
+          }
+        }
+      }
+      if (partType === "double" || partType === "float" || nullishNumeric) {
         const bufferName = `__cuttlefish_str_${++this._snprintfCounter.value}`;
         this._preludeLines.push(
           `char ${bufferName}[32];`,
@@ -880,6 +899,22 @@ export class ExpressionRenderer {
     }
     const inferredType = this.inferExpressionCppType(expr.expression, knownVariableTypes);
     const rendered = this.render(expr.expression, exprTransformer, knownVariableTypes);
+    // A nullish lowering whose FIRST arg is numeric is a double result —
+    // JS prints `7`, std::to_string prints `7.000000`. Route through the
+    // JS-compatible %.15g buffer (the same fix as the concat double path).
+    if (rendered.includes("cuttlefish_nullish(")) {
+      const fa = /cuttlefish_nullish\(\s*([A-Za-z_]\w*)\s*,/.exec(rendered);
+      const armType = fa ? (getCurrentIrTypeScope()?.locals.get(fa[1])
+        ?? getCurrentIrTypeScope()?.globals.get(fa[1])) : undefined;
+      if (armType === "double" || armType === "float" || armType === "int" || armType === "long long") {
+        const bufferName = `__cuttlefish_str_${++this._snprintfCounter.value}`;
+        this._preludeLines.push(
+          `char ${bufferName}[32];`,
+          `snprintf(${bufferName}, sizeof(${bufferName}), "%.15g", ${rendered});`,
+        );
+        return `std::string(${bufferName})`;
+      }
+    }
     if (this.isStringLikeCppType(inferredType)) {
       return this.renderKnownStringValue(rendered, inferredType ?? "");
     }

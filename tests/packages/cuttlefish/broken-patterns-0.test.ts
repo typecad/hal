@@ -366,3 +366,29 @@ describe("fixed — destructuring element swap", () => {
     expect(out.cpp).toContain("swap[0] = __swap_");
   });
 });
+
+describe("fixed — raw double concat formatting", () => {
+  it("numeric nullish in a string concat prints JS-style (7, not 7.000000)", () => {
+    diffCase(
+      "double-concat",
+      `
+        declare function report(line: string): void;
+        function pick(n: number | null): string {
+          return 'v=' + (n ?? -1);
+        }
+        report(pick(7));
+        report(pick(null));
+      `,
+    );
+  });
+  it("plain double concat stays JS-style", () => {
+    diffCase(
+      "double-concat-2",
+      `
+        declare function report(line: string): void;
+        const n = 7;
+        report('v=' + n);
+      `,
+    );
+  });
+});
