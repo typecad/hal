@@ -142,9 +142,9 @@ the then-branch reads the narrowed arm through `std::get<Arm>(id)`
 (branch-scoped narrowing context), the else-branch string interpolation
 of the variant emits its single string arm, and passing a literal/variant
 to a variant-typed parameter brace-constructs the variant (int args cast
-to the numeric arm to avoid ambiguity). The `no-typeof-narrowing` lint
-rule now only fires on shapes the lowering does not support (e.g.
-`typeof x !== 'lit'` over multi-arm matches).
+to the numeric arm to avoid ambiguity). The obsolete
+`no-typeof-narrowing` lint rule has been removed — the lowering is sound
+on variant receivers with the C++17 pin.
 
 **Fixed in the sixth pass:** the array-element destructuring swap
 (`[swap[0], swap[1]] = [swap[1], swap[0]]`) lowers through capture temps —
