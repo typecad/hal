@@ -146,6 +146,10 @@ to the numeric arm to avoid ambiguity). The `no-typeof-narrowing` lint
 rule now only fires on shapes the lowering does not support (e.g.
 `typeof x !== 'lit'` over multi-arm matches).
 
+**Fixed in the sixth pass:** the array-element destructuring swap
+(`[swap[0], swap[1]] = [swap[1], swap[0]]`) lowers through capture temps —
+the statement previously vanished (no lowering for element-access targets).
+
 **Still open (avoid; documented workarounds):** raw double concat
 formatting (`'v=' + n` on a double prints `7` in Node vs the embedded
 formatter natively — use `toFixed()`); tuple indexing beyond two
