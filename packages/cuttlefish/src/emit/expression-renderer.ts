@@ -872,7 +872,10 @@ export class ExpressionRenderer {
           `char ${bufferName}[${estimatedLength}];`,
           `snprintf(${bufferName}, sizeof(${bufferName}), "${argInfo.format}", ${argInfo.arg});`,
         );
-        return bufferName;
+        // Return a std::string temp, not the raw char-array name: consumers
+        // (an outer template's arg assembly) append .c_str(), valid on the
+        // std::string temp but not on the char array.
+        return `std::string(${bufferName})`;
       }
     }
     const inferredType = this.inferExpressionCppType(expr.expression, knownVariableTypes);

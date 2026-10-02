@@ -103,8 +103,10 @@ line2`;
   let state: PinState = 'input';
   state = 'output';
 
-  // ── typed arrays (tuples are deliberately absent: indexing a tuple
-  // emits garbage on the native tier - README findings) ────────────────────
+  // ── tuples and typed arrays ─────────────────────────────────────────────
+  // Heterogeneous tuples lower to std::tuple with std::get<N> access.
+  const pair: [number, number] = [7, 8];
+  const baud: [number, string] = [9600, 'baud'];
   const readings: number[] = [10, 20, 30];
   const names: string[] = ['ada', 'grace'];
 
@@ -147,6 +149,7 @@ line2`;
   report(`V05 unions: state=${state} swapped=${state === 'output' ? 'yes' : 'no'}`);
   report(`V06 enums: level=${Level.Medium} label=${Label.On}`);
   report(`V07 arrays: readings0=${readings[0]} readings2=${readings[2]} names1=${names[1]}`);
+  report(`V07b tuples: pair=${pair[0]}/${pair[1]} baud=${baud[0]} mode=${baud[1]}`);
   report(`V08 destructure: x=${x} y=${y} z=${z} px=${px} py=${py}`);
   report(`V09 destructure: inner=${inner} tag=${tag} first=${firstReading} rest=${restReadings.length}`);
   report(`V10 swap: a=${swapA} b=${swapB} combined=${combined.length}`);
@@ -242,13 +245,18 @@ function apply42(cb: (n: number) => number): number {
 }
 
 // ── closures ───────────────────────────────────────────────────────────────
-// Factories over captured PARAMETERS and forEach folds over a captured
-// local are the supported shapes. A factory returning a STATEFUL closure
-// (the classic counter — `let count` mutated from the returned lambda)
-// is defeated by the ownership pass, which emits the captured local as
-// `const` (README findings).
+// The STATEFUL closure (counter factory) now works: the ownership scan
+// walks lambda bodies, and the escaping lambda captures [=] mutable.
 function makeScale(k: number): (n: number) => number {
   return (n: number) => n * k;
+}
+
+function makeCounter(start: number): () => number {
+  let count = start;
+  return () => {
+    count += 1;
+    return count;
+  };
 }
 
 // ── recursion ──────────────────────────────────────────────────────────────
@@ -360,6 +368,9 @@ function sectionFunctions(): void {
     captured += v; // forEach fold over a captured local
   });
   report(`F10 captured: total=${captured}`);
+  const tick = makeCounter(90);
+  tick();
+  report(`F10b counter: tick=${tick()}`);
   report(`F11 recursion: fact5=${factorial(5)} fib10=${fib(10)} even10=${isEven(10)} odd7=${isOdd(7)}`);
   report(`F12 branches: ${classify(-3)} / ${classify(0)} / ${classify(12)}`);
   logIfOdd(4);

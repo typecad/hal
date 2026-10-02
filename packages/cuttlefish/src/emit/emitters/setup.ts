@@ -1306,6 +1306,20 @@ function collectUserVarNames(program: ProgramIR): Set<string> {
   if (programAnalysis.usesSet) {
     includes.push("<set>");
   }
+  // <variant> (typeof narrowing over unions + union-typed params/returns)
+  // and <tuple> ([A, B] annotations): scan the resolved IR text — the
+  // lowering emits std::holds_alternative/std::get and std::tuple<...>
+  // declarations whose headers are not covered by any single usesX flag.
+  {
+    const irText = JSON.stringify(program.topLevelStatements)
+      + JSON.stringify(program.functions.map(f => JSON.stringify(f.statements)));
+    if (irText.includes("std::variant") || irText.includes("std::holds_alternative")) {
+      includes.push("<variant>");
+    }
+    if (irText.includes("std::tuple")) {
+      includes.push("<tuple>");
+    }
+  }
   const needsSnprintf = strategy.useSnprintfForStrings() && (
     program.topLevelStatements.some((statement) => statementNeedsSnprintf(statement, strategy)) ||
     program.functions.some((fn) => fn.statements.some((statement) => statementNeedsSnprintf(statement, strategy))) ||
@@ -1360,8 +1374,22 @@ function collectUserVarNames(program: ProgramIR): Set<string> {
     (f) => (f.returnType ?? "").includes("std::variant")
       || f.parameters.some((p) => (p.cppType ?? "").includes("std::variant")),
   );
-  if (variantInAliases || variantInFunctions) {
+  // A typeof narrowing lowers the guard to holds_alternative at IR build —
+  // the raw text carries the arm type, not the word "variant". Scan the
+  // narrowed-guard shape too (the narrowing context is armed by control-flow).
+  const variantInNarrowing = JSON.stringify(program.topLevelStatements).includes("std::holds_alternative")
+    || JSON.stringify(program.functions.map(f => JSON.stringify(f.statements))).includes("std::holds_alternative");
+  if (variantInAliases || variantInFunctions || variantInNarrowing) {
     includes.push("<variant>");
+  }
+  // std::tuple (from [A, B] type annotations on params/returns/declared
+  // types) needs <tuple>. Same scan shape as <variant>.
+  const tupleInSigs = program.functions.some(
+    (f) => (f.returnType ?? "").includes("std::tuple")
+      || f.parameters.some((p) => (p.cppType ?? "").includes("std::tuple")),
+  ) || program.topLevelStatements.some((st) => JSON.stringify(st).includes("std::tuple"));
+  if (tupleInSigs) {
+    includes.push("<tuple>");
   }
   // std::function (closure-typed returns/vars/fields — `(x): number => …`
   // factories, `const f = makeScale(2)`) needs <functional>. Same scan shape
