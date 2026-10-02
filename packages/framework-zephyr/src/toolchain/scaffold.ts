@@ -122,6 +122,10 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     return src.includes(token);
   };
   const usage: KconfigUsage = {
+    // std::variant / std::holds_alternative / std::get on a variant need
+    // C++17 — the scaffold pins CPP14 unless the program lowers these.
+    needsCpp17: /std::(variant|optional|holds_alternative|get<)[^;]*|std::get<\d+>\(/.test(src)
+      && (src.includes('std::variant') || src.includes('holds_alternative')),
     usesAdc: uses('adc_'),
     usesPwm: uses('pwm_'),
     usesStrip: uses('led_strip'),

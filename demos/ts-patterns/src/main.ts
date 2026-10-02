@@ -329,6 +329,16 @@ function classify(n: number): string {
   return 'positive';
 }
 
+// typeof narrowing over a union: variant params need the C++17 pin the
+// scaffold now applies when std::variant/holds_alternative is in the
+// emitted source (the strategy reports supportsStdVariant accordingly).
+function describeId(id: number | string): string {
+  if (typeof id === 'number') {
+    return 'num:' + id.toFixed(0);
+  }
+  return 'str:' + id;
+}
+
 function logIfOdd(n: number): void { // void return
   if (n % 2 === 0) {
     return; // early void return
@@ -373,6 +383,7 @@ function sectionFunctions(): void {
   report(`F10b counter: tick=${tick()}`);
   report(`F11 recursion: fact5=${factorial(5)} fib10=${fib(10)} even10=${isEven(10)} odd7=${isOdd(7)}`);
   report(`F12 branches: ${classify(-3)} / ${classify(0)} / ${classify(12)}`);
+  report(`F12b narrowing: ${describeId(5)} ${describeId('five')}`);
   logIfOdd(4);
   logIfOdd(5);
 }

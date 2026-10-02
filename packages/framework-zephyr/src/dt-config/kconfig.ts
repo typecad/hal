@@ -39,6 +39,10 @@ export function applySensorKconfigExceptions(
 // ---------------------------------------------------------------------------
 
 export interface KconfigUsage {
+  /** The program lowers std::variant / std::optional / std::get — the
+   *  scaffold must pin CONFIG_STD_CPP17 instead of CPP14 (full libstdc++
+   *  ships the headers; only the standard level gates them). */
+  needsCpp17?: boolean;
   usesAdc?: boolean;
   usesPwm?: boolean;
   usesDac?: boolean;
@@ -620,7 +624,14 @@ export function resolveKconfigFragments(
   m.set('CONFIG_CPP', 'y');
   m.set('CONFIG_NEWLIB_LIBC', 'y');
   m.set('CONFIG_REQUIRES_FULL_LIBCPP', 'y');
-  m.set('CONFIG_STD_CPP14', 'y');
+  // C++17 when the program lowers std::variant/optional/holds_alternative
+  // (unions, typeof narrowing) — C++14 rejects those headers even with full
+  // libstdc++. Everything else stays on the C++14 baseline.
+  if (usage.needsCpp17) {
+    m.set('CONFIG_STD_CPP17', 'y');
+  } else {
+    m.set('CONFIG_STD_CPP14', 'y');
+  }
 
   // Main thread stack. WiFi already bumps this to 5200 (esp_wifi device init
   // is stack-hungry); HTTP/MQTT + TLS also bump it (the mbedTLS handshake is
