@@ -215,7 +215,7 @@ export class ExpressionRenderer {
       `static char ${bufferName}[${capacity}];`,
       `snprintf(${bufferName}, sizeof(${bufferName}), "${format}"${args.length > 0 ? `, ${args.join(", ")}` : ""});`,
     );
-    return bufferName;
+    return `std::string(${bufferName})`;
   }
 
   /**
@@ -996,7 +996,7 @@ export class ExpressionRenderer {
       `char ${bufferName}[${estimatedLength}];`,
       `snprintf(${bufferName}, sizeof(${bufferName}), "${formatString}"${args.length > 0 ? `, ${args.join(", ")}` : ""});`,
     );
-    return bufferName;
+    return `std::string(${bufferName})`;
   }
 
   /**
