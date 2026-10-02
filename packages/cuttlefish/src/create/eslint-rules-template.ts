@@ -727,37 +727,6 @@ export default {
       },
     },
 
-    "no-typeof-narrowing": {
-      meta: {
-        type: "problem",
-        docs: {
-          description:
-            "[transpiler] narrowing a union with 'typeof x === \\'literal\\'' compiles the guard away to 'if (false)' - silently wrong branches.",
-        },
-      },
-      create(context) {
-        function isTypeofStringCompare(node) {
-          if (!node || node.type !== "BinaryExpression") return false;
-          if (node.operator !== "===" && node.operator !== "!==" && node.operator !== "==" && node.operator !== "!=") return false;
-          const sides = [node.left, node.right];
-          const hasTypeof = sides.some((s) => s.type === "UnaryExpression" && s.operator === "typeof");
-          const hasStringLit = sides.some((s) => s.type === "Literal" && typeof s.value === "string");
-          return hasTypeof && hasStringLit;
-        }
-        function checkTest(test, report) {
-          if (isTypeofStringCompare(test)) {
-            report({ node: test, message: "[transpiler] 'typeof x === <string literal>' narrows nothing - the guard lowers to a constant false and the other branch never runs. Narrow with an explicit operator check or a tagged-union kind field." });
-          }
-        }
-        return {
-          IfStatement(node) { checkTest(node.test, context.report); },
-          ConditionalExpression(node) { checkTest(node.test, context.report); },
-          WhileStatement(node) { checkTest(node.test, context.report); },
-          DoWhileStatement(node) { checkTest(node.test, context.report); },
-        };
-      },
-    },
-
     "no-generic-new-primitive": {
       meta: {
         type: "problem",

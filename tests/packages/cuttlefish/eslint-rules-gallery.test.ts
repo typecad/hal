@@ -17,7 +17,6 @@ import rulesModule from "../../../eslint-transpiler-rules.mjs";
 const NEW_RULES = [
   "no-interface-literal-binding",
   "no-set-accessors",
-  "no-typeof-narrowing",
   "no-generic-new-primitive",
   "no-array-returning-function",
   "no-multi-arg-push",
@@ -81,21 +80,7 @@ describe("transpiler eslint rules — gallery findings", () => {
     if (lint(good, ["no-set-accessors"]) !== 0) throw new Error("expected no findings");
   });
 
-  it("no-typeof-narrowing fires on typeof comparisons in guards", () => {
-    const bad = `
-      function f(x: number | string): string {
-        if (typeof x === 'number') { return 'n'; }
-        return 's';
-      }
-    `;
-    if (lint(bad, ["no-typeof-narrowing"]) !== 1) throw new Error("expected 1 finding");
-    const good = `
-      function f(x: number | string): boolean {
-        return x === 'seven';
-      }
-    `;
-    if (lint(good, ["no-typeof-narrowing"]) !== 0) throw new Error("expected no findings");
-  });
+
 
   it("no-generic-new-primitive fires on primitive type arguments to new", () => {
     const bad = `
