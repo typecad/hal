@@ -346,3 +346,23 @@ describe("fixed — typeof narrowing over a union", () => {
     expect(out.cpp).not.toMatch(/if \(false\)/);
   });
 });
+
+describe("fixed — destructuring element swap", () => {
+  it("[arr[0], arr[1]] = [arr[1], arr[0]] swaps via temps", () => {
+    diffCase(
+      "elem-swap",
+      `
+        declare function report(line: string): void;
+        const swap = [1, 2];
+        [swap[0], swap[1]] = [swap[1], swap[0]];
+        report('a=' + swap[0] + ' b=' + swap[1]);
+      `,
+    );
+    const out = transpileNative(`
+      const swap = [1, 2];
+      [swap[0], swap[1]] = [swap[1], swap[0]];
+    `);
+    expect(out.cpp).toContain("__swap_");
+    expect(out.cpp).toContain("swap[0] = __swap_");
+  });
+});

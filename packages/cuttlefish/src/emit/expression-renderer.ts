@@ -218,6 +218,21 @@ export class ExpressionRenderer {
   }
 
   /**
+   * A nested template literal lowers to an inner `__cuttlefish_str_N` char
+   * buffer. When an outer snprintf arg references that buffer with
+   * `.c_str()` appended, the call is invalid (the buffer is a char ARRAY -
+   * g++: "non-class type 'char [N]'"). Strip the wrapper; the array already
+   * decays to `const char*`.
+   */
+  private static readonly NESTED_BUFFER_C_STR = new RegExp("__cuttlefish_str_\d+\.c_str\(\)", "g");
+
+  sanitizeNestedBufferArgs(args: string[]): void {
+    for (let ai = 0; ai < args.length; ai++) {
+      args[ai] = args[ai].replace(ExpressionRenderer.NESTED_BUFFER_C_STR, (m) => m.replace(".c_str()", ""));
+    }
+  }
+
+  /**
    * Renders an expression IR node to a C++ string.
    * 
    * @param expr The expression to render
@@ -655,6 +670,7 @@ export class ExpressionRenderer {
       case "element-access": {
         if (expr.elementType && expr.elementType !== "auto") return expr.elementType;
         const objectType = this.inferExpressionCppType(expr.object, knownVariableTypes);
+        console.error("DBG-EA:", expr.object.kind, objectType);
         if (!objectType) return undefined;
         // Indexing a C string (const char*/char*) or a std::string yields a
         // single char — callers concat it as a 1-char string and compare it
@@ -845,6 +861,11 @@ export class ExpressionRenderer {
         if (argInfo.preludeLines) {
           this._preludeLines.push(...argInfo.preludeLines);
         }
+        // A NESTED template interpolation lowered its inner template to a
+        // `__cuttlefish_str_N` char BUFFER whose inferred type was
+        // std::string - the outer arg assembly then wrapped the buffer name
+        // in .c_str(), invalid on a char array (g++: "non-class type
+        // 'char [N]'"). The buffer already decays to const char*.
         const bufferName = `__cuttlefish_str_${++this._snprintfCounter.value}`;
         const estimatedLength = Math.max(argInfo.estimatedLength + 1, 16);
         this._preludeLines.push(
@@ -911,8 +932,17 @@ export class ExpressionRenderer {
         if (argInfo.preludeLines) {
           this._preludeLines.push(...argInfo.preludeLines);
         }
+        // A nested template lowers to a __cuttlefish_str_N char buffer; that
+        // is already a `const char*` for varargs — appending .c_str() on the
+        // char ARRAY is invalid (g++: "request for member 'c_str' in ...
+        // non-class type 'char [N]'").
+        let argText = argInfo.arg;
+        const nestedBuf = /^__cuttlefish_str_\d+$/.test(argText);
+        if (nestedBuf) {
+          argText = argText.replace(/\.c_str\(\)$/, "");
+        }
         formatString += argInfo.format;
-        args.push(argInfo.arg);
+        args.push(argText);
         estimatedLength += argInfo.estimatedLength;
         continue;
       }
@@ -921,6 +951,7 @@ export class ExpressionRenderer {
       return undefined;
     }
 
+    this.sanitizeNestedBufferArgs(args);
     const bufferName = `__cuttlefish_str_${++this._snprintfCounter.value}`;
     estimatedLength = Math.max(estimatedLength, 16);
     this._preludeLines.push(
@@ -994,10 +1025,20 @@ export class ExpressionRenderer {
     }
     if (expr.kind !== "number" && expr.kind !== "boolean" && expr.kind !== "string") {
       const inferredType = this.inferExpressionCppType(expr, knownVariableTypes);
-      console.error("DBG935:", expr.kind, inferredType);
       if (inferredType) {
         const rendered = this.render(expr, exprTransformer, knownVariableTypes);
-        const normalized = this.strategy.normalizeCppType(inferredType);
+        // A CONCRETE container element type (std::vector<int> -> "int") is
+        // already the exact C++ type — normalizeCppType's TS-number remap
+        // (int -> long long on the native strategy) turned a 4-byte int
+        // element into %lld, an 8-byte vararg read of a 4-byte slot
+        // (upper-half garbage on b=...). Keep the concrete element type.
+        const fromConcreteContainer = expr.kind === "element-access"
+          && expr.elementType !== undefined
+          && expr.elementType !== "auto"
+          && inferredType === "int";
+        const normalized = fromConcreteContainer
+          ? "int"
+          : this.strategy.normalizeCppType(inferredType);
         // Enum-typed value first (a shape the shared classifier does not know):
         // C++ enum class values need static_cast<int>(...) for %d — without
         // it, -Wformat= warns that the argument type (enum) doesn't match %d.
@@ -1158,6 +1199,11 @@ export class ExpressionRenderer {
           const falseFmt = this.inferFormatSpecifier(expr.whenFalse, exprTransformer, knownVariableTypes);
           const strBranch = trueFmt?.format === "%s" ? trueFmt : falseFmt?.format === "%s" ? falseFmt : undefined;
           if (strBranch) {
+            // A nested __cuttlefish_str_N buffer is a char ARRAY — .c_str()
+            // does not exist on it (g++: "non-class type 'char [N]'").
+            if (/^__cuttlefish_str_\d+$/.test(rendered)) {
+              return { format: "%s", arg: rendered, estimatedLength: Math.max(strBranch.estimatedLength, 16) };
+            }
             const inferredCommon = this.inferExpressionCppType(expr, knownVariableTypes);
             const needsCStr = inferredCommon === "std::string" || inferredCommon === "__tc_str_ptr";
             return {

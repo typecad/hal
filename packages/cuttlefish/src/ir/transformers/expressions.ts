@@ -511,16 +511,27 @@ export function expressionStatementToIR(
   if (ts.isBinaryExpression(expr)
       && expr.operatorToken.kind === ts.SyntaxKind.EqualsToken
       && ts.isArrayLiteralExpression(expr.left)) {
-    const targets = expr.left.elements.filter(ts.isIdentifier);
+    // Targets may be IDENTIFIERS (`[a, b] = ...`) or ELEMENT-ACCESS
+    // expressions (`[arr[0], arr[1]] = ...` — the array-swap idiom). The
+    // original filter(ts.isIdentifier) dropped element targets entirely:
+    // the swap statement lowered to NOTHING (silent no-op).
+    const isTarget = (e: ts.Expression): e is ts.Identifier | ts.ElementAccessExpression =>
+      ts.isIdentifier(e) || ts.isElementAccessExpression(e);
+    const targets = expr.left.elements.filter(isTarget);
+    const targetName = (e: ts.Identifier | ts.ElementAccessExpression): string =>
+      renderExprAsText(expressionToIR(e, sourceText, diagnostics, pointerVars));
     const rhs = expr.right;
     const stmts: StatementIR[] = [];
     const span = makeSourceSpan(statement, fileName, sourceText);
     const comments = extractNodeComments(statement, sourceText);
     if (ts.isArrayLiteralExpression(rhs)) {
       // `[a, b] = [b, a]` → temp_0 = b; temp_1 = a; a = temp_0; b = temp_1;
+      // Temps capture ALL old values BEFORE any assignment — the swap
+      // contract (element targets included: arr[0]=arr[1] then
+      // arr[1]=arr[0] without temps loses the original arr[0]).
       const temps: string[] = [];
       for (let i = 0; i < targets.length; i++) {
-        const tempName = `__swap_${i}`;
+        const tempName = `__swap_${statement.getStart()}_${i}`;
         temps.push(tempName);
         stmts.push({
           kind: "var_decl",
@@ -535,7 +546,7 @@ export function expressionStatementToIR(
         stmts.push({
           kind: "assign",
           sourceSpan: span,
-          target: targets[i].text,
+          target: targetName(targets[i]),
           operator: "=",
           value: { kind: "identifier", value: temps[i] },
         });
@@ -547,7 +558,7 @@ export function expressionStatementToIR(
         stmts.push({
           kind: "assign",
           sourceSpan: span,
-          target: targets[i].text,
+          target: targetName(targets[i]),
           operator: "=",
           value: { kind: "element-access", object: { kind: "identifier", value: rhsText }, index: { kind: "number", value: i } },
         });
