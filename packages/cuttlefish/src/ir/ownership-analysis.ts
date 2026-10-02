@@ -1652,10 +1652,30 @@ function getNestedStatements(stmt: StatementIR): StatementIR[] | undefined {
       }
       return result.length > 0 ? result : undefined;
     }
-    case 'var_decl':
+    case 'var_decl': {
+      // A lambda initializer (the counter factory: `let count = start;
+      // return () => { count += 1; };`) captures the enclosing scope by
+      // reference ([&]) — assignments inside the lambda body are mutations
+      // of the outer local. The mutation scan must see them, or the
+      // suggest-const pass promotes a mutated binding to `const` and g++
+      // rejects the lambda ("assignment of read-only variable").
+      const init = stmt.initializer as { kind?: string; body?: StatementIR[] } | undefined;
+      if (init && init.kind === 'lambda' && Array.isArray(init.body)) {
+        return init.body;
+      }
+      return undefined;
+    }
+    case 'return': {
+      // `return () => { count += 1; }` — the lambda expression lowers to a
+      // lambda STATEMENT whose body mutates the enclosing scope ([&] capture).
+      const value = (stmt as unknown as { value?: { kind?: string; body?: StatementIR[] } }).value;
+      if (value && value.kind === 'lambda' && Array.isArray(value.body)) {
+        return value.body;
+      }
+      return undefined;
+    }
     case 'assign':
     case 'update':
-    case 'return':
     case 'break':
     case 'continue':
     case 'throw':

@@ -937,11 +937,15 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       const targetFile = resolved.sourcePath;
       // Only track imports from files in our transpile graph
       if (!fileDefinedSymbols.has(targetFile)) continue;
+      // Aliased imports (`runHelper as rh`) must record the EXPORTED name -
+      // the defining module exports `runHelper`; the local alias only exists
+      // in the importing file.
+      const aliasSource = new Map((imp.importAliases ?? []).map(a => [a.local, a.source]));
       for (const symbol of imp.namedImports) {
         if (!crossModuleImports.has(targetFile)) {
           crossModuleImports.set(targetFile, new Set());
         }
-        crossModuleImports.get(targetFile)!.add(symbol);
+        crossModuleImports.get(targetFile)!.add(aliasSource.get(symbol) ?? symbol);
       }
       // Handle default imports: import X from "./module.js"
       if (imp.defaultImportName) {

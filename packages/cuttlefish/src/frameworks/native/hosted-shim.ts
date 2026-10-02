@@ -38,6 +38,13 @@ export function hostedCoreShimLines(): string[] {
       'inline bool cuttlefish_is_nullish(double v) { return v == static_cast<double>(CUTTLEFISH_UNDEFINED); }',
       'inline bool cuttlefish_is_nullish(bool v) { return v == false; }',
       'template<typename T> inline bool cuttlefish_is_nullish(T* v) { return v == nullptr; }',
+      // A std::function (an optional-call target, cb?.()) is nullish when
+      // empty — without this the generic template returned false for every
+      // function object and the guard INVOKED an empty std::function
+      // (std::bad_function_call). Requires <functional> (see includes).',
+      'inline bool cuttlefish_is_nullish(const std::function<void()>& v) { return !static_cast<bool>(v); }',
+      'template<typename R> inline bool cuttlefish_is_nullish(const std::function<R()>& v) { return !static_cast<bool>(v); }',
+      'template<typename R, typename A> inline bool cuttlefish_is_nullish(const std::function<R(A)>& v) { return !static_cast<bool>(v); }',
       'template<typename T> inline bool cuttlefish_exists(const T& v) { return !cuttlefish_is_nullish(v); }',
       'template<typename T, typename U> inline T cuttlefish_nullish(const T& a, U b) { return !cuttlefish_is_nullish(a) ? a : (T)b; }',
       'namespace Date { inline long now() { auto t = std::chrono::system_clock::now(); return static_cast<long>(std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch()).count()); } }',

@@ -155,6 +155,44 @@ function processDestructuredParameter(
   };
 }
 
+
+/**
+ * The C++ zero value for a TS optional parameter's type: `p?: T` reads as
+ * `undefined` in TS, and the runtime's CUTTLEFISH_UNDEFINED convention is
+ * 0 / "" / false for the primitive families. Non-primitive types get no
+ * default (the caller must pass them; a braced zero-init of a pointer type
+ * would be ill-formed).
+ */
+function zeroValueForType(cppType: string): ExpressionIR | undefined {
+  switch (cppType) {
+    case "int":
+    case "long":
+    case "long long":
+    case "short":
+    case "unsigned int":
+    case "unsigned long":
+    case "unsigned long long":
+    case "int8_t":
+    case "int16_t":
+    case "int32_t":
+    case "int64_t":
+    case "uint8_t":
+    case "uint16_t":
+    case "uint32_t":
+    case "uint64_t":
+    case "size_t":
+    case "float":
+    case "double":
+      return { kind: "number", value: 0 };
+    case "bool":
+      return { kind: "boolean", value: false };
+    case "std::string":
+      return { kind: "string", value: "" };
+    default:
+      return undefined;
+  }
+}
+
 export type LowerStatementListFn = (
   statements: readonly ts.Statement[] | ts.NodeArray<ts.Statement>,
   fileName: string,
@@ -208,7 +246,12 @@ export function functionDeclarationToIR(
         cppType: (parameterType === "void" ? "auto" : parameterType) as Exclude<CppTypeHint, "void">,
         defaultValue: parameter.initializer
           ? expressionToIR(parameter.initializer, sourceText, diagnostics, pointerVars)
-          : undefined,
+          : // An optional param (`port?: number`) is a defaulted parameter:
+            // TS reads it as undefined, which lowers to the type's zero value
+            // (CUTTLEFISH_UNDEFINED is 0/""/false across the runtime).
+            parameter.questionToken
+            ? zeroValueForType(parameterType)
+            : undefined,
         isRest: !!parameter.dotDotDotToken,
         ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
       });
@@ -349,6 +392,8 @@ export function variableAsFunctionToIR(
           cppType: (parameterType === "void" ? "auto" : parameterType) as Exclude<CppTypeHint, "void">,
           defaultValue: parameter.initializer
             ? expressionToIR(parameter.initializer, sourceText, diagnostics, pointerVars)
+            : parameter.questionToken
+            ? zeroValueForType(parameter.type ? typeNodeToCppType(parameter.type, typeAliasNodes) : 'auto' as CppTypeHint)
             : undefined,
           isRest: !!parameter.dotDotDotToken,
           ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
@@ -699,6 +744,8 @@ export function hoistNestedClass(
             cppType: (paramType === "void" ? "auto" : paramType) as Exclude<CppTypeHint, "void">,
             defaultValue: param.initializer
               ? expressionToIR(param.initializer, sourceText, diagnostics)
+              : param.questionToken
+              ? zeroValueForType(paramType as CppTypeHint)
               : undefined,
             isRest: !!param.dotDotDotToken,
             ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),
@@ -776,6 +823,8 @@ export function hoistNestedClass(
             cppType: (paramType === "void" ? "auto" : paramType) as Exclude<CppTypeHint, "void">,
             defaultValue: param.initializer
               ? expressionToIR(param.initializer, sourceText, diagnostics)
+              : param.questionToken
+              ? zeroValueForType(paramType as CppTypeHint)
               : undefined,
             isRest: !!param.dotDotDotToken,
             ...(paramOwnershipKind ? { ownershipKind: paramOwnershipKind } : {}),

@@ -317,6 +317,15 @@ function analyzeExpression(
         result.usesNullish = true;
         result.usesNullishHelper = true;
       }
+      // A `??` whose operands need no runtime helper STILL lowers to a
+      // cuttlefish_nullish CALL when the analyzer's raw-text scan misses it
+      // (the call IR carries structured args; the callee text only exists at
+      // emit). Detect the CALL SHAPE: any raw expr whose value names a
+      // cuttlefish helper.
+      if (/cuttlefish_(nullish|exists|is_nullish)/.test(expr.value)) {
+        result.usesNullish = true;
+        result.usesNullishHelper = true;
+      }
       if (/\bNum\b/.test(expr.value)) {
         result.usesNum = true;
       }
@@ -455,6 +464,14 @@ function analyzeExpression(
       analyzeExpression(expr.whenFalse, result, strategy);
       break;
 
+    case "paren":
+      // A paren-wrapped expression (e.g. `(n ?? -1)` lowering to a raw
+      // cuttlefish_nullish call) must feed the same helper gates as its
+      // inner form — a missing case silently dropped every shim the inner
+      // expression needed.
+      analyzeExpression((expr as unknown as { inner: ExpressionIR }).inner, result, strategy);
+      break;
+
     case "await":
       analyzeExpression(expr.value, result, strategy);
       break;
@@ -544,6 +561,12 @@ function analyzeStatement(
     case "call":
       if (statement.callee === "Serial.begin" || statement.callee.endsWith(".begin")) {
         result.hasSerialBegin = true;
+      }
+      // `??` lowers to a cuttlefish_nullish CALL (structured args; the raw
+      // expr.value scan above cannot see the callee) — trigger the shim.
+      if (/cuttlefish_(nullish|exists|is_nullish)/.test(String(statement.callee ?? ''))) {
+        result.usesNullish = true;
+        result.usesNullishHelper = true;
       }
       if (statement.callee === "String") {
         result.usesStringConversion = true;

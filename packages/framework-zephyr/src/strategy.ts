@@ -906,6 +906,10 @@ export class ZephyrStrategy implements PlatformStrategy {
     const chip = this.resolveChip(ctx, program);
     const a = (ctx as any)?.analysis;
     const uses = (f: string): boolean => (a ? !!a[f] : true);
+    // Order-proof nullish trigger: the lowering site sets this on the build
+    // context when ANY `??` lowers to cuttlefish_nullish (the textual scan
+    // can miss it depending on pipeline phase).
+    const nullishSeen = (ctx as unknown as { nullishHelperSeen?: boolean } | undefined)?.nullishHelperSeen === true;
     const helpers = (a as { usedPolyfillHelpers?: Set<string> } | undefined)?.usedPolyfillHelpers;
 
     // --- Core shim, gated item by item on actual use ------------------------
@@ -917,7 +921,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     // literals (usesNullish), emits nullish helper CALLS (usesNullishHelper),
     // or has async functions (the async state machine uses the macro for
     // default waitFor* timeouts — not visible to the nullish scanners).
-    if (uses('usesNullish') || uses('usesNullishHelper') || uses('hasAsync')) {
+    if (uses('usesNullish') || uses('usesNullishHelper') || uses('hasAsync') || nullishSeen) {
       guardBody.push(
         '#ifndef CUTTLEFISH_UNDEFINED',
         '#define CUTTLEFISH_UNDEFINED 0',
@@ -928,7 +932,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     // cuttlefish_exists CALLS (?? / ?. lowering). A file that only references
     // null/undefined literals needs just the macro above — the same
     // distinction the setup emitter's strip filter documents.
-    if (uses('usesNullishHelper')) {
+    if (uses('usesNullishHelper') || nullishSeen) {
       guardBody.push(
         'template<typename T> inline bool cuttlefish_is_nullish(const T& v) { return false; }',
         'inline bool cuttlefish_is_nullish(long long v) { return v == CUTTLEFISH_UNDEFINED; }',
@@ -936,6 +940,12 @@ export class ZephyrStrategy implements PlatformStrategy {
         'inline bool cuttlefish_is_nullish(double v) { return v == static_cast<double>(CUTTLEFISH_UNDEFINED); }',
         'inline bool cuttlefish_is_nullish(bool v) { return v == false; }',
         'template<typename T> inline bool cuttlefish_is_nullish(T* v) { return v == nullptr; }',
+        // A std::function (an optional-call target, cb?.()) is nullish when
+        // empty - the generic template returned false and the guard INVOKED
+        // an empty std::function (std::bad_function_call).
+        'inline bool cuttlefish_is_nullish(const std::function<void()>& v) { return !static_cast<bool>(v); }',
+        'template<typename R> inline bool cuttlefish_is_nullish(const std::function<R()>& v) { return !static_cast<bool>(v); }',
+        'template<typename R, typename A> inline bool cuttlefish_is_nullish(const std::function<R(A)>& v) { return !static_cast<bool>(v); }',
         'template<typename T> inline bool cuttlefish_exists(const T& v) { return !cuttlefish_is_nullish(v); }',
         'template<typename T, typename U> inline T cuttlefish_nullish(const T& a, U b) { return !cuttlefish_is_nullish(a) ? a : (T)b; }',
       );
@@ -2471,7 +2481,31 @@ inline bool __tc_includes(const std::string& s, const char* needle) { return s.f
 // scan flags __tc_toFixed( as a float-format site so the scaffold turns it
 // on. Digits are clamped so a bad input cannot balloon the fixed-point
 // expansion past the stack buffer (snprintf truncates safely beyond it).
-inline std::string __tc_toFixed(double val, int digits) { if (digits < 0) { digits = 0; } if (digits > 20) { digits = 20; } // JS toFixed: n/10^d closest to the EXACT binary value, ties -> away from // zero. printf uses half-even. Differ ONLY at exact decimal ties. Detect // via scaled - floor(scaled) == 0.5, VERIFIED by reconstructing val from // the scaled integers (a double multiply creates false ties: 2.775*100 // rounds to exactly 277.5 while the true value is 277.4999...; the // reconstruction 277/100 + 0.005 != 2.775 rejects it). Nudge away from // zero by half a unit in the last place, then printf. double scale = 1.0; for (int i = 0; i < digits; i++) { scale *= 10.0; } double scaled = val * scale; if (scaled - floor(scaled) == 0.5 && val == floor(scaled) / scale + 0.5 / scale) { val += (val < 0 ? -0.5 : 0.5) / scale; } char b[340]; snprintf(b, sizeof(b), "%.*f", digits, val); return std::string(b); }
+//
+// JS toFixed: n/10^d closest to the EXACT binary value, ties -> away from
+// zero. printf uses half-even. Differ ONLY at exact decimal ties. Detect
+// via scaled - floor(scaled) == 0.5, VERIFIED by reconstructing val from
+// the scaled integers (a double multiply creates false ties: 2.775*100
+// rounds to exactly 277.5 while the true value is 277.4999...; the
+// reconstruction 277/100 + 0.005 != 2.775 rejects it). Nudge away from
+// zero by half a unit in the last place, then printf.
+// NOTE: this helper must stay multi-line — an earlier single-line form
+// carried "//" comments INSIDE the body, which commented out everything
+// after them (body and closing brace included) and unbalanced every header
+// that defined the helper.
+inline std::string __tc_toFixed(double val, int digits) {
+    if (digits < 0) { digits = 0; }
+    if (digits > 20) { digits = 20; }
+    double scale = 1.0;
+    for (int i = 0; i < digits; i++) { scale *= 10.0; }
+    double scaled = val * scale;
+    if (scaled - floor(scaled) == 0.5 && val == floor(scaled) / scale + 0.5 / scale) {
+        val += (val < 0 ? -0.5 : 0.5) / scale;
+    }
+    char b[340];
+    snprintf(b, sizeof(b), "%.*f", digits, val);
+    return std::string(b);
+}
 inline std::string __tc_toUpperCase(const std::string& s) { std::string r = s; for (char& c : r) { if (c >= 'a' && c <= 'z') { c = static_cast<char>(c - 32); } } return r; }
 inline std::string __tc_toLowerCase(const std::string& s) { std::string r = s; for (char& c : r) { if (c >= 'A' && c <= 'Z') { c = static_cast<char>(c + 32); } } return r; }
 inline std::string __tc_trim(const std::string& s) { const char* ws = " \\t\\n\\r" ; size_t b = s.find_first_not_of(ws); if (b == std::string::npos) { return std::string(); } size_t e = s.find_last_not_of(ws); return s.substr(b, (e - b) + 1U); }

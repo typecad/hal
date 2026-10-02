@@ -61,6 +61,13 @@ export class CompilationContext {
   activeArrayLiteralVars = new Set<string>();
   activeStringVars = new Set<string>();
   mutableArrayVars = new Set<string>();
+  /** Set when any `??` lowered to cuttlefish_nullish — the shim gate reads it
+   *  in addition to the textual scan (order-proof nullish helper emission). */
+  nullishHelperSeen = false;
+  /** Active variant-narrowing: varName -> narrowed arm C++ type. Set while a
+   *  then-branch of `if (typeof x === 'lit')` lowers over a variant-typed x;
+   *  identifier and member accesses on x lower through std::get<Arm>(x). */
+  variantNarrowing = new Map<string, string>();
   arrayLiteralSizes = new Map<string, number>();
   // Static push/unshift site count per array var (for StaticArray capacity
   // sizing) — file-scoped like mutableArrayVars. A var pushed from inside a
@@ -307,6 +314,11 @@ export const crossModuleFunctionReturns = createMapProxy(ctx => ctx.crossModuleF
 export const registerFieldMap = createMapProxy(ctx => ctx.registerFieldMap);
 export const halInstances = createMapProxy(ctx => ctx.halInstances);
 export const topLevelAliasReceivers = createMapProxy(ctx => ctx.topLevelAliasReceivers);
+
+/** Cross-module import aliases: LOCAL name -> SOURCE (exported) name.
+ *  `import { runHelper as rh }` registers rh -> runHelper so call sites and
+ *  reachability key on the exported definition's name. Reset per file. */
+export const importNameAliases = new Map<string, string>();
 export const floatVariables = createSetProxy(ctx => ctx.floatVariables);
 
 export const hoistedNestedFunctions = createArrayProxy(ctx => ctx.hoistedNestedFunctions);
@@ -493,6 +505,9 @@ export function resetBuildState(): void {
   hoistedNestedTypeAliases.length = 0;
   nestedFunctionAliases.clear();
   topLevelAliasReceivers.clear();
+  importNameAliases.clear();
+  (getContext() as unknown as { nullishHelperSeen: boolean }).nullishHelperSeen = false;
+  (getContext() as unknown as { variantNarrowing: Map<string, string> }).variantNarrowing.clear();
   nestedClassAliases.clear();
   resetFunctionScopeState();
   activeNamespaceNames.clear();

@@ -671,6 +671,175 @@ export default {
         };
       },
     },
+
+    "no-interface-literal-binding": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] An object literal bound to a capitalized-type-annotated variable (or returned from a function with such a return type) lowers the annotation to a pointer but emits the braced initializer verbatim - ill-formed C++ (g++: 'scalar object requires one element in initializer').",
+        },
+      },
+      create(context) {
+        function isNamedType(typeAnnotation) {
+          return !!(typeAnnotation && typeAnnotation.type === "TSTypeReference" && typeAnnotation.typeName && typeAnnotation.typeName.type === "Identifier" && /^[A-Z]/.test(typeAnnotation.typeName.name));
+        }
+        function declaredNamedType(fn) {
+          return !!(fn && fn.returnType && isNamedType(fn.returnType.typeAnnotation));
+        }
+        return {
+          VariableDeclaration(node) {
+            for (const d of node.declarations) {
+              if (d.id && d.id.typeAnnotation && isNamedType(d.id.typeAnnotation.typeAnnotation) && d.init && d.init.type === "ObjectExpression") {
+                context.report({ node: d, message: "[transpiler] an object literal bound to a named-type annotation emits 'T* name = { ... }' - ill-formed C++. Pass the literal to a typed parameter, store it unannotated, or use a class instance (new T(...))." });
+              }
+            }
+          },
+          ReturnStatement(node) {
+            if (!node.argument || node.argument.type !== "ObjectExpression") return;
+            let current = node.parent;
+            while (current) {
+              if ((current.type === "FunctionDeclaration" || current.type === "FunctionExpression" || current.type === "ArrowFunctionExpression") && declaredNamedType(current)) {
+                context.report({ node, message: "[transpiler] an object literal returned from a named-type-annotated function emits a braced initializer for a pointer - ill-formed C++. Return a class instance instead." });
+                return;
+              }
+              current = current.parent;
+            }
+          },
+        };
+      },
+    },
+
+    "no-set-accessors": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] set accessors lower a property write to an rvalue assignment (g++: 'lvalue required as left operand of assignment').",
+        },
+      },
+      create(context) {
+        return {
+          "MethodDefinition[kind='set']"(node) {
+            context.report({ node, message: "[transpiler] set accessors lower to an rvalue assignment and fail to compile. Replace the setter with an explicit method (e.g. setX(v))." });
+          },
+        };
+      },
+    },
+
+    "no-typeof-narrowing": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] narrowing a union with 'typeof x === \\'literal\\'' compiles the guard away to 'if (false)' - silently wrong branches.",
+        },
+      },
+      create(context) {
+        function isTypeofStringCompare(node) {
+          if (!node || node.type !== "BinaryExpression") return false;
+          if (node.operator !== "===" && node.operator !== "!==" && node.operator !== "==" && node.operator !== "!=") return false;
+          const sides = [node.left, node.right];
+          const hasTypeof = sides.some((s) => s.type === "UnaryExpression" && s.operator === "typeof");
+          const hasStringLit = sides.some((s) => s.type === "Literal" && typeof s.value === "string");
+          return hasTypeof && hasStringLit;
+        }
+        function checkTest(test, report) {
+          if (isTypeofStringCompare(test)) {
+            report({ node: test, message: "[transpiler] 'typeof x === <string literal>' narrows nothing - the guard lowers to a constant false and the other branch never runs. Narrow with an explicit operator check or a tagged-union kind field." });
+          }
+        }
+        return {
+          IfStatement(node) { checkTest(node.test, context.report); },
+          ConditionalExpression(node) { checkTest(node.test, context.report); },
+          WhileStatement(node) { checkTest(node.test, context.report); },
+          DoWhileStatement(node) { checkTest(node.test, context.report); },
+        };
+      },
+    },
+
+    "no-generic-new-primitive": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] new Generic<number>() emits the primitive keyword verbatim as a template argument ('number' is not a C++ type).",
+        },
+      },
+      create(context) {
+        return {
+          NewExpression(node) {
+            if (node.callee.type === "Identifier" && ["Array", "Map", "Set"].includes(node.callee.name)) return;
+            const tp = node.typeParameters || node.typeArguments;
+            if (!tp || tp.type !== "TSTypeParameterInstantiation") return;
+            const primitive = tp.params.some((p) => p.type === "TSNumberKeyword" || p.type === "TSStringKeyword" || p.type === "TSBooleanKeyword");
+            if (primitive) {
+              context.report({ node, message: "[transpiler] new Generic<number>() emits the unresolved name 'number' as a template argument. Instantiate through a concrete subclass or a factory function whose body pins the element type." });
+            }
+          },
+        };
+      },
+    },
+
+    "no-array-returning-function": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] a function whose declared return type is T[] renders a C-array return, which is ill-formed C++ ('function returning an array').",
+        },
+      },
+      create(context) {
+        function check(fn) {
+          if (fn.returnType && fn.returnType.typeAnnotation && fn.returnType.typeAnnotation.type === "TSArrayType") {
+            context.report({ node: fn, message: "[transpiler] a function returning T[] renders a C-array return type (ill-formed C++). Fill a module-level result array and return void instead." });
+          }
+        }
+        return {
+          FunctionDeclaration: check,
+          FunctionExpression: check,
+          ArrowFunctionExpression: check,
+          MethodDefinition(node) { check(node.value); },
+        };
+      },
+    },
+
+    "no-multi-arg-push": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] push with multiple arguments has no fixed-capacity lowering on embedded targets (single-argument pushes only).",
+        },
+      },
+      create(context) {
+        return {
+          CallExpression(node) {
+            const c = node.callee;
+            if (c.type === "MemberExpression" && !c.computed && c.property.type === "Identifier" && c.property.name === "push" && node.arguments.length > 1) {
+              context.report({ node, message: "[transpiler] arr.push(a, b) has no fixed-capacity lowering - use one push per element." });
+            }
+          },
+        };
+      },
+    },
+
+    "no-bare-super-call": {
+      meta: {
+        type: "problem",
+        docs: {
+          description:
+            "[transpiler] a bare super() crashes the emitter ('unsupported StatementIR kind super_call') when the base class declares no constructor.",
+        },
+      },
+      create(context) {
+        return {
+          'CallExpression[callee.type="Super"][arguments.length=0]'(node) {
+            context.report({ node, message: "[transpiler] a bare super() crashes the emitter when the base class declares no constructor. Either omit super() entirely or pass the base constructor's arguments." });
+          },
+        };
+      },
+    },
   },
 };
 `;

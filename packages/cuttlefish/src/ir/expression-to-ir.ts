@@ -2,7 +2,9 @@
 import { Diagnostic } from "../types.js";
 import { ExpressionIR, StatementIR, ClassIR } from "../api/index.js";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils.js";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, requiredIncludes, throwExpressionDepth, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, objectTypeAliasNames, classTypeNames, topLevelClasses, getActiveExtendsClass, getActiveClassName, restParamFunctions, getContext, getCurrentBoardConstants, inConditionContext, enterConditionContext, exitConditionContext, mapEntryVarNames, crossModuleFunctionReturns, userDeclaredVarNames } from "./build-ir-state.js";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, requiredIncludes, throwExpressionDepth, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, objectTypeAliasNames, classTypeNames, topLevelClasses, getActiveExtendsClass, getActiveClassName, restParamFunctions, getContext, getCurrentBoardConstants, inConditionContext, enterConditionContext, exitConditionContext, mapEntryVarNames, crossModuleFunctionReturns, userDeclaredVarNames,
+  importNameAliases,
+} from "./build-ir-state.js";
 import { getCurrentIrTypeScope, type IrTypeScope } from "./symbol-types.js";
 import { renderExprAsText } from "./render-expr.js";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir.js";
@@ -17,7 +19,7 @@ import { activeFunctionTypeParams } from "./build-ir-state.js";
 import { applyStringMethodRewrites } from "../api/shared/string-method-registry.js";
 import { castMapKeyIfNeeded } from "./map-key-cast.js";
 import { HELPER_RETURN_TYPES, helperNameFromText, helperReturnTypeForText } from "../api/shared/helper-return-types.js";
-import { parseCppType, elementOf, renderCppType, isPointer, bareType, parsedIsPointer, parsedIsVector, parsedIsMap, parsedIsSet, parsedIsTuple, parsedIsStdString, parsedElementString, parsedBareString, isVector, isMap, isSet, isContainer } from "../api/shared/cpp-type-ir.js";
+import { parseCppType, elementOf, renderCppType, isPointer, bareType, parsedIsPointer, parsedIsVector, parsedIsMap, parsedIsSet, parsedIsTuple, parsedIsVariant, parsedIsStdString, parsedElementString, parsedBareString, isVector, isMap, isSet, isContainer } from "../api/shared/cpp-type-ir.js";
 import { hasSafetyHook, requireSafetyHook } from "../safety-hook.js";
 
 export function resolveExprCppType(expr: ts.Expression): string | undefined {
@@ -297,6 +299,7 @@ const ENUM_CASTABLE_PARAM_RE = /^(int|int8_t|int16_t|int32_t|int64_t|uint8_t|uin
  *  method registry (for `obj->m(...)` callees) or the call site's source file
  *  (for free functions). */
 export function castEnumArgsForCallParams(calleeText: string, args: ExpressionIR[], callNode?: ts.CallExpression): ExpressionIR[] {
+  console.error("DBG-CAST-ENTRY:", calleeText, "args:", args.length);
   const lastSep = Math.max(calleeText.lastIndexOf("->"), calleeText.lastIndexOf("::"), calleeText.lastIndexOf("."));
   const methodName = lastSep >= 0 ? calleeText.slice(lastSep + (calleeText[lastSep] === "." ? 1 : 2)) : calleeText;
 
@@ -335,10 +338,45 @@ export function castEnumArgsForCallParams(calleeText: string, args: ExpressionIR
       paramTypes = fnDecl.parameters.map(p => typeNodeToCppType(p.type) || "auto");
     }
   }
-  if (!paramTypes || paramTypes.length === 0) return args;
+  if (!paramTypes || paramTypes.length === 0) {
+    console.error("DBG-CAST-NOPARAMS:", calleeText);
+    return args;
+  }
 
   return args.map((arg, i) => {
     const paramType = paramTypes![i];
+    // Variant-param conversion: a variant-typed ARGUMENT (a `number |
+    // string` param passed onward, or a literal) cannot initialize a
+    // std::variant parameter from an int ("could not convert '5' from
+    // 'int'"). Brace-init the variant from the arg — the matching arm is
+    // chosen by overload of the initializer list.
+    if (paramType && parsedIsVariant(paramType.trim())) {
+      const argIdent = arg.kind === "identifier" ? arg.value : undefined;
+      const argType = argIdent
+        ? (getCurrentIrTypeScope()?.locals.get(argIdent) ?? getCurrentIrTypeScope()?.globals.get(argIdent))
+        : undefined;
+      if (argType && parsedIsVariant(argType.trim())) return arg; // variant -> variant passes through
+      // A raw int does NOT convert to variant<double, string> (the int is
+      // ambiguous against the arms) — the arg must arrive as the EXACT arm
+      // type. Cast through the arg's own inferred C++ type; an int literal
+      // becomes the double arm. Un-inferable args keep the brace form.
+      const argCpp = argIdent
+        ? (getCurrentIrTypeScope()?.locals.get(argIdent) ?? getCurrentIrTypeScope()?.globals.get(argIdent))
+        : (arg.kind === "number" ? (Number.isInteger(arg.value) ? "int" : "double") : undefined);
+      // An INT arg against a variant with a double arm is ambiguous — cast
+      // to the DOUBLE arm directly (the only numeric arm JS numbers map to).
+      const paramIr = parseCppType(paramType.trim());
+      if (argCpp === "int" && paramIr.kind === "variant") {
+        const numArm = paramIr.members.map(renderCppType).find((t) => /^(double|float)$/.test(t));
+        if (numArm) {
+          return { kind: "raw" as const, value: `${paramType}{static_cast<${numArm}>(${renderExprAsText(arg)})}` };
+        }
+      }
+      if (argCpp && argCpp !== "auto") {
+        return { kind: "raw" as const, value: `${paramType}{static_cast<${argCpp}>(${renderExprAsText(arg)})}` };
+      }
+      return { kind: "raw" as const, value: `${paramType}{${renderExprAsText(arg)}}` };
+    }
     if (!paramType || !ENUM_CASTABLE_PARAM_RE.test(paramType)) return arg;
     // Only enum-typed identifiers / member accesses take the cast.
     let argEnum = "";
@@ -1319,6 +1357,11 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     // helper even inside the nullish wrapper.
     const left = renderExprAsText(leftIR);
     const right = renderExprAsText(expressionToIR(expr.right, sourceText, diagnostics, pointerVars));
+    // Flag the shim: the analysis scans raw expr.value text, which works ONLY
+    // if this lowering ran before the analysis — order not guaranteed in every
+    // pipeline. Mark the nullish usage on the build context instead; setup's
+    // shim gate consults it alongside the scanned flag.
+    getContext().nullishHelperSeen = true;
     return { kind: "raw", value: `cuttlefish_nullish(${left}, ${right})` };
   }
 
@@ -1330,15 +1373,43 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     if (leftIsTypeof && rightIsString) {
       const typeofOperand = expr.left.expression;
       if (ts.isIdentifier(typeofOperand)) {
-        const varType = getCurrentIrTypeScope()?.locals.get(typeofOperand.text);
+        const varType = getCurrentIrTypeScope()?.locals.get(typeofOperand.text)
+          ?? getCurrentIrTypeScope()?.globals.get(typeofOperand.text);
+        // A VARIANT-typed operand narrows at RUNTIME: emit
+        // std::holds_alternative<Arm>(x) and scope the narrowed access
+        // (std::get<Arm>(x)) to the then-branch (control-flow arms the
+        // narrowing map around the branch lowering). Folding to a constant
+        // here was silent wrong-code — the other branch never ran.
+        {
+          const vt = (varType ?? "").trim();
+          if (parsedIsVariant(vt)) {
+            const irv = parseCppType(vt);
+            if (irv.kind === "variant") {
+              const cppArms = irv.members.map(renderCppType);
+              const lit = expr.right.text;
+              const matches = cppArms.filter((t) => {
+                if (lit === "number") return /^(double|float|int|long|long long|unsigned.*|int\d+_t|uint\d+_t|size_t|short)$/.test(t);
+                if (lit === "string") return t === "std::string" || t === "const char*";
+                if (lit === "boolean") return t === "bool";
+                return false;
+              });
+              if (matches.length === 1) {
+                const safeName = escapeCppKeyword(typeofOperand.text, getContext().activeStrategy?.reservedNames() ?? new Set<string>());
+                const isEquality0 = expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken || expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken;
+                return { kind: "raw", value: `std::holds_alternative<${matches[0]}>(${safeName})${isEquality0 ? "" : " == false"}` };
+              }
+            }
+          }
+        }
+        const varType2 = getCurrentIrTypeScope()?.locals.get(typeofOperand.text);
         const expectedTypeName = expr.right.text;
-        const actualTypeName = varType === "int" || varType === "float" || varType === "double" || varType === "long" || varType === "long long" || varType === "unsigned long long" || varType === "unsigned" || varType === "size_t"
+        const actualTypeName = varType2 === "int" || varType2 === "float" || varType2 === "double" || varType2 === "long" || varType2 === "long long" || varType2 === "unsigned long long" || varType2 === "unsigned" || varType2 === "size_t"
           ? "number"
-          : varType === "bool"
+          : varType2 === "bool"
             ? "boolean"
-            : varType === "std::string"
+            : varType2 === "std::string"
               ? "string"
-              : varType === "void"
+              : varType2 === "void"
                 ? "undefined"
                 : "object";
         const isEquality = expr.operatorToken.kind === ts.SyntaxKind.EqualsToken || expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken || expr.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken;
@@ -1580,9 +1651,13 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     if ((operator === "&&" || operator === "||") && !inConditionContext()) {
       const leftIR = expressionToIR(expr.left, sourceText, diagnostics, pointerVars);
       const rightIR = expressionToIR(expr.right, sourceText, diagnostics, pointerVars);
+      // hoistCondition tells the renderer to lift the left operand into a
+      // temp so its side effects run exactly once (a bare `(a) ? (b) : (a)`
+      // re-evaluates `a` - a call's guard double-fires).
+      const hoistCondition = leftIR.kind !== "identifier" && leftIR.kind !== "boolean" && leftIR.kind !== "number";
       return operator === "||"
-        ? { kind: "ternary", condition: leftIR, whenTrue: leftIR, whenFalse: rightIR }
-        : { kind: "ternary", condition: leftIR, whenTrue: rightIR, whenFalse: leftIR };
+        ? { kind: "ternary", condition: leftIR, whenTrue: leftIR, whenFalse: rightIR, hoistCondition }
+        : { kind: "ternary", condition: leftIR, whenTrue: rightIR, whenFalse: leftIR, hoistCondition };
     }
     return {
       kind: "binary",
@@ -2359,6 +2434,11 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     } else {
       const rawText = expr.expression.getText();
       calleeText = nestedFunctionAliases.get(rawText) ?? rawText;
+      // Cross-module import alias: `import { runHelper as rh }` - a call
+      // through the LOCAL name must lower and key reachability under the
+      // EXPORTED definition's name.
+      const aliased = importNameAliases.get(calleeText);
+      if (aliased) calleeText = aliased;
     }
     const argIRs: ExpressionIR[] = [];
     let sawSpreadArg = false;
@@ -2667,6 +2747,18 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     if (!nestedAlias && userDeclaredVarNames.has(expr.text)) {
       identValue = escapeCppKeyword(expr.text, getContext().activeStrategy?.reservedNames() ?? new Set<string>());
     }
+    // Variant narrowing (scoped to a then-branch of `if (typeof x === 'lit')`):
+    // a reference to the narrowed variable reads its active arm —
+    // std::get<Arm>(x). Without this the branch body saw the whole variant
+    // and every member call failed g++ ("no member named 'toFixed' ... 'T'").
+    {
+      const narrow = (getContext() as unknown as { variantNarrowing?: Map<string, string> }).variantNarrowing;
+      const arm = narrow?.get(expr.text);
+      if (arm) {
+        const safeName = escapeCppKeyword(expr.text, getContext().activeStrategy?.reservedNames() ?? new Set<string>());
+        return { kind: "raw", value: `std::get<${arm}>(${safeName})` };
+      }
+    }
     return { kind: "identifier", value: identValue };
   }
 
@@ -2959,6 +3051,11 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       if (ts.isIdentifier(expr.expression)) {
         objectType = getCurrentIrTypeScope()?.locals.get(expr.expression.text) ?? getCurrentIrTypeScope()?.globals.get(expr.expression.text);
         if (objectType) {
+          // A TUPLE-typed receiver ([A, B, C] annotation -> std::tuple<...>)
+          // has no operator[] — index access lowers to std::get<N>.
+          if (parsedIsTuple(objectType.trim())) {
+            return { kind: "tuple-access", object, index: index.value };
+          }
           elementType = parsedElementString(objectType);
         }
       } else if (ts.isPropertyAccessExpression(expr.expression)) {

@@ -335,7 +335,13 @@ export function buildEmitterContext(
 
   const isNpmPackage = !!options.npmPackage;
   const isEntryFile = options.isEntryFile !== false;
-  const isrPrefix = isEntryFile ? 'main' : originalBaseName;
+  // Derived C identifiers must be legal: a module named `04-arrays.ts` made
+  // the ISR prefix `04-arrays` and emitted `double 04-arrays_isr_0(...)` —
+  // not a C identifier (g++: "expected unqualified-id before numeric
+  // constant"). Sanitize to [_A-Za-z][_A-Za-z0-9]*, leading digit → `_`.
+  const isrPrefix = isEntryFile
+    ? 'main'
+    : originalBaseName.replace(/[^_A-Za-z0-9]/g, "_").replace(/^([0-9])/, "_$1");
   const effectiveEmitMode: EmitMode = strategy.effectiveEmitMode(options.emitMode, isNpmPackage) as EmitMode;
 
   const includes: string[] = [];
@@ -789,13 +795,19 @@ export function buildEmitterContext(
   // output. The bare-name key is safe here because `inferExpressionCppType`
   // looks up `expr.callee` which is the bare method name for member calls.
   for (const cls of program.classes) {
+    const typeParams = new Set(cls.typeParameters ?? []);
     for (const m of cls.methods) {
       if (!knownFunctionReturnTypes.has(m.name)) {
+        // A generic method's bare type-parameter return (`T pop()`) must NOT
+        // be seeded: `const top = s.pop()` in main() would declare `const T
+        // top` where T does not exist. Skip so the local infers `auto`.
+        if (typeParams.has(m.returnType)) continue;
         knownFunctionReturnTypes.set(m.name, m.returnType);
       }
     }
     for (const g of cls.getters) {
       if (!knownFunctionReturnTypes.has(g.name)) {
+        if (typeParams.has(g.returnType)) continue;
         knownFunctionReturnTypes.set(g.name, g.returnType);
       }
     }

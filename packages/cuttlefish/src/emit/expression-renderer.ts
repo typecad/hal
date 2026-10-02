@@ -15,7 +15,7 @@ import { escapeCppKeyword, escapeCppStringLiteral } from "../utils/strings.js";
 import { accessorGetterName } from "./utils/cpp-helpers.js";
 import { INTEGRAL_CPP_TYPE_RE } from "./utils/cpp-helpers.js";
 import { renderPeripheralProperty } from "../mapping/peripheral-names.js";
-import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsStringLike, parsedElementString, parsedIsVector, needsCStrForStringLike, elementOf, snprintfTypeFormat } from "../api/shared/cpp-type-ir.js";
+import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsStringLike, parsedElementString, parsedIsVector, needsCStrForStringLike, elementOf, snprintfTypeFormat, parsedIsVariant } from "../api/shared/cpp-type-ir.js";
 import { helperReturnTypeForText } from "../api/shared/helper-return-types.js";
 import { cppTypeForHalOp } from "./utils/hal-op-cpp-type.js";
 
@@ -138,6 +138,8 @@ export class ExpressionRenderer {
   private _preludeLines: string[] = [];
   /** Monotonic counter for unique snprintf buffer names. Shared across renders when provided. */
   private _snprintfCounter: { value: number };
+  /** Monotonic counter for short-circuit hoist temps (__tc_sc_N). */
+  private _scCounter: { value: number };
   /** Shared emit-time diagnostics sink (see ExpressionRendererContext.diagnostics). */
   private readonly _diagnostics: Diagnostic[];
 
@@ -161,6 +163,7 @@ export class ExpressionRenderer {
     this.interfaceFieldTypes = context.interfaceFieldTypes ?? new Map();
     this.knownTopLevelObjectTypes = context.knownTopLevelObjectTypes;
     this._snprintfCounter = context.snprintfCounter ?? { value: 0 };
+    this._scCounter = { value: 0 };
     this._diagnostics = context.diagnostics ?? [];
   }
 
@@ -485,9 +488,63 @@ export class ExpressionRenderer {
     return result;
   }
 
-  private renderTernary(expr: Extract<ExpressionIR, { kind: "ternary" }>, exprTransformer?: (expr: string) => string): string {
-    return `(${this.render(expr.condition, exprTransformer)} ? ${this.render(expr.whenTrue, exprTransformer)} : ${this.render(expr.whenFalse, exprTransformer)})`;
+  /**
+   * Hoist the && / || rewrite's left operand into a named temp ON THE NODE
+   * (idempotent): the branches are rewritten to identifier IR for the temp
+   * so EVERY later consumer - render AND printf-format inference - sees the
+   * substituted, typed form instead of a repeated string literal (which
+   * infers const char* and loses the std::string .c_str() decision).
+   */
+  private ensureLogicalHoist(expr: Extract<ExpressionIR, { kind: "ternary" }>, exprTransformer?: (expr: string) => string): void {
+    const node = expr as unknown as { hoistCondition?: boolean; hoistApplied?: boolean };
+    if (!node.hoistCondition || node.hoistApplied) return;
+    if (expr.condition.kind === "identifier" || expr.condition.kind === "boolean" || expr.condition.kind === "number") return;
+    node.hoistApplied = true;
+    const temp = `__tc_sc_${++this._scCounter.value}`;
+    const condType = this.inferExpressionCppType(expr.condition, undefined);
+    const stringCond = !!condType
+      && (condType === "std::string" || condType === "__tc_str_ptr" || this.strategy.isStringLikeType(condType));
+    const decl = stringCond
+      ? `const std::string ${temp} = ${this.render(expr.condition, exprTransformer)};`
+      : `const auto ${temp} = ${this.render(expr.condition, exprTransformer)};`;
+    this.pushPrelude([decl]);
+    // Register the temp's type so inference (which may run with a scoped map
+    // that lacks this registration) still resolves the substituted identifier.
+    this.knownVariableTypes?.set(temp, { cppType: stringCond ? "std::string" : (condType ?? "auto") });
+    if (expr.whenTrue === expr.condition) {
+      expr.whenTrue = { kind: "identifier", value: temp };
+    }
+    if (expr.whenFalse === expr.condition) {
+      expr.whenFalse = { kind: "identifier", value: temp };
+    }
+    (node as unknown as { hoistTemp?: string }).hoistTemp = temp;
+    (node as unknown as { hoistString?: boolean }).hoistString = stringCond;
   }
+
+  private renderTernary(expr: Extract<ExpressionIR, { kind: "ternary" }>, exprTransformer?: (expr: string) => string): string {
+    // JS truthiness of a STRING condition is emptiness; a C++ string
+    // condition is either a non-null pointer (always truthy, even for "") or
+    // a std::string without a bool conversion. Guard string conditions with
+    // an explicit emptiness test. The hoist (ensureLogicalHoist) has already
+    // substituted the repeated operand with a typed temp identifier.
+    this.ensureLogicalHoist(expr, exprTransformer);
+    const node = expr as unknown as { hoistTemp?: string; hoistString?: boolean };
+    let condText = this.render(expr.condition, exprTransformer);
+    if (node.hoistTemp) {
+      condText = node.hoistString ? `!${node.hoistTemp}.empty()` : node.hoistTemp;
+    } else {
+      const condType = this.inferExpressionCppType(expr.condition, undefined);
+      const stringCond = !!condType
+        && (condType === "std::string" || condType === "__tc_str_ptr" || this.strategy.isStringLikeType(condType));
+      if (stringCond) {
+        condText = condType === "std::string" || condType === "__tc_str_ptr"
+          ? `!(${condText}).empty()`
+          : `((${condText}) != nullptr && (${condText})[0] != ' ')`;
+      }
+    }
+    return `(${condText} ? ${this.render(expr.whenTrue, exprTransformer)} : ${this.render(expr.whenFalse, exprTransformer)})`;
+  }
+
 
   private normalizeRecordType(cppType: string): string {
     // Strip const/pointer/reference qualifiers and unwrap smart-pointer
@@ -509,6 +566,18 @@ export class ExpressionRenderer {
         return expr.cppType ?? (Number.isInteger(expr.value) ? "int" : "double");
       case "boolean":
         return "bool";
+      case "tuple-access": {
+        // A tuple element's type IS the tuple's element at that index — the
+        // concat/snprintf paths key off this (a std::string element needs %s
+        // + .c_str(), not std::to_string which has no string overload).
+        const objType = this.inferExpressionCppType(expr.object, effectiveKnownVariableTypes);
+        const tupIr = parseCppType(objType ?? "");
+        if (tupIr.kind === "tuple") {
+          const el = tupIr.elements[(expr as unknown as { index: number }).index];
+          if (el) return renderCppType(el) as unknown as string;
+        }
+        return "auto";
+      }
       case "identifier": {
         const known = effectiveKnownVariableTypes?.get(expr.value)?.cppType;
         if (known) return known;
@@ -874,6 +943,16 @@ export class ExpressionRenderer {
     if (expr.kind === "template_string") {
       return this.inferFormatSpecifier(expr.expression, exprTransformer, knownVariableTypes);
     }
+    // Apply the short-circuit hoist BEFORE inferring: the substituted temp
+    // identifier carries the registered type, so a std::string arm wins the
+    // .c_str() decision over the repeated string literal.
+    if (expr.kind === "ternary") {
+      this.ensureLogicalHoist(expr, exprTransformer);
+    } else if (expr.kind === "paren") {
+      let inner = expr.inner;
+      while (inner.kind === "paren") inner = (inner as unknown as { inner: ExpressionIR }).inner;
+      if (inner.kind === "ternary") this.ensureLogicalHoist(inner, exprTransformer);
+    }
     // A bare CALL on a std::function-holding local (`${d(7)}` where
     // `const d = makeScale(2)`): the variable's std::function<R(P...)> names
     // the return R — unwrap it before the %d default misprints the call
@@ -915,6 +994,7 @@ export class ExpressionRenderer {
     }
     if (expr.kind !== "number" && expr.kind !== "boolean" && expr.kind !== "string") {
       const inferredType = this.inferExpressionCppType(expr, knownVariableTypes);
+      console.error("DBG935:", expr.kind, inferredType);
       if (inferredType) {
         const rendered = this.render(expr, exprTransformer, knownVariableTypes);
         const normalized = this.strategy.normalizeCppType(inferredType);
@@ -932,6 +1012,15 @@ export class ExpressionRenderer {
         if (f.recognized) {
           if (f.isBool) {
             return { format: f.format, arg: `(${rendered} ? "true" : "false")`, estimatedLength: f.estimatedLength };
+          }
+          // A composite expression (ternary/paren/binary) whose inferred type
+          // is 64-bit must CARRY the type in its rendered form: the branches
+          // render as plain ints and an uncast `%lld` vararg reads 8 bytes of
+          // an int slot (Windows x64: garbage in the upper half). Cast to the
+          // inferred type so the arg matches the spec it generated.
+          if (f.format === "%lld" && !rendered.startsWith("static_cast<long long>")
+              && (expr.kind === "ternary" || expr.kind === "paren" || expr.kind === "binary" || expr.kind === "unary")) {
+            return { format: "%lld", arg: `static_cast<long long>(${rendered})`, estimatedLength: f.estimatedLength };
           }
           if (f.format === "%.15g") {
             const knownPrecision = expr.kind === "identifier"
@@ -975,6 +1064,20 @@ export class ExpressionRenderer {
       case "identifier": {
         const knownVar = effectiveKnownVariableTypes?.get(expr.value);
         const cppType = knownVar?.cppType ?? this.knownFunctionReturnTypes?.get(expr.value);
+
+        // A VARIANT-typed identifier interpolated into a string: JS prints
+        // the value; emit the variant's STRING arm when the variant has
+        // exactly one (the else-branch of a typeof narrowing is the common
+        // site). A bare variant arg with %d misformatted (pointer garbage).
+        if (cppType && parsedIsVariant(cppType.trim())) {
+          const vir = parseCppType(cppType.trim());
+          if (vir.kind === "variant") {
+            const strArms = vir.members.map(renderCppType).filter((t) => t === "std::string");
+            if (strArms.length === 1) {
+              return { format: "%s", arg: `std::get<${strArms[0]}>(${expr.value}).c_str()`, estimatedLength: 32 };
+            }
+          }
+        }
 
         if (cppType === "auto" && knownVar?.initializer) {
           // auto-deduced local: infer the real type from the retained
@@ -1879,8 +1982,24 @@ export class ExpressionRenderer {
   private renderLambda(expr: Extract<ExpressionIR, { kind: "lambda" }>, exprTransformer?: (expr: string) => string): string {
     const params = expr.params.map(p => `${p.cppType} ${p.name}`).join(", ");
     const ret = expr.returnType && expr.returnType !== "auto" ? ` -> ${expr.returnType}` : "";
+    // A block body that assigns to a name declared OUTSIDE the lambda is a
+    // STATEFUL closure (the counter factory). A plain `[=]` lambda's call
+    // operator is const and its captures are copies - g++ rejects the write.
+    // `mutable` makes the closure own mutable copies of its captures, which
+    // is exactly the per-factory-call binding JS gives an escaping closure
+    // over value types.
+    const localNames = new Set<string>(expr.params.map(pp => pp.name));
+    for (const b of expr.body) {
+      if (b.kind === "var_decl") localNames.add(b.name);
+    }
+    const mutatesOuter = expr.body.some(b => {
+      if (b.kind !== "assign" && b.kind !== "update") return false;
+      const base = (b as unknown as { target: string }).target.split(/[.[]|->/)[0].trim();
+      return !localNames.has(base);
+    });
+    const mutableKw = mutatesOuter ? " mutable" : "";
     if (expr.isExpressionBody && expr.body.length === 1 && expr.body[0].kind === "return" && "value" in expr.body[0]) {
-      return `[=](${params})${ret} { return ${this.render((expr.body[0] as any).value, exprTransformer)}; }`;
+      return `[=](${params})${mutableKw}${ret} { return ${this.render((expr.body[0] as any).value, exprTransformer)}; }`;
     }
     const bodyStr = expr.body.map(s => {
       if (s.kind === "return" && s.value) return `  return ${this.render(s.value, exprTransformer)};`;
@@ -1893,7 +2012,7 @@ export class ExpressionRenderer {
       if (s.kind === "call") return `  ${this.render(s as any, exprTransformer)};`;
       return `  /* ${s.kind} */`;
     }).join("\n");
-    return `[=](${params})${ret} {\n${bodyStr}\n}`;
+    return `[=](${params})${mutableKw}${ret} {\n${bodyStr}\n}`;
   }
 
   private renderMethodCall(expr: Extract<ExpressionIR, { kind: "method-call" }>, exprTransformer?: (expr: string) => string): string {

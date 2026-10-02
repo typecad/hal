@@ -85,6 +85,10 @@ export interface ImportIR {
   namedImports: string[];
   /** For default imports: import X from "./module.js" */
   defaultImportName?: string;
+  /** `import { runHelper as rh }` records rh->runHelper. Cross-module
+   *  symbol tracking keys on the EXPORTED name; without the alias the
+   *  local name misses every lookup (reachability, return types). */
+  importAliases?: Array<{ local: string; source: string }>;
 }
 
 export interface ReExportIR {

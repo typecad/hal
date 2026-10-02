@@ -17,7 +17,7 @@ import {
 } from "./ui-callback-lowering.js";
 import { rewriteCanvasCall } from "./canvas-lowering.js";
 import { callbackContextLabel, unsupportedStatementHint } from "./callback-context-registry.js";
-import { tryLowerArrayAndStringMethods } from "./array-methods.js";
+import { tryLowerArrayAndStringMethods, newAllocatedVars } from "./array-methods.js";
 import { expressionToIR, castEnumArgsForCallParams, resolveExprCppType } from "../expression-to-ir.js";
 import { castMapKeyIfNeeded } from "../map-key-cast.js";
 import { userDeclaredVarNames, arrayLiteralSizes } from "../build-ir-state.js";
@@ -185,6 +185,38 @@ export function callToStatement(
   pointerVars: PointerTracker = new Map(),
 ): StatementIR {
   const comments = extractNodeComments(statementNode, sourceText);
+
+  // ── Optional-call statement: cb?.(args) / obj?.method(args) ─────────────
+  // The ?. must GUARD the call — without this the statement lowered as a
+  // plain call and an undefined callback constructed an empty std::function
+  // and INVOKED it (std::bad_function_call). cuttlefish_exists(std::function)
+  // tests the empty state (see the hosted/zephyr shims).
+  if ((call as unknown as { questionDotToken?: ts.Node }).questionDotToken
+    || (typeof (ts as unknown as { isOptionalChain?: (n: ts.Node) => boolean }).isOptionalChain === "function"
+      && (ts as unknown as { isOptionalChain: (n: ts.Node) => boolean }).isOptionalChain(call))) {
+    const argsText = call.arguments
+      .map(a => renderExprAsText(expressionToIR(a, sourceText, diagnostics, pointerVars)))
+      .join(", ");
+    let guardName: string | undefined;
+    if (ts.isIdentifier(call.expression)) {
+      guardName = call.expression.text;
+    } else if (ts.isPropertyAccessExpression(call.expression) && ts.isIdentifier(call.expression.expression)) {
+      guardName = call.expression.expression.text;
+    }
+    if (guardName) {
+      const callText = ts.isIdentifier(call.expression)
+        ? `${guardName}(${argsText});`
+        : `${renderExprAsText(expressionToIR(call.expression, sourceText, diagnostics, pointerVars))}(${argsText});`;
+      return {
+        kind: "call",
+        sourceSpan: makeSourceSpan(call, fileName, sourceText),
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        callee: "__EMIT__",
+        args: [{ kind: "string", value: `if (${guardName}) { ${callText} }` }],
+      };
+    }
+  }
 
   // ── console.* is not a supported API ────────────────────────────────────
   // The TypeScript console carry-over (lowering to a platform print plus a
@@ -794,6 +826,22 @@ export function callToStatement(
         // StaticArray targets).
         const recvType = getCurrentIrTypeScope()?.locals.get(objExpr.text)
           ?? getCurrentIrTypeScope()?.globals.get(objExpr.text);
+        // A POINTER-typed receiver is a class instance (`const s = new
+        // Stack<number>()`): `.push` is a user method and must lower as a
+        // plain member call, never as vector/StaticArray push_back. An
+        // UNKNOWN receiver that the prescan saw new-allocated is the same
+        // case (the scope map can be blind to it this early).
+        if (newAllocatedVars.has(objExpr.text)
+          || (recvType !== undefined && recvType.trim().endsWith("*"))) {
+          return {
+            kind: "call",
+            sourceSpan: makeSourceSpan(call, fileName, sourceText),
+            leadingComments: comments.leadingComments,
+            trailingComments: comments.trailingComments,
+            callee: `${objExpr.text}.${methodName}`,
+            args: call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+          };
+        }
         // Vector by resolution, or by elimination on a vector-capable target:
         // only literal-initialized arrays promote to __tc_StaticArray there
         // (parameters and annotated non-literal locals are std::vector).

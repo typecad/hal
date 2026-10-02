@@ -46,7 +46,7 @@ export type ExpressionIR =
   | { kind: "identifier"; value: string }
   | { kind: "raw"; value: string; newClassName?: string }
   | { kind: "await"; value: ExpressionIR }
-  | { kind: "ternary"; condition: ExpressionIR; whenTrue: ExpressionIR; whenFalse: ExpressionIR }
+  | { kind: "ternary"; condition: ExpressionIR; whenTrue: ExpressionIR; whenFalse: ExpressionIR; /** The && / || value-position rewrite repeats its left operand for the value branch; the renderer hoists it into a temp so side effects run once. */ hoistCondition?: boolean; hoistApplied?: boolean; hoistTemp?: string; hoistString?: boolean }
   | { kind: "array"; elementType: string; elements: ExpressionIR[] }
   | { kind: "string_concat"; parts: ExpressionIR[] }
   | { kind: "template_string"; expression: ExpressionIR }

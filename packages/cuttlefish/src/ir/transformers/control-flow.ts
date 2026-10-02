@@ -1,13 +1,14 @@
 ﻿import ts from "typescript";
 import { Diagnostic, SourceSpan } from "../../types.js";
 import { StatementIR, ExpressionIR, CppType } from "../../api/index.js";
-import { extractNodeComments, makeSourceSpan } from "../ast-node-utils.js";
+import { extractNodeComments, makeSourceSpan, makeDiagnostic } from "../ast-node-utils.js";
 import { CppTypeHint, resolveDeclarationType, inferExprCppType } from "../type-resolution.js";
-import { PointerTracker, nestedClassAliases, topLevelAliasReceivers, mapEntryVarNames, enterThrowExpression, exitThrowExpression, enterConditionContext, exitConditionContext } from "../build-ir-state.js";
-import { type CppTypeIR, parseCppType, renderCppType, isPointer, parsedIsPointer, parsedIsVector, parsedIsMap, parsedElementString } from "../../api/shared/cpp-type-ir.js";
+import { PointerTracker, nestedClassAliases, topLevelAliasReceivers, mapEntryVarNames, enterThrowExpression, exitThrowExpression, enterConditionContext, exitConditionContext , getContext } from "../build-ir-state.js";
+import { type CppTypeIR, parseCppType, renderCppType, isPointer, parsedIsPointer, parsedIsVector, parsedIsMap, parsedIsVariant, parsedElementString } from "../../api/shared/cpp-type-ir.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { lowerStatementList, expressionStatementToIR } from "../statement-to-ir.js";
 import { assignmentOperatorToString, updateLocalTypeFromAssignment, extractForInKeys } from "./variables.js";
+import { getCurrentIrTypeScope } from "../symbol-types.js";
 
 // Monotonic counter for synthetic for...of destructure loop variables.
 let forOfDestructureCounter = 0;
@@ -228,6 +229,24 @@ export function incrementorToIR(
   return undefined;
 }
 
+/**
+ * Resolve a JS typeof literal ('number' | 'string' | 'boolean') to the C++
+ * arm type of a std::variant that matches. Returns undefined when the variant
+ * has no (or several) matching arms.
+ */
+function variantArmForLiteral(variantType: string, literal: string): string | undefined {
+  const ir = parseCppType(variantType.trim());
+  if (ir.kind !== "variant") return undefined;
+  const cpp = ir.members.map(renderCppType);
+  const matches = cpp.filter((t) => {
+    if (literal === "number") return /^(double|float|int|long|long long|unsigned.*|int\d+_t|uint\d+_t|size_t|short)$/.test(t);
+    if (literal === "string") return t === "std::string" || t === "const char*";
+    if (literal === "boolean") return t === "bool";
+    return false;
+  });
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
 export function lowerControlFlowStatement(
   statement: ts.Statement,
   fileName: string,
@@ -295,6 +314,29 @@ export function lowerControlFlowStatement(
     // so the pre-branch state is restored before the condition is evaluated
     // and the merge is applied last.
     const comments = extractNodeComments(statement, sourceText);
+    // Variant narrowing: `if (typeof x === 'number')` over a std::variant x
+    // lowers the condition to std::holds_alternative<Arm>(x) AND scopes a
+    // narrowed access (std::get<Arm>(x)) to the THEN branch. The map is
+    // armed before the then-branch lowers and restored before the else.
+    let narrowedArm: { name: string; prev: string | undefined } | undefined;
+    if (ts.isBinaryExpression(statement.expression)
+      && (statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+        || statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken)
+      && ts.isTypeOfExpression(statement.expression.left)
+      && ts.isStringLiteral(statement.expression.right)
+      && ts.isIdentifier(statement.expression.left.expression)) {
+      const varName = statement.expression.left.expression.text;
+      const varType = getCurrentIrTypeScope()?.locals.get(varName)
+        ?? getCurrentIrTypeScope()?.globals.get(varName);
+      if (varType && parsedIsVariant(varType.trim())) {
+        const armCpp = variantArmForLiteral(varType, statement.expression.right.text);
+        if (armCpp) {
+          const ctx = getContext() as unknown as { variantNarrowing: Map<string, string> };
+          narrowedArm = { name: varName, prev: ctx.variantNarrowing.get(varName) };
+          ctx.variantNarrowing.set(varName, armCpp);
+        }
+      }
+    }
     const thenStatements = lowerStatementList(
       ts.isBlock(statement.thenStatement) ? statement.thenStatement.statements : [statement.thenStatement],
       fileName,
@@ -311,6 +353,13 @@ export function lowerControlFlowStatement(
     // condition — both run before the branches at runtime... the condition
     // before them, the else on the path where the then branch never ran.
 
+    // Restore before the else branch (its narrowing is the COMPLEMENT arms —
+    // not modeled; else-branch accesses on the variant stay whole-variant).
+    if (narrowedArm) {
+      const ctx = getContext() as unknown as { variantNarrowing: Map<string, string> };
+      if (narrowedArm.prev === undefined) ctx.variantNarrowing.delete(narrowedArm.name);
+      else ctx.variantNarrowing.set(narrowedArm.name, narrowedArm.prev);
+    }
     let elseBranch: StatementIR[] | undefined;
     if (statement.elseStatement) {
       elseBranch = lowerStatementList(
@@ -560,6 +609,22 @@ export function lowerControlFlowStatement(
         functionReturnTypes,
         localVariableTypes,
       );
+    } else {
+      // `for (k in obj)` assigns into an outer variable. The renderer
+      // lowers for-in to an index loop over .size(), which needs the loop
+      // variable to bind the key — without a declaration there is nothing
+      // to bind, so fail loudly instead of emitting a value-iteration that
+      // silently used container values as indices.
+      diagnostics.push(
+        makeDiagnostic(
+          sourceText,
+          statement.pos,
+          "for...in requires a loop-variable declaration (`for (const i in arr)`). Assigning the key to an outer variable has no C++ binding in the index-loop lowering.",
+          "error",
+          "TS2CPP_UNSUPPORTED_STMT",
+        ),
+      );
+      return [];
     }
 
     const bodyStatements = lowerStatementList(

@@ -26,6 +26,13 @@ export function prescanArrayUsage(statement: ts.Statement, moduleScope: boolean 
 // StaticArray capacity (the var goes to unboundedArrayVars instead).
 // `moduleScope` marks a module-level statement list: every array literal it
 // declares is a cross-call accumulator (see moduleArrayLiteralVars).
+const BUILTIN_ARRAY_CTORS = new Set([
+  "Array", "Uint8Array", "Int8Array", "Uint8ClampedArray", "Int16Array",
+  "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
+]);
+
+export const newAllocatedVars = new Set<string>();
+
 function prescanArrayUsageIn(statement: ts.Statement, inLoop: boolean, moduleScope: boolean): void {
   const inFn = !moduleScope;
   if (ts.isVariableStatement(statement)) {
@@ -34,6 +41,17 @@ function prescanArrayUsageIn(statement: ts.Statement, inLoop: boolean, moduleSco
         if (ts.isArrayLiteralExpression(decl.initializer)) {
           arrayLiteralSizes.set(decl.name.text, decl.initializer.elements.length);
           if (moduleScope) moduleArrayLiteralVars.add(decl.name.text);
+        }
+        // A variable initialized via `new X(...)` is a CLASS INSTANCE - every
+        // `.method()` on it is a user method, never a vector/array semantic
+        // op. Generic-class instances (`const s = new Stack<number>()`) were
+        // promoted to StaticArray semantics by a later `.push(...)` and the
+        // call lowered to `s.push_back(1)` on a `Stack<double>*` (g++:
+        // "request for member 'push_back' ... pointer type").
+        if (ts.isNewExpression(decl.initializer) && ts.isIdentifier(decl.initializer.expression)
+          && /^[A-Z]/.test(decl.initializer.expression.text)
+          && !BUILTIN_ARRAY_CTORS.has(decl.initializer.expression.text)) {
+          newAllocatedVars.add(decl.name.text);
         }
         prescanExprForArrayMethods(decl.initializer, inLoop, inFn);
       }
@@ -77,6 +95,7 @@ export function prescanExprForArrayMethods(expr: ts.Expression, inLoop: boolean 
     const methodName = expr.expression.name.text;
     if (ARRAY_METHODS_REQUIRING_STATIC_ARRAY.has(methodName) && ts.isIdentifier(expr.expression.expression)) {
       const varName = expr.expression.expression.text;
+      if (newAllocatedVars.has(varName)) return; // class instance, not an array
       mutableArrayVars.add(varName);
       if (inFunctionScope) functionScopeMutatedArrays.add(varName);
       // Growing methods contribute to capacity sizing — but only when the
@@ -122,7 +141,9 @@ export function prescanExprForArrayMethods(expr: ts.Expression, inLoop: boolean 
       && ts.isElementAccessExpression(expr.left)
       && ts.isIdentifier(expr.left.expression)
       && assignmentOperatorToString(expr.operatorToken.kind) !== undefined) {
-    mutableArrayVars.add(expr.left.expression.text);
+    if (!newAllocatedVars.has(expr.left.expression.text)) {
+      mutableArrayVars.add(expr.left.expression.text);
+    }
     if (inFunctionScope) functionScopeMutatedArrays.add(expr.left.expression.text);
   }
   // Detect element increment / decrement (arr[i]++ / arr[i]-- / ++arr[i] / --arr[i]).
@@ -342,7 +363,10 @@ export function tryLowerArrayAndStringMethods(
         const recvIR = expressionToIR(paReceiver, sourceText, diagnostics, pointerVars);
         const recvText = renderExprAsText(recvIR);
         if (paMethod === "pop") {
-          return { kind: "raw", value: `${recvText}.pop_back()` };
+          // __tc_pop (back + pop_back) VALUE-preserves the JS .pop() contract;
+          // a bare pop_back() returns void and breaks `return arr.pop()` in a
+          // class method (g++: "void value not ignored").
+          return { kind: "raw", value: `__tc_pop(${recvText})` };
         }
         if (paMethod === "push") {
           const args = expr.arguments.map(a => renderExprAsText(expressionToIR(a, sourceText, diagnostics, pointerVars)));
@@ -632,6 +656,7 @@ export function tryLowerArrayAndStringMethods(
     }
     const isVectorReceiver = receiverType !== undefined
       && (parsedIsVector(receiverType.trim()) || receiverType === "std::vector<auto>");
+    if (receiverNode.getText() === 's') console.error('DBG-VEC2: type=', receiverType, 'isVec=', isVectorReceiver);
     // Table-derived membership (same rule as the decline gate above): every
     // method with a lowering for std::vector receivers — value methods AND
     // callback methods. This block serves EVERY vector-capable target; the
@@ -734,6 +759,14 @@ export function tryLowerArrayAndStringMethods(
     && (strat?.getStdLibSupport?.().hasVector ?? true);
   if (isHostedTarget && ts.isPropertyAccessExpression(expr.expression)) {
     const methodName = expr.expression.name.text;
+    // A receiver the prescan saw NEW-allocated is a user-class instance
+    // (`const s = new Stack<number>()`): every `.method()` on it is a user
+    // method — `.push` on a Stack must stay `s.push(...)`, never the vector
+    // push_back (g++: "request for member 'push_back' ... pointer type").
+    // Skip this whole hosted-array block for such receivers.
+    if (ts.isIdentifier(expr.expression.expression) && newAllocatedVars.has(expr.expression.expression.text)) {
+      return null;
+    }
     // `push` lowers to native push_back (matches the old
     // `${RECV}\.push(([^)]+)\)` → `$1.push_back($2)` regex).
     if (methodName === "push") {

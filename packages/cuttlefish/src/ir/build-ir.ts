@@ -14,7 +14,9 @@ import { tryResolveBoardDefFile, findGeneratedBoard, readGeneratedBoardConstants
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage.js";
 import { runProgramValidations } from "./validation-orchestrator.js";
 import { registerHalCtorInstance } from "./transformers/variables.js";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, arrayPushCounts, peripheralAliasMap, pinAliasMap, mcuPinForwardMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, objectTypeAliasNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, isrHandlerFunctions, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers, userDeclaredVarNames } from "./build-ir-state.js";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, arrayPushCounts, peripheralAliasMap, pinAliasMap, mcuPinForwardMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, objectTypeAliasNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, isrHandlerFunctions, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers, userDeclaredVarNames,
+  importNameAliases,
+} from "./build-ir-state.js";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir.js";
 import { registerUIModuleImport, registerElementValue, recordClickHandler, recordBinding } from "./transformers/ui-call-resolver.js";
 import { requireUIHook } from "../ui-hook.js";
@@ -470,10 +472,17 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
   for (const stmt of source.statements) {
     if (ts.isImportDeclaration(stmt) && stmt.moduleSpecifier && ts.isStringLiteral(stmt.moduleSpecifier)) {
       const namedImports: string[] = [];
+      const earlyAliases: Array<{ local: string; source: string }> = [];
       if (stmt.importClause?.namedBindings && ts.isNamedImports(stmt.importClause.namedBindings)) {
-        namedImports.push(...stmt.importClause.namedBindings.elements.map((e) => e.name.text));
+        for (const e of stmt.importClause.namedBindings.elements) {
+          namedImports.push(e.name.text);
+          if (e.propertyName && ts.isIdentifier(e.propertyName)) {
+            earlyAliases.push({ local: e.name.text, source: e.propertyName.text });
+            namedImports.push(e.propertyName.text); // source name for lookups
+          }
+        }
       }
-      earlyCrossModuleImports.push({ moduleSpecifier: stmt.moduleSpecifier.text, namedImports });
+      earlyCrossModuleImports.push({ moduleSpecifier: stmt.moduleSpecifier.text, namedImports, ...(earlyAliases.length > 0 ? { importAliases: earlyAliases } : {}) });
     }
   }
   for (const imp of earlyCrossModuleImports) {
@@ -737,14 +746,27 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
       }
 
       // Handle named imports: import { a, b } from "./module.js"
+      const importAliases: Array<{ local: string; source: string }> = [];
       if (node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
-        namedImports.push(...node.importClause.namedBindings.elements.map((e) => e.name.text));
+        for (const e of node.importClause.namedBindings.elements) {
+          namedImports.push(e.name.text);
+          // `import { runHelper as rh }` - register LOCAL -> SOURCE so call
+          // sites lower under the exported definition's name and cross-module
+          // reachability/declarations key on it (an unaliased lookup of the
+          // local name found nothing: the module header never declared the
+          // function and every call site had no binding).
+          if (e.propertyName && ts.isIdentifier(e.propertyName)) {
+            importAliases.push({ local: e.name.text, source: e.propertyName.text });
+            importNameAliases.set(e.name.text, e.propertyName.text);
+          }
+        }
       }
 
       if (namedImports.length > 0 || defaultImportName) {
         imports.push({
           moduleSpecifier,
           namedImports,
+          ...(importAliases.length > 0 ? { importAliases } : {}),
           ...(defaultImportName ? { defaultImportName } : {}),
         });
       }

@@ -11,8 +11,7 @@ import {
   elementOf,
   isPointer,
   isVector,
-  isStringLike,
-} from "../../api/shared/cpp-type-ir.js";
+  isStringLike, parsedIsTuple } from "../../api/shared/cpp-type-ir.js";
 import {
   PointerTracker,
   TYPED_ARRAY_ELEMENT_MAP,
@@ -1772,7 +1771,15 @@ export function variableStatementToIR(
       if (ts.isArrayLiteralExpression(actualInitializer) && !mutableArrayVars.has(varName)) {
         const vecMatch = isVector(parseCppType(varCppType));
         const inferredVecMatch = isVector(parseCppType(declarationType.inferredType));
-        if (!vecMatch && inferredVecMatch) {
+        // A TUPLE-typed declaration is neither a vector nor a C array: its
+        // std::tuple<A, B> type (and the brace-init the emitter now lowers)
+        // must survive this block — resetting it to auto turned
+        // `const pair: [number, string] = [...]` into `int pair[] = {...}`.
+        if (parsedIsTuple(varCppType)) {
+          loweredDeclaration.cppType = varCppType as CppType;
+          localVariableTypes.set(varName, varCppType as CppTypeHint);
+          setScopeLocalType(varName, varCppType as CppTypeHint);
+        } else if (!vecMatch && inferredVecMatch) {
           activeArrayLiteralVars.add(varName);
           loweredDeclaration.cppType = "auto" as any;
           localVariableTypes.set(varName, declarationType.inferredType);

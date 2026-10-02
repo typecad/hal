@@ -15,7 +15,7 @@ import { ExpressionRenderer, transformTypeName, normalizeRawExpression } from ".
 import { inferObjectFieldType, collectNestedStructDefs } from "./utils/index.js";
 import { escapeCppKeyword, escapeTrailingMember } from "../utils/strings.js";
 import { accessorGetterName, accessorSetterName } from "./utils/cpp-helpers.js";
-import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsVector, parsedElementString, parsedIsPlainStructType } from "../api/shared/cpp-type-ir.js";
+import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsVector, parsedElementString, parsedIsPlainStructType, isTuple } from "../api/shared/cpp-type-ir.js";
 
 /**
  * Context needed for statement rendering.
@@ -466,7 +466,19 @@ export class StatementRenderer {
       }
 
       if (statement.kind === "if") {
-        return `if (${this.expressionRenderer.render(statement.condition, undefined, knownVariableTypes)})`;
+        // JS truthiness of a STRING condition is emptiness; the C++ lowered
+        // form (std::string / const char*) has no bool conversion — wrap
+        // string-typed conditions with an explicit emptiness test.
+        const condText = this.expressionRenderer.render(statement.condition, undefined, knownVariableTypes);
+        const condType = this.expressionRenderer.inferExpressionCppType(statement.condition, knownVariableTypes);
+        const isStr = !!condType
+          && (condType === "std::string" || condType === "__tc_str_ptr" || this.strategy.isStringLikeType(condType));
+        const guard = isStr
+          ? (condType === "std::string" || condType === "__tc_str_ptr"
+              ? `!(${condText}).empty()`
+              : `((${condText}) != nullptr && (${condText})[0] != ' ')`)
+          : condText;
+        return `if (${guard})`;
       }
 
       if (statement.kind === "for") {
@@ -548,12 +560,21 @@ export class StatementRenderer {
         }
         const varDecl = statement.variable;
         if (varDecl.kind === "var_decl") {
-          // Normalize before the isRef decision (see the for_of branch).
-          const normalizedForInType = this.normalizeCppType(varDecl.cppType);
-          const isRef = !isPrimitiveCppType(normalizedForInType) && !isIndirectType(normalizedForInType, this.strategy);
-          return `for (${this.renderTypedName(varDecl.cppType, varDecl.name, varDecl.storage === "const", isRef)} : ${this.expressionRenderer.render(statement.object, undefined, knownVariableTypes)})`;
+          // TS for...in yields KEYS (indices over arrays). Iterating the
+          // container's values and using them as indices was silent
+          // wrong-code (arr[8] → out-of-bounds), so lower to an index loop
+          // over .size() — the loop variable IS the key, which is exactly
+          // what the body expects. The index is emitted mutable even for a
+          // `const` declaration: in TS it is per-iteration and assigned by
+          // the loop itself (C++ needs the increment).
+          const idxName = escapeCppKeyword(varDecl.name, this.strategy.reservedNames());
+          const objText = this.expressionRenderer.render(statement.object, undefined, knownVariableTypes);
+          const numType = this.strategy.defaultNumericType(this._compliance);
+          return `for (${numType} ${idxName} = 0; ${idxName} < static_cast<long long>(${objText}.size()); ${idxName} += 1)`;
         }
-        return `for (auto key : ${this.expressionRenderer.render(statement.object, undefined, knownVariableTypes)})`;
+        // No declaration: the IR layer reports this — without a loop
+        // variable the body's key reference has nothing to bind to.
+        return "for (;;)";
       }
 
       if (statement.kind === "break") {
@@ -677,6 +698,15 @@ export class StatementRenderer {
         return `/* unhandled hal-op: ${statement.operation.operation} */`;
       }
 
+      if (statement.kind === "super_call") {
+        // `super(args)` in a derived constructor. Base construction is ALREADY
+        // carried by the class emitter's member-initializer list
+        // (`Derived(args) : Base(args)`), so the statement itself must emit
+        // NOTHING — a C++ constructor cannot call the base constructor as a
+        // statement, and a bare super() previously crashed the renderer here.
+        return "";
+      }
+
       if (statement.kind !== "var_decl") {
         // A StatementIR kind the renderer doesn't know how to render is a
         // transpiler bug — the renderer should cover every kind the IR
@@ -751,6 +781,7 @@ export class StatementRenderer {
   }
 
   private renderCall(statement: Extract<StatementIR, { kind: "call" }>, forHeader: boolean, calleeTransformer?: (callee: string) => string, knownVariableTypes?: Map<string, KnownVariableInfo>): string {
+    if (statement.callee.includes("s.")) console.error("DBG-RC-ENTRY:", statement.callee);
     // HAL bus ownership markers (take/release) — compile-time only, no C++ emission.
     if (statement.args.length === 0 && /\.(take|release)$/.test(statement.callee)) {
       return "";
@@ -817,9 +848,11 @@ export class StatementRenderer {
     if (callee.startsWith("this.")) {
       callee = `this->${callee.slice("this.".length)}`;
     }
+    if (callee.includes("s->push")) console.error("DBG-CALLEE-0:", callee);
     if (calleeTransformer) {
       callee = calleeTransformer(callee);
     }
+    if (callee.includes("s->push")) console.error("DBG-CALLEE-1:", callee);
     // Apply the strategy's user-function rename to BARE free-function callees
     // (no `.`/`->`/`::` — those are method/qualified calls, not free fns). This
     // is the single chokepoint through which every call statement is rendered
@@ -885,6 +918,23 @@ export class StatementRenderer {
       if (statement.initializer.kind === "array") {
         const safeArrName = escapeCppKeyword(statement.name, this.strategy.reservedNames());
         const rawType = statement.cppType;
+
+        // A TUPLE-typed declaration (`const pair: [number, string] = [...]`)
+        // lowers to a std::tuple brace-init — NOT the C-array fallback, which
+        // typed the whole tuple by its FIRST element (heterogeneous tuples
+        // emitted `int pair[] = { 7, "seven" }`).
+        {
+          console.error("DBG-TUPLE:", rawType);
+          const tupleIr = parseCppType(this.normalizeCppType(rawType));
+          if (isTuple(tupleIr)) {
+            const elements = statement.initializer.elements
+              .map((e) => this.expressionRenderer.render(e, undefined, knownVariableTypes));
+            while (elements.length < (tupleIr as { elements: unknown[] }).elements.length) elements.push("");
+            return forHeader
+              ? `${this.normalizeCppType(rawType)} ${safeArrName} = { ${elements.join(", ")} }`
+              : `${this.normalizeCppType(rawType)} ${safeArrName} = { ${elements.join(", ")} };`;
+          }
+        }
 
         const hasObjectElements = statement.initializer.elements.some(e => e.kind === "object");
         if (hasObjectElements) {
@@ -1050,6 +1100,18 @@ export class StatementRenderer {
           // the map when no declared entry exists (e.g. an anonymous struct).
           if (!this.interfaceFieldTypes.has(namedType)) {
             this.interfaceFieldTypes.set(namedType, fieldTypes);
+          }
+          // Interface-typed values are POINTER-typed by design (type-resolution
+          // models interface references like class references). A braced
+          // initializer emitted against the pointer form — `T* p = { ... }` —
+          // is ill-formed C++ (g++: "scalar object requires one element in
+          // initializer"). Allocate instead, matching the class-instance
+          // convention: `T* p = new T{ ... };`
+          if (this.strategy.isPointerType(namedType)) {
+            const bareNamedType = namedType.replace(/\*\s*$/, "").trim();
+            return forHeader
+              ? `${bareNamedType}* ${safeObjName} = new ${bareNamedType}{ ${initValues} }`
+              : `${bareNamedType}* ${safeObjName} = new ${bareNamedType}{ ${initValues} };`;
           }
           return forHeader
             ? `${constPrefix}${namedType} ${safeObjName} = { ${initValues} }`

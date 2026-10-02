@@ -869,6 +869,18 @@ export function inferExprCppType(
         const method = expr.expression.name.text;
         const classMethod = classDef.methods.find((m) => m.name === method);
         if (classMethod) {
+          // A bare type-parameter return (`T pop()` on Stack<T>) is only
+          // meaningful INSIDE the class body. In outer scopes (main) it
+          // emitted `const T top = ...` — 'T' does not name a type. Return
+          // the instantiation's type argument when the receiver carries one
+          // (Stack<double>* → double); otherwise fall through to auto.
+          const bareReceiverIr = bareType(receiverIr);
+          if (bareReceiverIr.kind === "named" && bareReceiverIr.args && bareReceiverIr.args.length > 0
+              && classDef.typeParameters?.includes(classMethod.returnType)) {
+            const matched = bareReceiverIr.args[classDef.typeParameters.indexOf(classMethod.returnType)];
+            return renderCppType(matched) as CppTypeHint;
+          }
+          if (classDef.typeParameters?.includes(classMethod.returnType)) return "auto";
           return classMethod.returnType as CppTypeHint;
         }
       }
@@ -1107,7 +1119,10 @@ export function inferExprCppType(
         return directType;
       }
       // Build the class pointer via structured IR: pointer(named(ctorName, args?)).
-      const typeArgs = expr.typeArguments?.map((ta: ts.TypeNode) => ta.getText());
+      // Type args resolve through typeNodeToCppType — raw source text emitted
+      // the TS keyword verbatim (`Stack<number>* s = new Stack<double>()`;
+      // g++: "'number' was not declared").
+      const typeArgs = expr.typeArguments?.map((ta: ts.TypeNode) => typeNodeToCppType(ta, undefined));
       const namedIr: CppTypeIR = {
         kind: "named",
         name: ctorName,
