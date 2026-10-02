@@ -162,10 +162,17 @@ function collectCallbackFromExpression(
       // double. (Inline [&] lambdas keep auto — they deduce at the call.)
       .map((p: { name: string; cppType: string }) =>
         p.cppType === "auto" ? { ...p, cppType: "double" } : p);
+    // The return type must be CONCRETE: a hoisted function emitted with an
+    // `auto` return cannot be forward-declared (`auto f(...);` without a
+    // definition is undeductible), so taking its address (the comparator
+    // passed to __tc_sort_fn) failed with "unresolved overloaded function
+    // type". JS numbers are doubles: default an auto/missing return to
+    // double — the numeric-shaped check in return-type inference already
+    // covers the same shapes for named functions.
     const returnType =
-      lam.returnType && lam.returnType !== "void"
+      lam.returnType && lam.returnType !== "void" && lam.returnType !== "auto"
         ? lam.returnType
-        : undefined;
+        : "double";
     callbackFunctions.push({
       name: callbackName,
       params: lamParams.map((p: { name: string }) => p.name),

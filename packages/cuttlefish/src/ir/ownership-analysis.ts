@@ -919,6 +919,12 @@ function extractBorrowSource(expr: ExpressionIR): string | undefined {
  * Validate const suggestions: warn about `let` variables that are never reassigned.
  * This runs regardless of whether ownership types are used.
  */
+const HELPER_RECEIVER_MUTATORS = new Set([
+            '__tc_pop', '__tc_shift', '__tc_reverse', '__tc_unshift',
+            '__tc_sort', '__tc_sort_fn', '__tc_fill', '__tc_fill3',
+            '__tc_splice1', '__tc_splice2',
+          ]);
+
 function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[]): void {
   // Methods whose C++ lowering mutates the receiver (so a `const` binding
   // mutated through them must be demoted to non-const).
@@ -957,6 +963,42 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
   // mutation (demo #17). Each body is analyzed with its own scope-local maps
   // (see analyzeScope below), so this only enumerates the bodies; it does not
   // merge their scopes.
+  // Receivers of helper-form mutators — these containers are content-mutated
+  // and must never be promoted to const.
+  const helperMutatorReceivers = new Set<string>();
+  const scanHelperReceivers = (stmts: StatementIR[]): void => {
+    for (const stmt of stmts) {
+      // method-call shape: __tc_sort_fn(a1, comp) — receiver in args[0]
+      if ((stmt.kind as string) === 'method-call') {
+        const mc = stmt as unknown as { callee?: string; args?: { kind: string; value?: string }[] };
+        if (HELPER_RECEIVER_MUTATORS.has(mc.callee ?? '') && mc.args && mc.args[0]?.kind === 'identifier' && typeof mc.args[0].value === 'string') {
+          helperMutatorReceivers.add(mc.args[0].value);
+        }
+      }
+      if (stmt.kind === 'call') {
+        const callee = String((stmt as unknown as { callee?: string }).callee ?? '');
+        if (HELPER_RECEIVER_MUTATORS.has(callee) || callee.startsWith('__RAW_STMT__')) {
+          const paren = callee.indexOf('(');
+          if (paren > 0) {
+            const m = /^[A-Za-z_][A-Za-z0-9_]*/.exec(callee.slice(paren + 1));
+            if (m) helperMutatorReceivers.add(m[0]);
+          }
+        }
+      }
+      for (const key of ['body', 'thenBranch', 'elseBranch'] as const) {
+        const branch = (stmt as unknown as Record<string, unknown>)[key];
+        if (Array.isArray(branch)) scanHelperReceivers(branch as StatementIR[]);
+      }
+      if (Array.isArray((stmt as unknown as { cases?: unknown }).cases)) {
+        for (const c of (stmt as unknown as { cases: { body: StatementIR[] }[] }).cases) {
+          scanHelperReceivers(c.body);
+        }
+      }
+      if (Array.isArray((stmt as unknown as { initializer?: unknown }).initializer)) {
+        // arrays aren't statement lists — skip
+      }
+    }
+  };
   const allStatementBodies: StatementIR[][] = [program.topLevelStatements];
   for (const fn of program.functions) allStatementBodies.push(fn.statements);
   for (const cls of program.classes) {
@@ -977,6 +1019,7 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
     for (const child of ns.children ?? []) collectNamespaceBodies(child);
   };
   for (const ns of program.namespaces) collectNamespaceBodies(ns);
+  for (const body of allStatementBodies) scanHelperReceivers(body);
   // Callbacks registered out-of-band (interrupt handlers, Thread.start,
   // watchPin / drawCanvas bodies) carry their statements on the callback
   // expression rather than in a function body. A top-level `let` mutated
@@ -1093,6 +1136,34 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
             // or element/member assignment; the mutation checks below decide
             // whether to demote.
             constVars.set(stmt.name, { stmt, span: stmt.sourceSpan });
+          }
+        }
+        if (stmt.kind === 'call' || (stmt.kind as string) === 'method-call') {
+          // Helper-form mutators carry the receiver as the FIRST ARGUMENT
+          // (`__tc_reverse(a1)`, `__tc_sort_fn(a1, comp)` — the ARRAY_METHODS
+          // lowerings). These are content mutations: without marking
+          // everAssigned, the suggest-const pass promotes a mutated `let`
+          // array to `const std::vector` and the helper's non-const&
+          // parameter fails g++ ("incompatible cv-qualifiers"). The receiver
+          // may be in the callee string (raw wrapper) or args[0] (structured).
+          let recvName: string | undefined;
+          if (stmt.kind === 'call') {
+            const callee = String((stmt as unknown as { callee?: string }).callee ?? '');
+            if (HELPER_RECEIVER_MUTATORS.has(callee) || callee.startsWith('__RAW_STMT__')) {
+              const paren = callee.indexOf('(');
+              if (paren > 0) {
+                recvName = /^[A-Za-z_][A-Za-z0-9_]*/.exec(callee.slice(paren + 1))?.[0];
+              }
+            }
+          } else {
+            const mc = stmt as unknown as { callee?: string; args?: { kind: string; value?: string }[] };
+            if (HELPER_RECEIVER_MUTATORS.has(mc.callee ?? '') && mc.args && mc.args[0]?.kind === 'identifier') {
+              recvName = mc.args[0].value;
+            }
+          }
+          if (recvName) {
+            const entry = letVars.get(recvName);
+            if (entry) entry.everAssigned = true;
           }
         }
         if (stmt.kind === 'assign') {
@@ -1247,11 +1318,7 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
           // `const a = [...]; a.sort()` kept `const std::vector` while the
           // helper takes `std::vector<T>&` — a hard g++ error, and on the
           // demoted paths silently-wrong semantics.
-          const HELPER_RECEIVER_MUTATORS = new Set([
-            '__tc_pop', '__tc_shift', '__tc_reverse', '__tc_unshift',
-            '__tc_sort', '__tc_sort_fn', '__tc_fill', '__tc_fill3',
-            '__tc_splice1', '__tc_splice2',
-          ]);
+          // (hoisted to module scope — used by the demotion arm AND the everAssigned scan)
           let receiver = '';
           let method = callee.slice(callee.lastIndexOf('.') + 1);
           const dot = callee.lastIndexOf('.');
@@ -1378,6 +1445,13 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
       // undefined behavior and disagree with the array-shaped definition.
       const bufferInit = entry.stmt.initializer;
       if (bufferInit?.kind === 'array' && /\*\s*$/.test(entry.stmt.cppType ?? '')) continue;
+      // A vector mutated through a helper mutator (__tc_sort_fn(a1, ...),
+      // __tc_reverse(a1)) needs non-const storage — the helpers take
+      // std::vector<T>&. Promoting to const made the hoisted-comparator
+      // sort fail g++ ("incompatible cv-qualifiers"). Helper-receiver names
+      // were already marked everAssigned in the scan; this guard also
+      // catches scopes the scan's arm ordering missed.
+      if (helperMutatorReceivers.has(entry.name)) continue;
       // Capture the SOURCE keyword before the storage promotion below —
       // the emitted fix must edit what the document says, not the IR state.
       const sourceKw = entry.stmt.storage === 'const' ? undefined
