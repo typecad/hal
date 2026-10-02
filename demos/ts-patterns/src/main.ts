@@ -96,8 +96,7 @@ function sectionVariables(): void {
   const greeting = `hello ${single}`;
   const multiline = `line1
 line2`;
-  const innerPart = `inner ${1 + 1}`;
-  const nested = `outer ${innerPart} end`;
+  const nested = `outer ${`inner ${1 + 1}`} end`;
 
   // ── literal unions ───────────────────────────────────────────────────────
   let state: PinState = 'input';
