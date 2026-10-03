@@ -49,6 +49,12 @@ import path from "node:path";
 /** Pin role -> exported const name. Single source for generator + env typing
  *  + the hardware test runner's substitutions. */
 export const PIN_ROLES: Record<string, string> = {
+  // Wired-tier roles (opt-in per board; absent roles skip their tests).
+  uartLoop: "UART_LOOP",
+  // The 1-Wire data line (DS18B20 + 4.7 kΩ pull-up). Mapped for
+  // completeness: 12-onewire also needs the Sensor Pin-ctor lowering
+  // (HAL_SENSOR_CTOR) before it can run — see its test header.
+  onewire: "ONEWIRE_PIN",
   gpioOut: "GPIO_OUT",
   gpioIn: "GPIO_IN",
   pwm: "PWM_PIN",

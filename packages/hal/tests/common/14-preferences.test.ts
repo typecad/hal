@@ -61,4 +61,63 @@ describe("Store overwrite")
     })
   ).toBe(99)
 
+
+// String values, remove(), and clear() — a FRESH namespace so persistence
+// across re-flashing can never leak state into the typed-value groups
+// above (Store values live in the board's storage partition, not the app
+// image).
+describe("Store string values")
+  .it("getString() of an absent key returns the default")
+  .expectString(
+    (() => {
+      const s = new Store('strings-fresh');
+      return s.getString('name', 'fallback');
+    })
+  ).toBe("fallback")
+  .it("setString() then getString() roundtrips")
+  .expectString(
+    (() => {
+      const s = new Store('strings-fresh');
+      s.setString('name', 'blackpill');
+      return s.getString('name', '?');
+    })
+  ).toBe("blackpill")
+
+describe("Store remove()")
+  .it("remove() of a present key returns true")
+  .expect(
+    (() => {
+      const s = new Store('strings-fresh');
+      s.setString('doomed', 'x');
+      return s.remove('doomed') ? 1 : 0;
+    })
+  ).toBe(1)
+  .it("remove() of an absent key returns false")
+  .expect(
+    (() => {
+      const s = new Store('strings-fresh');
+      return s.remove('never-was') ? 1 : 0;
+    })
+  ).toBe(0)
+  .it("after remove(), getString() falls back again")
+  .expectString(
+    (() => {
+      const s = new Store('strings-fresh');
+      return s.getString('doomed', 'gone');
+    })
+  ).toBe("gone")
+
+describe("Store clear()")
+  .it("clear() empties every key in the namespace")
+  .expect(
+    (() => {
+      const s = new Store('strings-fresh');
+      s.setInt('k1', 1);
+      s.setString('k2', 'v');
+      s.clear();
+      const gone = s.getInt('k1', -1) === -1 && s.getString('k2', '?') === '?';
+      return gone ? 1 : 0;
+    })
+  ).toBe(1)
+
 done();

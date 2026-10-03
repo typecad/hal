@@ -38,4 +38,37 @@ describe("ADC options")
     })
   ).toBe(1)
 
+
+describe("ADC.readMillivolts()")
+  .it("readMillivolts() returns a value in the vref range")
+  .expect(
+    (() => {
+      const sense = new ADC(ADC_PIN);
+      const mv = sense.readMillivolts();
+      // Full-scale is the vref (3300 mV on this rig); a floating or grounded
+      // pin still reads within [0, vref] — outside means the raw→mv scaling
+      // or the channel's gain/reference is wrong.
+      if (mv >= 0 && mv <= 3300) {
+        return 1;
+      }
+      return 0;
+    })
+  ).toBe(1)
+  .it("readMillivolts() is stable across two reads (no cross-talk with read())")
+  .expect(
+    (() => {
+      const sense = new ADC(ADC_PIN);
+      const a = sense.readMillivolts();
+      const raw = sense.read();
+      const b = sense.readMillivolts();
+      // Two mv reads bracketing a raw read agree within 80 mV (ADC noise on
+      // an unconnected pin can wander; a unit mixup would not).
+      const diff = a > b ? a - b : b - a;
+      if (diff < 80 && raw >= 0) {
+        return 1;
+      }
+      return 0;
+    })
+  ).toBe(1)
+
 done();

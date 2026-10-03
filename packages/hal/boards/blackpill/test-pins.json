@@ -10,7 +10,8 @@
     "interrupt": "PA0",
     "led": "LED",
     "button": "BUTTON",
-    "i2cBus": "'I2C0'"
+    "i2cBus": "'I2C0'",
+    "uartLoop": "'UART0'"
   },
   "facts": {
     "adcMax": 4095

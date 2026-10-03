@@ -14,6 +14,12 @@
 //   - ADC runs on both SARADC units (adcPin on adc0, adcPinAlt on adc1);
 //     PWM runs on the LEDC matrix (pwm/pwmAlt).
 //   - 11-led skips by role: the devkitC devicetree has no led0 node.
+//   - 25-usb excluded: this rig's [TC: protocol rides the USB bridge, so
+//     the CDC port is the runner's own channel (the 08-uart precedent).
+//   - 09-i2c skips by role: the devkitC's default devicetree ships no
+//     ENABLED i2c controller node (capacity 0 — the peripheral validator
+//     rejects 'I2C0'/'I2C1' until an overlay enables one with pinctrl).
+//     Add the overlay + "i2cBus": "'I2C0'" to test-pins.json to run it.
 // ---------------------------------------------------------------------------
 
 import type { TypecadConfig } from '@typecad/cuttlefish/api';
@@ -55,6 +61,9 @@ const config: TypecadConfig = {
     ],
     exclude: [
       'tests/common/08-uart.test.ts',
+      // The CDC port on this rig is the protocol channel's USB bridge —
+      // same reason 08-uart is excluded (board note above).
+      'tests/common/25-usb.test.ts',
     ],
   },
 };
