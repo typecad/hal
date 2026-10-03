@@ -1196,8 +1196,7 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
                 initializer?: { kind?: string };
               };
               if (lowered.initializer
-                && (lowered.initializer.kind === 'element-access'
-                  || lowered.initializer.kind === 'raw')) {
+                && lowered.initializer.kind === 'element-access') {
                 lowered.isReferenceBinding = true;
               }
               diagnostics.push({
@@ -1234,8 +1233,7 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
                 initializer?: { kind?: string };
               };
               if (lowered.initializer
-                && (lowered.initializer.kind === 'element-access'
-                  || lowered.initializer.kind === 'raw')) {
+                && lowered.initializer.kind === 'element-access') {
                 lowered.isReferenceBinding = true;
               }
               diagnostics.push({
@@ -1276,8 +1274,7 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
                 initializer?: { kind?: string };
               };
               if (lowered.initializer
-                && (lowered.initializer.kind === 'element-access'
-                  || lowered.initializer.kind === 'raw')) {
+                && lowered.initializer.kind === 'element-access') {
                 lowered.isReferenceBinding = true;
               }
               diagnostics.push({

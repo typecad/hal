@@ -1327,7 +1327,7 @@ export function variableStatementToIR(
     // that string-concat rendering (shouldSkipStringWrap) can recognise string
     // fields by looking up the struct type in interfaceFieldTypes.
     if (varCppType === "auto" && actualInitializer && ts.isObjectLiteralExpression(actualInitializer)) {
-      varCppType = `_${declaration.name.text}_t`;
+      varCppType = `_${declaration.name.text}_${declaration.getStart()}_t`;
     }
     if (actualInitializer && ts.isArrayLiteralExpression(actualInitializer)) {
       const hasObjectElements = actualInitializer.elements.some(
@@ -1343,7 +1343,7 @@ export function variableStatementToIR(
         const elemType = elemIr ? renderCppType(elemIr) : null;
         const isNamedElementType = elemType ? /^[A-Z]/.test(elemType) : false;
         if (!isNamedElementType) {
-          const structType = `_${declaration.name.text}_t`;
+          const structType = `_${declaration.name.text}_${declaration.getStart()}_t`;
           const ir: CppTypeIR = { kind: "vector", element: parseCppType(structType) };
           varCppType = renderCppType(ir);
         }

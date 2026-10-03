@@ -1109,7 +1109,12 @@ export class ExpressionRenderer {
             if (floatArg !== undefined) return floatArg;
             return { format: knownPrecision !== undefined ? `%.${knownPrecision}f` : f.format, arg: rendered, estimatedLength: f.estimatedLength };
           }
-          return { format: f.format, arg: f.needsCStr ? `${rendered}.c_str()` : rendered, estimatedLength: f.estimatedLength };
+          // Parenthesize a composite operand before .c_str(): `p.x + p.y`
+          // + .c_str() parses as p.x + (p.y.c_str()) — precedence bug.
+          const cstrArg = f.needsCStr
+            ? (rendered.includes(" ") || rendered.includes("+") ? `(${rendered}).c_str()` : `${rendered}.c_str()`)
+            : rendered;
+          return { format: f.format, arg: cstrArg, estimatedLength: f.estimatedLength };
         }
       }
     }
@@ -1336,6 +1341,25 @@ export class ExpressionRenderer {
         // for every branch after the fallback cast — %d on its double bits
         // printed 0 (fuzz divergence case-0).
         if (/[.>](?:at|get)\([^()]*\)\s*$/.test(rendered)) {
+          // Resolve the MAP's value type when the receiver is known: a
+          // string-valued map's read is %s (+ .c_str()), a numeric value
+          // %g. The unconditional %.15g printed a std::string value's
+          // BITS as a double (cross-fn map poisoning probe: b()'s
+          // Map<number, string> printed 3.19e-312 garbage).
+          const atMatch = /([A-Za-z_]\w*)[.>]at\(/.exec(rendered) ?? /([A-Za-z_]\w*)[.>]get\(/.exec(rendered);
+          if (atMatch) {
+            const mapType = effectiveKnownVariableTypes?.get(atMatch[1])?.cppType
+              ?? this.knownVariableTypes?.get(atMatch[1])?.cppType;
+            if (mapType) {
+              const mapIr = parseCppType(mapType); const valIr = mapIr.kind === 'map' ? mapIr.value : undefined;
+              if (valIr) {
+                const valType = renderCppType(valIr);
+                if (this.isStringLikeCppType(valType)) {
+                  return { format: "%s", arg: `${rendered}.c_str()`, estimatedLength: 64 };
+                }
+              }
+            }
+          }
           return { format: "%.15g", arg: rendered, estimatedLength: 24 };
         }
         if (expr.kind === "raw" && /^\(\w+\.count\([^)]*\) != 0 \? \w+\.at\(/.test(rendered)) {
@@ -1362,7 +1386,14 @@ export class ExpressionRenderer {
             const propName = expr.kind === "property-access" ? expr.property : rendered.split(".")[1];
             const fieldType = this.interfaceFieldTypes.get(this.normalizeRecordType(objectType))?.get(propName);
             if (fieldType && this.isStringLikeCppType(fieldType)) {
-              return { format: "%s", arg: `${rendered}.c_str()`, estimatedLength: 128 };
+              // A const char* field is ALREADY a C-string: .c_str() on it is
+              // invalid (g++: "non-class type 'const char*'"). Only the
+              // std::string-bearing fields need the conversion — and the
+              // conversion must PARENTHESIZE a composite rendered operand
+              // (`p.x + p.y` + .c_str() parsed as p.x + (p.y.c_str())).
+              const isCharPtr = /const char\*|char\*/.test(fieldType.trim());
+              const arg = isCharPtr ? rendered : `(${rendered}).c_str()`;
+              return { format: "%s", arg, estimatedLength: 128 };
             }
             if (fieldType === "float" || fieldType === "double") {
               return { format: "%.15g", arg: rendered, estimatedLength: 24 };
@@ -1728,6 +1759,23 @@ export class ExpressionRenderer {
     if (expr.operator === "+") {
       const wrapped = this.strategy.wrapStringConcat(leftRendered, rightRendered, expr.left.kind === "string");
       if (wrapped !== undefined) return wrapped;
+      // Two RAW C-STRING operands (const char* struct fields, string-enum
+      // members) have no operator+ in C++. Build std::strings so the
+      // concatenation and the downstream .c_str() both work. Typed check
+      // here (not in the strategy): numeric operands must stay arithmetic.
+      const lt = this.inferExpressionCppType(expr.left, knownVariableTypes);
+      const rt = this.inferExpressionCppType(expr.right, knownVariableTypes);
+      const nlt = lt ? this.strategy.normalizeCppType(lt) : undefined;
+      const nrt = rt ? this.strategy.normalizeCppType(rt) : undefined;
+      const lRaw = nlt === "const char*" || nlt === "char*" || expr.left.kind === "string";
+      const rRaw = nrt === "const char*" || nrt === "char*" || expr.right.kind === "string";
+      const lStrObj = nlt === "std::string";
+      const rStrObj = nrt === "std::string";
+      if ((lRaw && rRaw) || (lRaw && rStrObj) || (lStrObj && rRaw)) {
+        const l = lRaw ? `std::string(${leftRendered})` : leftRendered;
+        const r = rRaw ? `std::string(${rightRendered})` : rightRendered;
+        return `${l} + ${r}`;
+      }
     }
     // C++ doesn't define % for double — use fmod. std:: qualified so the name
     // resolves from the math header the include scan pulls in: a bare `fmod(`

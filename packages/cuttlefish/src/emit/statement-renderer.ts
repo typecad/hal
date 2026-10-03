@@ -966,7 +966,7 @@ export class StatementRenderer {
             const constPrefix2 = isConst ? "const " : "";
             return `${constPrefix2}${vecType} ${safeArrName2} = { ${elements} };`;
           }
-          const structName = `_${statement.name}_t`;
+          const structName = `_${statement.name}_${statement.sourceSpan.startLine}_t`;
           // Compile-time-only namespace values (e.g. the `ui` authoring handle
           // from @typecad/ui) are intercepted at IR-build time; their calls
           // lower to IR but the binding itself must emit nothing. Skip the
@@ -1053,7 +1053,20 @@ export class StatementRenderer {
       }
       // Handle object initializers with inline struct definition
       if (statement.initializer.kind === "object") {
-        const placeholderStructName = `_${statement.name}_t`;
+        // Shadow-struct name is unique per SOURCE POSITION: two locals named `p`
+    // in sibling functions each synthesize their own struct, so the second
+    // function's field-type registration no longer overwrites the first's
+    // in the file-scope interfaceFieldTypes map (cross-fn struct poisoning:
+    // `p.x + p.y` in b() resolved a's numeric field map and emitted
+    // `.c_str()` on a const char* field).
+    // The IR layer already assigned this declaration's shadow-struct name
+    // (`_<name>_<sourcePos>_t` in variables.ts) — reuse it verbatim so the
+    // cppType/placeholder comparison below stays coherent. Only synthesize
+    // when the IR didn't (older paths).
+    const irShadowMatch = /^_[A-Za-z]\w*_\d+_t$/.exec(statement.cppType ?? '');
+    const placeholderStructName = irShadowMatch
+      ? statement.cppType
+      : `_${statement.name}_${statement.sourceSpan.startLine}_t`;
         // When the source annotation names a concrete type (e.g. an exported
         // interface referenced across modules: `const cfg: ThresholdConfig = {...}`),
         // cppType already carries that interface/struct name. The struct is declared

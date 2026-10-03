@@ -392,3 +392,44 @@ describe("fixed — raw double concat formatting", () => {
     );
   });
 });
+
+describe("fixed — cross-function same-name locals (scope poisoning)", () => {
+  it("two functions with a local named p of different struct shapes", () => {
+    diffCase(
+      "scopemap-obj",
+      `
+        declare function report(line: string): void;
+        function a(): void {
+          const p = { x: 3, y: 4 };
+          report(\`d=\${p.x + p.y}\`);
+        }
+        function b(): void {
+          const p = { x: 'ex', y: 'why' };
+          report(\`j=\${p.x + p.y}\`);
+        }
+        a();
+        b();
+      `,
+    );
+  });
+  it("two functions with a local named m of different Map types", () => {
+    diffCase(
+      "scopemap-map",
+      `
+        declare function report(line: string): void;
+        function a(): void {
+          const m = new Map<string, number>();
+          m.set('k', 5);
+          report(\`v=\${m.get('k')}\`);
+        }
+        function b(): void {
+          const m = new Map<number, string>();
+          m.set(1, 'one');
+          report(\`v=\${m.get(1)}\`);
+        }
+        a();
+        b();
+      `,
+    );
+  });
+});
