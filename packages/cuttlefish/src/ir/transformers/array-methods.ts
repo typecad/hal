@@ -963,7 +963,11 @@ function resolveReceiverCppType(receiverNode: ts.Expression): string | undefined
     return "std::string";
   }
   if (ts.isPropertyAccessExpression(receiverNode) && receiverNode.expression.kind === ts.SyntaxKind.ThisKeyword) {
-    return scope.locals.get(`this->${receiverNode.name.text}`);
+    // classFields is the authoritative view inside method bodies — without
+    // the fallback a this->field receiver resolved unknown and ambiguous
+    // methods (slice on a vector<string> field) mis-took the STRING path.
+    return scope.locals.get(`this->${receiverNode.name.text}`)
+      ?? scope.classFields.get(`this->${receiverNode.name.text}`);
   }
   if (ts.isElementAccessExpression(receiverNode)) {
     // Derive the element type of the indexed container.
@@ -973,6 +977,16 @@ function resolveReceiverCppType(receiverNode: ts.Expression): string | undefined
       if (element) return element;
     }
     return undefined;
+  }
+  // An identifier.field receiver (`s.fields.slice(2)`): resolve the field's
+  // type through the owning class's IR — without this arm the receiver
+  // resolved unknown and ambiguous methods on it mis-took the STRING path.
+  if (ts.isPropertyAccessExpression(receiverNode) && ts.isIdentifier(receiverNode.expression)) {
+    const ownerType = scope.locals.get(receiverNode.expression.text) ?? scope.globals.get(receiverNode.expression.text);
+    const ownerName = ownerType ? parsedBareString(ownerType) : undefined;
+    const cls = ownerName !== undefined ? topLevelClasses.get(ownerName) : undefined;
+    const field = cls?.fields.find(f => f.name === receiverNode.name.text);
+    if (field) return field.cppType;
   }
   // A method-call receiver (`this.lastOf(k).slice(0, 12)`, `stats.render()...`):
   // resolve the receiver class (this → active class, identifier → scope type)

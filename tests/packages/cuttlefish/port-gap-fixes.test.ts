@@ -663,8 +663,13 @@ describe("for-of over strings", () => {
       while (true) {}
     `, { strategy: zephyr(), target: 'zephyr' });
     expect(out.cpp).not.toMatch(/for \(const auto& ch : s\)/);
-    expect(out.cpp).toMatch(/__tc_str_it = \(s\)\.c_str\(\)/);
-    expect(out.cpp).toMatch(/ch = \*__tc_str_it/);
+    // Round-3 template: an index loop over a once-evaluated string copy,
+    // loop var a mutable char (the old `const char* it, ch` declarator made
+    // ch const — its reassignment was ill-formed).
+    expect(out.cpp).toMatch(/const std::string __tc_str_s_\d+ = s;/);
+    expect(out.cpp).toMatch(/for \(long long __tc_str_i_\d+ = 0, \w+ = 0; __tc_str_i_\d+ < static_cast<long long>\(__tc_str_s_\d+\.length\(\)\)/);
+    expect(out.cpp).not.toMatch(/for \(const char\* __tc_str_it/);
+    expect(out.cpp).toMatch(/\(\(\w+ = __tc_str_s_\d+\[__tc_str_i_\d+\]\), true\)/);
   });
 });
 

@@ -516,7 +516,19 @@ export class StatementRenderer {
             const iterText = this.expressionRenderer.render(statement.iterable, undefined, knownVariableTypes);
             const cStr = normIterable === "std::string" ? `(${iterText}).c_str()` : iterText;
             const safeName = escapeCppKeyword(varDecl.name, this.strategy.reservedNames());
-            return `for (const char* __tc_str_it = ${cStr}, ${safeName} = *__tc_str_it; *__tc_str_it != '\\0'; ++__tc_str_it, ${safeName} = *__tc_str_it)`;
+            // The old `const char* it, ch = *it` declarator made `ch` a
+            // CONST CHAR (the pointer binds to the declarator), and its
+            // reassignment in the increment was ill-formed; under the one
+            // string model __tc_charCodeAt also needs a char overload (a
+            // char has no implicit std::string conversion). Lower to an
+            // INDEX loop over a single evaluated COPY of the iterable (the
+            // expression evaluates exactly once, in the prelude), with the
+            // loop var a mutable char rebound in the condition.
+            const loopNonce = this.expressionRenderer.mintLoopNonce();
+            const strVar = `__tc_str_s_${loopNonce}`;
+            this.expressionRenderer.pushPrelude([`const std::string ${strVar} = ${iterText};`]);
+            const idxVar = `__tc_str_i_${loopNonce}`;
+            return `for (long long ${idxVar} = 0, ${safeName} = 0; ${idxVar} < static_cast<long long>(${strVar}.length()) && ((${safeName} = ${strVar}[${idxVar}]), true); ++${idxVar})`;
           }
           // Range-for by reference for non-primitive element types (structs,
           // classes, strings) to avoid the per-iteration copy g++ warns about

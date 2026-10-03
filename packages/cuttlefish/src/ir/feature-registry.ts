@@ -375,8 +375,8 @@ const CONTEXT_LINT_RULES: ReadonlyArray<LintRule> = [
     source: "context",
   },
   {
-    selector: "CallExpression > MemberExpression.callee[object.name='Number'][property.name=/^(parseInt|parseFloat|isFinite|isNaN|isInteger|isSafeInteger)$/]",
-    message: "[transpiler] Number.* static methods are not lowered to C++ (no JS number-runtime on bare metal). Use an explicit cast or a fixed-width numeric type.",
+    selector: "CallExpression > MemberExpression.callee[object.name='Number'][property.name=/^(isInteger|isSafeInteger)$/]",
+    message: "[transpiler] Number.isInteger/isSafeInteger are not lowered to C++ (no JS number-runtime on bare metal). parseInt/parseFloat/isFinite/isNaN ARE lowered.",
     source: "context",
   },
   {
@@ -526,10 +526,10 @@ export function checkContextSensitive(node: ts.Node, sourceText: string): Diagno
           code: "TS2CPP_NO_EQUIVALENT",
         };
       }
-      if (receiverName === "Number") {
+      if (receiverName === "Number" && !["parseInt", "parseFloat", "isFinite", "isNaN"].includes(methodName)) {
         return {
           message: `Number.${methodName}() is a JavaScript Number-constructor static with no C++ lowering (no JS number runtime on bare metal).`,
-          hint: "Use an explicit C++ cast (static_cast<int>), an explicit fixed-width numeric type, or a manual implementation.",
+          hint: "Use an explicit C++ cast (static_cast<int>), an explicit fixed-width numeric type, or a manual implementation — Number.parseInt/parseFloat/isFinite/isNaN ARE lowered.",
           code: "TS2CPP_NO_EQUIVALENT",
         };
       }

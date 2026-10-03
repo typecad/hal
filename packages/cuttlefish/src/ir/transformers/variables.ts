@@ -55,7 +55,7 @@ import {
   isHALSingleton,
   HALInstance,
 } from "../hal-resolver.js";
-import { resolveConstNumericExpr, requestCtorFields, mqttCtorFields, halClassRegistry } from "../hal/hal-parser.js";
+import { resolveConstNumericExpr, resolveConstStringExpr, requestCtorFields, mqttCtorFields, halClassRegistry } from "../hal/hal-parser.js";
 import { resolveHALCallForVarInit } from "./hal-call-resolver.js";
 import { recordSignal } from "./ui-call-resolver.js";
 import { hasSafetyHook, requireSafetyHook } from "../../safety-hook.js";
@@ -258,9 +258,15 @@ export function registerHalCtorInstance(
               fieldValues.set("_timeoutMs", ctorArgs[0].text.replace(/_/g, ""));
             }
           }
-          // Thin File: the path is the construction fact.
-          if (className === "File" && ctorArgs && ctorArgs.length >= 1 && ts.isStringLiteral(ctorArgs[0])) {
-            fieldValues.set("_path", ctorArgs[0].text);
+          // Thin File: the path is the construction fact — a literal OR a
+          // named string constant (resolveConstStringExpr folds the
+          // idiomatic `new File(SETTINGS_PATH)`; the literal-only check
+          // left _path uncaptured and fs ops baked `this->_path`).
+          if (className === "File" && ctorArgs && ctorArgs.length >= 1) {
+            const pathText = resolveConstStringExpr(ctorArgs[0], initializer.getSourceFile());
+            if (pathText !== null) {
+              fieldValues.set("_path", pathText);
+            }
           }
           // new Mqtt(uri, opts?) — shared capture (also serves bare
           // `new Mqtt(...).connect()` receivers via resolveHALReceiver).

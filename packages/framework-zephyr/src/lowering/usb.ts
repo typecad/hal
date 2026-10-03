@@ -207,7 +207,7 @@ export function lowerUsb(op: HALOpIR, chip: ZephyrChipDescriptor): { code?: stri
       return { code: renderWrite(dev, o.value, true) };
     case 'usb.read':
       // Same poll semantics as uart.read: the byte or -1 if none available.
-      return { expression: `({ unsigned char __b = 0; (uart_poll_in(${dev}, &__b) == 0) ? (int)__b : -1; })` };
+      return { expression: `({ unsigned char __b = 0; (uart_poll_in(${dev}, &__b) == 0) ? static_cast<int>(__b) : -1; })` };
     case 'usb.available':
       // uart_poll_in reports only "one byte ready" and probing would drain it;
       // same honest limitation as uart.available.

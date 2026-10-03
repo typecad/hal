@@ -201,6 +201,12 @@ export class ExpressionRenderer {
     this._preludeLines.push(...lines);
   }
 
+  /** Monotonic nonce for caller-minted helper names (loop temps, etc.). */
+  mintLoopNonce(): number {
+    this._snprintfCounter.value += 1;
+    return this._snprintfCounter.value;
+  }
+
   /**
    * Mint a snprintf accumulation buffer for a statement-level string rebind
    * (the `s += part` lowering). Distinct from buildSnprintfFromParts' buffers:

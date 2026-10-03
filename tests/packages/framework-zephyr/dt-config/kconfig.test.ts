@@ -145,12 +145,12 @@ describe('resolveKconfigFragments', () => {
     expect(m.get('CONFIG_NET_MGMT_EVENT_STACK_SIZE')).toBe('4096');
     expect(m.get('CONFIG_NET_TX_STACK_SIZE')).toBe('2048');
     expect(m.get('CONFIG_NET_RX_STACK_SIZE')).toBe('2048');
-    expect(m.get('CONFIG_MAIN_STACK_SIZE')).toBe('5200');
+    expect(m.get('CONFIG_MAIN_STACK_SIZE')).toBe('8192');
   });
 
-  it('keeps the default MAIN_STACK_SIZE (4096) when WiFi is not used', () => {
+  it('uses the 8192 main-stack floor whether or not WiFi is used', () => {
     const m = resolveKconfigFragments({ usesAdc: true }, false);
-    expect(m.get('CONFIG_MAIN_STACK_SIZE')).toBe('4096');
+    expect(m.get('CONFIG_MAIN_STACK_SIZE')).toBe('8192');
     // Non-WiFi builds set no networking stack sizes.
     expect(m.has('CONFIG_NET_MGMT_EVENT_STACK_SIZE')).toBe(false);
   });

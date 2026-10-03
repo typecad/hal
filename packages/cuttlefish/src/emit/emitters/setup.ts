@@ -482,6 +482,13 @@ export function buildEmitterContext(
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_UART_BEGIN', '// CUTTLEFISH_UART_END');
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_UART_EXT_BEGIN', '// CUTTLEFISH_UART_EXT_END');
     }
+    // The shared serial-write helper (__tc_dev_put) serves UART and CDC
+    // writes; strip it only when NEITHER is used. It used to ride the UART
+    // marker family above, so a USB-only program lost it and every write
+    // failed with "__tc_dev_put was not declared" (shell-logger demo).
+    if (!programAnalysis.usesUart && !programAnalysis.usesUsb) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_SERIAL_WRITE_BEGIN', '// CUTTLEFISH_SERIAL_WRITE_END');
+    }
     if (!programAnalysis.usesSPI) {
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_SPI_BEGIN', '// CUTTLEFISH_SPI_END');
     }

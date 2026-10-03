@@ -201,7 +201,14 @@ export default {
             if (
               (node.id.type === "ObjectPattern" ||
                 node.id.type === "ArrayPattern") &&
-              !node.init
+              !node.init &&
+              // A for-of loop variable (for (const [k, v] of m)) IS the
+              // supported shape — the for-of lowering desugars binding
+              // patterns (object fields, map pairs). Only standalone
+              // declarations lack a lowering.
+              // (the declarator's PARENT is the VariableDeclaration; the
+              // ForOfStatement is its grandparent)
+              node.parent?.parent?.type !== "ForOfStatement"
             ) {
               context.report({
                 node,

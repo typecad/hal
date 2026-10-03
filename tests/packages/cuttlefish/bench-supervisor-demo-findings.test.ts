@@ -200,7 +200,10 @@ describe('bench-supervisor demo findings', () => {
       }
     `);
 
-    expect(r.cpp).toMatch(/this->_v\.pop_back\(\)/);
+    // pop rides __tc_pop (VALUE-preserving: JS .pop() returns the removed
+    // element — a bare pop_back() breaks `return arr.pop()`); push is the
+    // native push_back.
+    expect(r.cpp).toMatch(/__tc_pop\(this->_v\)/);
     expect(r.cpp).toMatch(/this->_v\.push_back\(x\)/);
     expect(r.cpp).not.toMatch(/this->_v\.pop\(\)/);
     expect(r.cpp).not.toMatch(/this->_v\.push\(/);

@@ -505,6 +505,26 @@ function cStrIfManaged(argNode: ts.Expression, argText: string): string {
   return `(${argText}).c_str()`;
 }
 
+/** parseInt(text, radix) — the RADIX is part of the contract: a literal
+ *  radix 16/8/2 lowers to strtol with that base (atoi is base-10 only, so
+ *  `parseInt("2A", 16)` previously parsed as 2 — the shell-logger demo's
+ *  hex checksums never validated). A non-literal radix honestly falls back
+ *  to base 10 (dynamic-base parsing has no bounded lowering). */
+function parseIntLowering(expr: ts.CallExpression, sourceText: string, diagnostics: Diagnostic[], pointerVars: PointerTracker): ExpressionIR {
+  const argText = renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars));
+  const shaped = cStrIfManaged(expr.arguments[0], argText);
+  const radixArg = expr.arguments[1];
+  if (radixArg && ts.isNumericLiteral(radixArg)) {
+    const radix = radixArg.text;
+    if (radix === "16" || radix === "8" || radix === "2") {
+      requiredIncludes.add("<cstdlib>");
+      return { kind: "raw", value: `strtol(${shaped}, nullptr, ${radix})` };
+    }
+  }
+  requiredIncludes.add("<cstdlib>");
+  return { kind: "raw", value: `atoi(${shaped})` };
+}
+
 function resolveCallReturnTypeForNullGuard(call: ts.CallExpression, sourceText: string): string | undefined {
   const callee = call.expression;
   // `this.method(...)` or `someExpr.method(...)`.
@@ -1945,9 +1965,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       // std::string arg needs .c_str() for atoi/atof; a const char*/literal
       // (the common embedded shape) must NOT grow one.
       if (fnName === "parseInt" && expr.arguments.length >= 1) {
-        const argText = renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars));
-        requiredIncludes.add("<cstdlib>");
-        return { kind: "raw", value: `atoi(${cStrIfManaged(expr.arguments[0], argText)})` };
+        return parseIntLowering(expr, sourceText, diagnostics, pointerVars);
       }
       if (fnName === "parseFloat" && expr.arguments.length >= 1) {
         const argText = renderExprAsText(expressionToIR(expr.arguments[0], sourceText, diagnostics, pointerVars));
@@ -2010,8 +2028,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           return { kind: "raw", value: `std::isfinite(${argText})` };
         }
         if (methodName === "parseInt") {
-          requiredIncludes.add("<cstdlib>");
-          return { kind: "raw", value: `atoi(${cStrIfManaged(expr.arguments[0], argText)})` };
+          return parseIntLowering(expr, sourceText, diagnostics, pointerVars);
         }
         if (methodName === "parseFloat") {
           requiredIncludes.add("<cstdlib>");
@@ -2281,7 +2298,12 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         if (ts.isIdentifier(receiver)) {
           receiverType = getCurrentIrTypeScope()?.locals.get(receiver.text) ?? getCurrentIrTypeScope()?.globals.get(receiver.text);
         } else if (ts.isPropertyAccessExpression(receiver) && receiver.expression.kind === ts.SyntaxKind.ThisKeyword) {
-          receiverType = getCurrentIrTypeScope()?.locals.get(`this->${receiver.name.text}`);
+          // The class-fields map is the authoritative view for this->field
+          // inside method bodies (locals may not carry it); without the
+          // fallback a plain (non-??-guarded) `.get()` on a Map field fell
+          // through verbatim — g++: "no member named 'get'".
+          receiverType = getCurrentIrTypeScope()?.locals.get(`this->${receiver.name.text}`)
+            ?? getCurrentIrTypeScope()?.classFields.get(`this->${receiver.name.text}`);
         }
 
         if (receiverType && (parsedIsMap(receiverType) || parsedIsSet(receiverType))) {

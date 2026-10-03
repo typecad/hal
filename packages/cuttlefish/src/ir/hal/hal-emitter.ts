@@ -456,6 +456,15 @@ function irArgIsStdString(a: ExpressionIR, text: string): boolean {
       }
     }
   }
+  // A ternary (`r.ok ? fmt->ok(...) : verbose->err(...)`) — string-valued
+  // when BOTH arms are; recurse into the arms.
+  if (a.kind === "ternary") {
+    const t = a as { whenTrue: ExpressionIR; whenFalse: ExpressionIR };
+    // Either arm being an owned std::string makes the ternary's common
+    // type std::string (the other arm converts); the resulting temporary
+    // lives through the full call expression, so .c_str() is safe.
+    return irArgIsStdString(t.whenTrue, text) || irArgIsStdString(t.whenFalse, text);
+  }
   // A method call (`w->describe()`) — its resolved return type, either
   // carried on the IR (getter-access lowering attaches cppType) or looked
   // up in the class registry by the bare method name.

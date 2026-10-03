@@ -886,7 +886,10 @@ export function tryResolveSemanticCall(
       const path = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const content = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (path === null || content === null) return null;
-      return { operation: "fs.write_text", path: quoteNonIdentifier(path), content: quoteNonIdentifier(content) };
+      // Content is C++-ready text (literals arrive quoted); quoteNonIdentifier
+      // here baked a call expression into a LITERAL (the store put_string bug
+      // class — bench-supervisor round 1). std::string values take .c_str().
+      return { operation: "fs.write_text", path: quoteNonIdentifier(path), content: cstrIfStdStringText(content) };
     }
     case "fsExists": {
       const path = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);

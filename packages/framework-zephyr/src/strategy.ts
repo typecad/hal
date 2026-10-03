@@ -1073,16 +1073,20 @@ export class ZephyrStrategy implements PlatformStrategy {
     // defines CUTTLEFISH_SHIM_DEFINED first would otherwise hide these from
     // the entry TU.
     if (uses('usesUart') || uses('usesUsb')) {
+      // Own marker family (NOT the UART driver block): the helper serves
+      // UART AND CDC writes, and the setup.ts backstop strips UART-marked
+      // blocks whenever usesUart is false — which silently deleted the
+      // helper from USB-only programs (every write failed to compile).
       guardBody.push(
-        '// CUTTLEFISH_UART_BEGIN',
+        '// CUTTLEFISH_SERIAL_WRITE_BEGIN',
         'static inline void __tc_dev_put(const struct device* dev, const char* s) {',
-        '    for (; *s != \'\\0\'; ++s) { uart_poll_out(dev, *s); }',
+        "    for (; *s != '\0'; ++s) { uart_poll_out(dev, *s); }",
         '}',
         'static inline void __tc_dev_put(const struct device* dev, double v) {',
         '    char __b[32];',
         '    __tc_dev_put(dev, __tc_fmt_num_buf(v, __b, sizeof(__b)));',
         '}',
-        '// CUTTLEFISH_UART_END',
+        '// CUTTLEFISH_SERIAL_WRITE_END',
       );
     }
 
@@ -2515,7 +2519,9 @@ inline std::string __tc_slice2(const std::string& s, int start, int end) { retur
 inline std::string __tc_slice1(const std::string& s, int start) { return __tc_substring2(s, start, static_cast<int>(s.size())); }
 // JS String.replace with two STRING args replaces the FIRST occurrence only.
 inline std::string __tc_replace(const std::string& s, const char* old, const char* repl) { size_t p = s.find(old); if (p == std::string::npos) { return s; } std::string r = s; r.replace(p, strlen(old), repl); return r; }
+inline std::string __tc_charAt(char c, int idx) { (void)idx; return std::string(1U, c); }
 inline std::string __tc_charAt(const std::string& s, int idx) { if (idx < 0 || static_cast<size_t>(idx) >= s.size()) { return std::string(); } return std::string(1U, s[static_cast<size_t>(idx)]); }
+inline int __tc_charCodeAt(char c, int idx) { (void)idx; return static_cast<int>(static_cast<unsigned char>(c)); }
 inline int __tc_charCodeAt(const std::string& s, int idx) { if (idx < 0 || static_cast<size_t>(idx) >= s.size()) { return 0; } return static_cast<int>(static_cast<unsigned char>(s[static_cast<size_t>(idx)])); }
 inline int __tc_indexOf(const std::string& s, const char* needle) { size_t p = s.find(needle); return (p == std::string::npos) ? -1 : static_cast<int>(p); }
 inline int __tc_lastIndexOf(const std::string& s, const char* needle) { size_t p = s.rfind(needle); return (p == std::string::npos) ? -1 : static_cast<int>(p); }

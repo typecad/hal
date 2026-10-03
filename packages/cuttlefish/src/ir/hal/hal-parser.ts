@@ -413,6 +413,36 @@ export function getCtorIncludes(className: string): string[] {
  * extractors previously accepted numeric LITERALS only, so a const-named
  * option left the field unset and the method inlining silently failed.
  */
+/** Resolve a compile-time STRING: a string literal, or an identifier bound
+ *  to one at the file's top level (a named path constant — the idiomatic
+ *  `const SETTINGS_PATH = 'session.cfg'; new File(SETTINGS_PATH)` shape,
+ *  which the literal-only File capture previously missed, leaving
+ *  `this->_path` as a garbage literal in the fs op). */
+export function resolveConstStringExpr(
+  expr: ts.Expression | undefined,
+  sourceFile: ts.SourceFile | undefined,
+): string | null {
+  if (!expr) return null;
+  if (ts.isStringLiteral(expr) || ts.isNoSubstitutionTemplateLiteral(expr)) {
+    return expr.text;
+  }
+  if (ts.isIdentifier(expr) && sourceFile) {
+    for (const stmt of sourceFile.statements) {
+      if (!ts.isVariableStatement(stmt)) continue;
+      for (const decl of stmt.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name) && decl.name.text === expr.text) {
+          return resolveConstStringExpr(decl.initializer, sourceFile);
+        }
+      }
+    }
+    return null;
+  }
+  if (ts.isParenthesizedExpression(expr)) {
+    return resolveConstStringExpr(expr.expression, sourceFile);
+  }
+  return null;
+}
+
 export function resolveConstNumericExpr(
   expr: ts.Expression | undefined,
   sourceFile: ts.SourceFile | undefined,

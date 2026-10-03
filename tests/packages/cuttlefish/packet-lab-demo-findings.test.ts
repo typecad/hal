@@ -186,8 +186,10 @@ describe("packet-lab demo findings (Zephyr)", () => {
       while (true) {}
     `, { strategy: zephyr(), target: 'zephyr' });
     expect(noErr(out)).toHaveLength(0);
-    const structAt = out.cpp.indexOf("struct _sensors_t");
-    const useAt = out.cpp.search(/__tc_StaticArray<_sensors_t/);
+    // The shadow-struct name is uniqued per declaration site (_sensors_13_t)
+    // since cross-function same-name locals got shadow-struct uniquing.
+    const structAt = out.cpp.search(/struct _sensors_\d*_t/);
+    const useAt = out.cpp.search(/__tc_StaticArray<_sensors_\d*_t/);
     expect(structAt).toBeGreaterThan(-1);
     expect(useAt).toBeGreaterThan(-1);
     expect(structAt).toBeLessThan(useAt); // definition before the global that names it
