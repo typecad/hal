@@ -512,3 +512,59 @@ describe("fixed — scope shadowing, hard shapes", () => {
     );
   });
 });
+
+describe("fixed — else-branch and fall-through variant narrowing", () => {
+  it("early-return typeof guard narrows the fall-through to the complement arm", () => {
+    diffCase(
+      "else-str-arm",
+      `
+        declare function report(line: string): void;
+        function describeId(id: number | string): string {
+          if (typeof id === 'number') {
+            return 'num:' + id.toFixed(0);
+          }
+          return 'str:' + id.toUpperCase();
+        }
+        report(describeId(5));
+        report(describeId('five'));
+      `,
+    );
+  });
+  it("string-arm guard narrows the fall-through to the numeric arm", () => {
+    diffCase(
+      "else-num-arm",
+      `
+        declare function report(line: string): void;
+        function describeId(id: number | string): string {
+          if (typeof id === 'string') {
+            return 'str:' + id;
+          }
+          return 'num:' + (id * 2).toFixed(0);
+        }
+        report(describeId(5));
+        report(describeId('five'));
+      `,
+    );
+  });
+  it("explicit else narrows; statements after the if see the whole variant", () => {
+    diffCase(
+      "post-if-whole",
+      `
+        declare function report(line: string): void;
+        function run(id: number | string): void {
+          if (typeof id === 'number') {
+            report('num:' + id.toFixed(0));
+          } else {
+            report('str:' + id.toUpperCase());
+          }
+          report('after:' + describeAfter(id));
+        }
+        function describeAfter(id: number | string): string {
+          return 'whole';
+        }
+        run(5);
+        run('five');
+      `,
+    );
+  });
+});

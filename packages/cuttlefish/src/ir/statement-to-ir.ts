@@ -6,8 +6,10 @@ import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "./ast-node-
 import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName } from "./compile-time-only.js";
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveAliasedTypeNode } from "./type-resolution.js";
 import { escapeCppKeyword } from "../utils/strings.js";
-import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeEnumNames, activeStringEnumNames, doubleWidenedVars, resetFunctionScopeState, topLevelClassNames, topLevelClasses, requiredIncludes, mapEntryVarNames } from "./build-ir-state.js";
+import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeEnumNames, activeStringEnumNames, doubleWidenedVars, resetFunctionScopeState, getContext, topLevelClassNames, topLevelClasses, requiredIncludes, mapEntryVarNames } from "./build-ir-state.js";
 import { getCurrentIrTypeScope, bindIrTypeScopeLocals } from "./symbol-types.js";
+import { parsedIsVariant, parseCppType, renderCppType } from "../api/shared/cpp-type-ir.js";
+import { variantArmForLiteral } from "./transformers/control-flow.js";
 import { parsedElementString } from "../api/shared/cpp-type-ir.js";
 import { inferAliasFieldType } from "./type-resolution.js";
 import { calleeToText, renderExprAsText } from "./render-expr.js";
@@ -584,6 +586,7 @@ export function lowerStatementList(
   }
 
   // Phase 3: Process remaining (non-function, non-class) statements.
+  let fallthroughNarrowing: { name: string; prev: string | undefined } | undefined;
   for (const statement of statements) {
     if (ts.isFunctionDeclaration(statement)) {
       continue; // Already hoisted
@@ -608,6 +611,48 @@ export function lowerStatementList(
     if (result) {
       lowered.push(...result);
     }
+    // Early-return typeof guard: `if (typeof x === 'lit') { return ...; }`
+    // with NO else — the trailing statements are the complement branch (the
+    // then-branch terminated). Arm the 2-arm variant's complement for the
+    // rest of this list, mirroring TS control-flow narrowing.
+    if (fallthroughNarrowing === undefined
+      && ts.isIfStatement(statement)
+      && statement.elseStatement === undefined
+      && ts.isBlock(statement.thenStatement)
+      && statement.thenStatement.statements.length > 0) {
+      const last = statement.thenStatement.statements[statement.thenStatement.statements.length - 1];
+      const terminates = ts.isReturnStatement(last) || ts.isThrowStatement(last);
+      if (terminates
+        && ts.isBinaryExpression(statement.expression)
+        && (statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+          || statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken)
+        && ts.isTypeOfExpression(statement.expression.left)
+        && ts.isStringLiteral(statement.expression.right)
+        && ts.isIdentifier(statement.expression.left.expression)) {
+        const varName = statement.expression.left.expression.text;
+        const varType = getCurrentIrTypeScope()?.locals.get(varName)
+          ?? getCurrentIrTypeScope()?.globals.get(varName);
+        if (varType && parsedIsVariant(varType.trim())) {
+          const irv = parseCppType(varType.trim());
+          if (irv.kind === "variant" && irv.members.length === 2) {
+            const cppArms = irv.members.map(renderCppType);
+            const matched = variantArmForLiteral(varType, statement.expression.right.text);
+            const complement = matched ? cppArms.find((t) => t !== matched) : undefined;
+            if (complement) {
+              const ctx = getContext() as unknown as { variantNarrowing: Map<string, string> };
+              fallthroughNarrowing = { name: varName, prev: ctx.variantNarrowing.get(varName) };
+              ctx.variantNarrowing.set(varName, complement);
+            }
+          }
+        }
+      }
+    }
+  }
+  // Restore the fall-through narrowing at list exit.
+  if (fallthroughNarrowing) {
+    const ctx = getContext() as unknown as { variantNarrowing: Map<string, string> };
+    if (fallthroughNarrowing.prev === undefined) ctx.variantNarrowing.delete(fallthroughNarrowing.name);
+    else ctx.variantNarrowing.set(fallthroughNarrowing.name, fallthroughNarrowing.prev);
   }
 
   // Phase 4: Clean up aliases so they don't leak to sibling scopes.

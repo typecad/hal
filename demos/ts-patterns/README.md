@@ -150,13 +150,21 @@ on variant receivers with the C++17 pin.
 (`[swap[0], swap[1]] = [swap[1], swap[0]]`) lowers through capture temps —
 the statement previously vanished (no lowering for element-access targets).
 
-**Still open (avoid; documented workarounds):** raw double concat
-formatting (`'v=' + n` on a double prints `7` in Node vs the embedded
-formatter natively — use `toFixed()`); tuple indexing beyond two
-elements and mixed tuple/string interop follow the same proven pattern.
-Variant narrowing in the ELSE branch of a typeof guard (complement arms)
-and multi-arm matches are not modeled — the plain union remains
-whole-variant there.
+**Fixed in the eighth pass:** raw double concat formatting — a numeric
+nullish (`(n ?? -1)`) in a string concat routes through the JS-compatible
+%.15g buffer instead of std::to_string's `7.000000`; plain double concat
+was already JS-style via the concat double path. Cross-function
+same-name locals: shadow structs are unique per source position, char*
+operands build std::strings before `+`, and reference-binding only fires
+for element-access initializers — same-name struct/Map locals in sibling
+functions, class methods, nested blocks, and sibling if/else branches all
+pass differentially.
+
+**Still open (avoid; documented workarounds):** variant narrowing in the
+ELSE branch of a typeof guard (complement arms) and multi-arm matches —
+the then-branch narrows through std::get<Arm>, the else keeps the whole
+variant. Tuples beyond two elements and tuple/string interop follow the
+same proven std::tuple pattern.
 
 ## Original findings (pre-fix survey)
 

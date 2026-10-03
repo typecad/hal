@@ -6,6 +6,9 @@ import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_A
   importNameAliases,
 } from "./build-ir-state.js";
 import { getCurrentIrTypeScope, type IrTypeScope } from "./symbol-types.js";
+import { resolveRelativeImportPath } from "./build-ir.js";
+import { parseSource } from "../ast/parse.js";
+import * as fs from "node:fs";
 import { renderExprAsText } from "./render-expr.js";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir.js";
 import { isSignalName, resolveElementValue } from "./transformers/ui-call-resolver.js";
@@ -334,6 +337,29 @@ export function castEnumArgsForCallParams(calleeText: string, args: ExpressionIR
       ts.forEachChild(node, visit);
     };
     ts.forEachChild(sourceFile, visit);
+    // Not in THIS file: a cross-module import. Follow the import
+    // declaration that binds the name and scan the resolved companion
+    // (parse it fresh — the same read the build-ir pre-scan does).
+    if (!fnDecl) {
+      for (const stmt of sourceFile.statements) {
+        if (!ts.isImportDeclaration(stmt) || !stmt.importClause?.namedBindings) continue;
+        if (!ts.isNamedImports(stmt.importClause.namedBindings)) continue;
+        const binds = stmt.importClause.namedBindings.elements.some(
+          (el) => (el.propertyName?.getText() ?? el.name.text) === fnName || el.name.text === fnName,
+        );
+        if (!binds) continue;
+        const spec = ts.isStringLiteral(stmt.moduleSpecifier) ? stmt.moduleSpecifier.text : stmt.moduleSpecifier.getText().replace(/^['"]|['"]$/g, "");
+        const resolved = resolveRelativeImportPath(sourceFile.fileName, spec);
+        if (!resolved) continue;
+        try {
+          const imported = parseSource(resolved, fs.readFileSync(resolved, "utf8"));
+          ts.forEachChild(imported, visit);
+        } catch {
+          // unreadable companion: leave paramTypes unresolved
+        }
+        if (fnDecl) break;
+      }
+    }
     if (fnDecl?.parameters) {
       paramTypes = fnDecl.parameters.map(p => typeNodeToCppType(p.type) || "auto");
     }
@@ -350,6 +376,16 @@ export function castEnumArgsForCallParams(calleeText: string, args: ExpressionIR
     // std::variant parameter from an int ("could not convert '5' from
     // 'int'"). Brace-init the variant from the arg — the matching arm is
     // chosen by overload of the initializer list.
+    // An int-literal array passed to a number[] PARAMETER: the literal
+    // lowers to std::vector<int> but the parameter is std::vector<double>
+    // (TS numbers are doubles). Rebuild the vector at the call site.
+    if (paramType && paramType.trim() === 'std::vector<double>' && arg.kind === 'identifier') {
+      const argType = getCurrentIrTypeScope()?.locals.get(arg.value)
+        ?? getCurrentIrTypeScope()?.globals.get(arg.value);
+      if (argType && argType.trim() === 'std::vector<int>') {
+        return { kind: 'raw' as const, value: `std::vector<double>(${renderExprAsText(arg)}.begin(), ${renderExprAsText(arg)}.end())` };
+      }
+    }
     if (paramType && parsedIsVariant(paramType.trim())) {
       const argIdent = arg.kind === "identifier" ? arg.value : undefined;
       const argType = argIdent

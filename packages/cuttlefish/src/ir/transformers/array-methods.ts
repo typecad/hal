@@ -857,6 +857,17 @@ export function tryLowerArrayAndStringMethods(
       // are templates and a bare brace-init-list cannot drive deduction. A
       // genuine string receiver passes through unchanged. Demo #29 Finding D.
       let receiverText = renderArrayMethodReceiver(receiverNode, sourceText, diagnostics, pointerVars);
+      // A variant-narrowed receiver (else-branch of a typeof guard over a
+      // 2-arm variant) reads its active arm — the raw variant name passed to
+      // the __tc_* string helper failed to convert (std::variant →
+      // const std::string&).
+      if (ts.isIdentifier(receiverNode)) {
+        const narrow = (getContext() as unknown as { variantNarrowing?: Map<string, string> }).variantNarrowing;
+        const arm = narrow?.get(receiverNode.text);
+        if (arm) {
+          receiverText = `std::get<${arm}>(${receiverNode.text})`;
+        }
+      }
       if (shouldLowerAsStringMethod(receiverNode, methodName)) {
         // const char* string targets: a receiver whose EMITTED C++ type is
         // std::string must convert to const char* for the target's helper

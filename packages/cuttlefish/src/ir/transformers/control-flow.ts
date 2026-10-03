@@ -234,7 +234,7 @@ export function incrementorToIR(
  * arm type of a std::variant that matches. Returns undefined when the variant
  * has no (or several) matching arms.
  */
-function variantArmForLiteral(variantType: string, literal: string): string | undefined {
+export function variantArmForLiteral(variantType: string, literal: string): string | undefined {
   const ir = parseCppType(variantType.trim());
   if (ir.kind !== "variant") return undefined;
   const cpp = ir.members.map(renderCppType);
@@ -245,6 +245,20 @@ function variantArmForLiteral(variantType: string, literal: string): string | un
     return false;
   });
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+/**
+ * The COMPLEMENT arm of a typeof match: when the variant has exactly two
+ * arms and the matched literal covers one, the else-branch provably holds
+ * the OTHER. Returns undefined for 3+ arms (multiple complements — the
+ * else stays whole-variant) or non-matching shapes.
+ */
+function variantComplementArm(variantType: string, matchedArm: string): string | undefined {
+  const ir = parseCppType(variantType.trim());
+  if (ir.kind !== "variant") return undefined;
+  const cpp = ir.members.map(renderCppType);
+  if (cpp.length !== 2) return undefined;
+  return cpp.find((t) => t !== matchedArm);
 }
 
 export function lowerControlFlowStatement(
@@ -353,12 +367,21 @@ export function lowerControlFlowStatement(
     // condition — both run before the branches at runtime... the condition
     // before them, the else on the path where the then branch never ran.
 
-    // Restore before the else branch (its narrowing is the COMPLEMENT arms —
-    // not modeled; else-branch accesses on the variant stay whole-variant).
+    // Before the else branch: a TWO-arm variant's complement is provable —
+    // the else holds the other arm, so narrow it the same way. Three-plus
+    // arms have multiple complements; the else stays whole-variant there.
     if (narrowedArm) {
       const ctx = getContext() as unknown as { variantNarrowing: Map<string, string> };
-      if (narrowedArm.prev === undefined) ctx.variantNarrowing.delete(narrowedArm.name);
-      else ctx.variantNarrowing.set(narrowedArm.name, narrowedArm.prev);
+      const varType = getCurrentIrTypeScope()?.locals.get(narrowedArm.name)
+        ?? getCurrentIrTypeScope()?.globals.get(narrowedArm.name);
+      const complement = varType ? variantComplementArm(varType, ctx.variantNarrowing.get(narrowedArm.name) ?? '') : undefined;
+      if (complement) {
+        ctx.variantNarrowing.set(narrowedArm.name, complement);
+      } else if (narrowedArm.prev === undefined) {
+        ctx.variantNarrowing.delete(narrowedArm.name);
+      } else {
+        ctx.variantNarrowing.set(narrowedArm.name, narrowedArm.prev);
+      }
     }
     let elseBranch: StatementIR[] | undefined;
     if (statement.elseStatement) {
@@ -373,6 +396,15 @@ export function lowerControlFlowStatement(
         typeAliases,
         pointerVars,
       );
+    }
+
+    // Clear the else-branch complement narrowing — statements AFTER the if
+    // see the whole variant again (the else-arm knowledge dies with the
+    // branch).
+    if (narrowedArm) {
+      const ctx = getContext() as unknown as { variantNarrowing: Map<string, string> };
+      if (narrowedArm.prev === undefined) ctx.variantNarrowing.delete(narrowedArm.name);
+      else ctx.variantNarrowing.set(narrowedArm.name, narrowedArm.prev);
     }
 
     // Evaluate the condition. If it's a bare identifier that resolves to a

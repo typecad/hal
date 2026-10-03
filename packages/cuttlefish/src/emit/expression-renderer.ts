@@ -1400,6 +1400,25 @@ export class ExpressionRenderer {
             }
           }
         }
+        // A narrowed variant read (`std::get<Arm>(x)` — typeof-guard branch
+        // bodies) formats by the ARM: a string arm is %s (+ .c_str()), a
+        // numeric arm %g. The %d default printed the std::string bits.
+        if (expr.kind === "raw") {
+          const getArm = /^std::get<([^>]+)>\(([A-Za-z_]\w*)\)$/.exec(rendered.trim());
+          if (getArm) {
+            const armType = getArm[1].trim();
+            if (this.isStringLikeCppType(armType)) {
+              const armCharPtr = /const char\*|char\*/.test(armType);
+              return { format: "%s", arg: armCharPtr ? rendered : `${rendered}.c_str()`, estimatedLength: 64 };
+            }
+            if (armType === "bool") {
+              return { format: "%s", arg: `(${rendered} ? "true" : "false")`, estimatedLength: 5 };
+            }
+            if (armType === "double" || armType === "float" || armType === "int" || armType === "long long") {
+              return { format: "%.15g", arg: rendered, estimatedLength: 24 };
+            }
+          }
+        }
         // Element access that arrived as raw text (`args[0]`, `s[i]` — a
         // template-literal part) resolves its base's ELEMENT type from the
         // known variable types: a string element is %s (the %d default

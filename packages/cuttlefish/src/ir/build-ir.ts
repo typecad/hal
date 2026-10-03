@@ -108,7 +108,7 @@ function scanSourceForEnumNames(src: string): Set<string> {
   return names;
 }
 
-function resolveRelativeImportPath(fromFile: string, moduleSpecifier: string): string | undefined {
+export function resolveRelativeImportPath(fromFile: string, moduleSpecifier: string): string | undefined {
   // .ui.html modules export no TS symbols (enums/functions) — skip them in the
   // early cross-module pre-scan so they aren't parsed as TypeScript.
   if (moduleSpecifier.endsWith(".ui.html")) return undefined;

@@ -32,6 +32,8 @@
 // ---------------------------------------------------------------------------
 
 import { report } from './report';
+import { formatPairs, helperTag } from './helpers';
+import { computeScore as score } from './helpers';
 
 
 // ═══════════════════════════════ 01 · VARIABLES ════════════════════════════
@@ -305,14 +307,16 @@ const computeAnswer = (): number => 6 * 7;
 // Radix conversion via divmod - toString(radix) lowers per-target (the
 // zephyr shim returns std::string, the native one const char*) so the loop
 // form is the portable idiom.
-const RADIX_DIGITS = '0123456789abcdef';
-
 function toRadix(value: number, radix: number): string {
+  // Function-local (a module-level string const lowers to a file-scope
+  // std::string whose destructor crashes Zephyr's post-main teardown —
+  // documented finding).
+  const digits = '0123456789abcdef';
   let out = '';
   let v = value;
   while (v > 0) {
     const digit = v - radix * Math.floor(v / radix);
-    out = RADIX_DIGITS.charAt(digit) + out;
+    out = digits.charAt(digit) + out;
     v = Math.floor(v / radix);
   }
   return out === '' ? '0' : out;
@@ -1130,6 +1134,18 @@ function sectionControlFlow(): void {
 
 
 
+// ═══════════════════════════ 07 · MULTI-FILE ═══════════════════════════════
+// Cross-module calls through both import forms: a plain named import
+// (formatPairs) and an ALIASED import (computeScore as score — the call
+// site and the module's declaration both key on the exported name). A
+// module-level const (HELPER_TAG) crosses the file boundary too.
+
+function sectionMultiFile(): void {
+  const pairs = [1, 2, 3, 4];
+  report(`M01 pairs: ${formatPairs(pairs)} tag=${helperTag()}`);
+  report(`M02 aliased: score=${score(4, 2)} score=${score(10, 9)}`);
+}
+
 // ═══════════════════════════════ ENTRY ═════════════════════════════════════
 
 report('=== ts-patterns gallery ===');
@@ -1139,4 +1155,5 @@ sectionObjects();
 sectionArrays();
 sectionClasses();
 sectionControlFlow();
+sectionMultiFile();
 report('=== gallery complete ===');

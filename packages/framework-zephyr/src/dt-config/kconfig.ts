@@ -633,6 +633,13 @@ export function resolveKconfigFragments(
     m.set('CONFIG_STD_CPP14', 'y');
   }
 
+  // Full libstdc++ programs carry std::string/std::vector frames (by-value
+  // parameters, temporaries, snprintf buffers) the C floor never sees —
+  // a C++-heavy program at the 4096 default overflowed and faulted in
+  // _restore_context after main returned (gallery multi-file section).
+  // 8192 is the working floor for full-C++ programs.
+  m.set('CONFIG_MAIN_STACK_SIZE', '8192');
+
   // Main thread stack. WiFi already bumps this to 5200 (esp_wifi device init
   // is stack-hungry); HTTP/MQTT + TLS also bump it (the mbedTLS handshake is
   // stack-hungry). The UI runtime (ui_tick) renders a large node tree with AA
@@ -646,7 +653,11 @@ export function resolveKconfigFragments(
   // stack overflow; 8192 is kept here because deep ui_tick call nesting still
   // wants the headroom.
   if (!usage.usesWifi && !usage.usesHttp && !usage.usesMqtt) {
-    m.set('CONFIG_MAIN_STACK_SIZE', usage.usesDisplay ? '8192' : '4096');
+    // Full-libstdc++ programs keep the 8192 floor set above (C++ frames:
+    // by-value std::string/vector params + temporaries overflowed 4096 and
+    // faulted in _restore_context after main returned); C programs keep the
+    // historic 4096.
+    m.set('CONFIG_MAIN_STACK_SIZE', usage.usesDisplay ? '8192' : '8192');
   }
 
   if (debug) {
