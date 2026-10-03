@@ -433,3 +433,82 @@ describe("fixed — cross-function same-name locals (scope poisoning)", () => {
     );
   });
 });
+
+describe("fixed — scope shadowing, hard shapes", () => {
+  it("same-name struct locals in two class methods", () => {
+    diffCase(
+      "method-structs",
+      `
+        declare function report(line: string): void;
+        class Rig {
+          one(): void {
+            const p = { x: 3, y: 4 };
+            report(\`n=\${p.x + p.y}\`);
+          }
+          two(): void {
+            const p = { x: 'ex', y: 'why' };
+            report(\`s=\${p.x + p.y}\`);
+          }
+        }
+        const r = new Rig();
+        r.one();
+        r.two();
+      `,
+    );
+  });
+  it("shadowed struct local in a nested block", () => {
+    diffCase(
+      "block-struct-shadow",
+      `
+        declare function report(line: string): void;
+        function run(): void {
+          const p = { x: 1, y: 2 };
+          if (true) {
+            const p = { x: 'a', y: 'b' };
+            report('in=' + p.x + p.y);
+          }
+          report('out=' + (p.x + p.y));
+        }
+        run();
+      `,
+    );
+  });
+  it("same-name Map locals in nested scopes", () => {
+    diffCase(
+      "block-map-shadow",
+      `
+        declare function report(line: string): void;
+        function run(): void {
+          const m = new Map<string, number>();
+          m.set('k', 5);
+          if (true) {
+            const m = new Map<number, string>();
+            m.set(1, 'one');
+            report('in=' + m.get(1));
+          }
+          report('out=' + m.get('k'));
+        }
+        run();
+      `,
+    );
+  });
+  it("same-name struct locals in sibling top-level blocks", () => {
+    diffCase(
+      "sibling-structs",
+      `
+        declare function report(line: string): void;
+        function run(flag: boolean): void {
+          if (flag) {
+            const p = { v: 10 };
+            report('a=' + p.v);
+          } else {
+            const p = { v: 'ten' };
+            report('b=' + p.v);
+          }
+        }
+        run(true);
+        run(false);
+      `,
+    );
+  });
+});
