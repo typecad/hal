@@ -1,5 +1,7 @@
 # @typecad/zephyr-esp32s3-rgb
 
+## 1.0.0-alpha.22
+
 ## 1.0.0-alpha.21
 
 ## 1.0.0-alpha.20
