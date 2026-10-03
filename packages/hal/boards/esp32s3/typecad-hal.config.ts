@@ -16,10 +16,9 @@
 //   - 11-led skips by role: the devkitC devicetree has no led0 node.
 //   - 25-usb excluded: this rig's [TC: protocol rides the USB bridge, so
 //     the CDC port is the runner's own channel (the 08-uart precedent).
-//   - 09-i2c skips by role: the devkitC's default devicetree ships no
-//     ENABLED i2c controller node (capacity 0 — the peripheral validator
-//     rejects 'I2C0'/'I2C1' until an overlay enables one with pinctrl).
-//     Add the overlay + "i2cBus": "'I2C0'" to test-pins.json to run it.
+//   - 09-i2c runs: the devkitC's default devicetree ships i2c DISABLED, so
+//     zephyr.buses.i2c0 (below) enables + remuxes it onto GPIO8/9 (the
+//     ESP32 pin matrix — any pad carries any peripheral signal).
 // ---------------------------------------------------------------------------
 
 import type { TypecadConfig } from '@typecad/cuttlefish/api';
@@ -37,6 +36,15 @@ const config: TypecadConfig = {
 
   toolchain: {
     type: 'west',
+  },
+
+  zephyr: {
+    // The devkitC ships i2c0/i2c1 disabled (capacity 0). The pin matrix
+    // routes I2C0 onto free pads GPIO8/9 — the wiring every S3 breakout
+    // uses — so the I2C suite runs on this board too.
+    buses: {
+      i2c0: { sda: 8, scl: 9 },
+    },
   },
 
   // Console stays on uart0 through the on-board bridge (the board's own

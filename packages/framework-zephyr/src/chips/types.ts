@@ -75,7 +75,9 @@ export interface ZephyrBusController {
    * the group is pure data: which pads carry the signals.
    */
   readonly pinctrl?: {
-    /** Pinmux header to #include (token definitions). */
+    /** Pinmux header to #include (token definitions). May be a comma-joined
+     *  chain — the overlay splits it into one #include per header (the
+     *  ESP32 remux trio). */
     readonly include: string;
     /** Output-signal pinmux tokens (emitted as group1). */
     readonly pinmux: readonly string[];
@@ -96,6 +98,12 @@ export interface ZephyrBusController {
    * `pinctrl-0 = <&<group>>` when enabling the controller.
    */
   readonly pinctrlRef?: string;
+  /**
+   * Distinct label for a SYNTHESIZED pinctrl group when the board's own
+   * `<nodeLabel>_default` already exists (config bus remux — redefining
+   * the board's label is a DT error).
+   */
+  readonly pinctrlGroupName?: string;
   /**
    * Raw devicetree property lines emitted inside the enable block — for
    * bindings with required properties the board DTS only sets on its own

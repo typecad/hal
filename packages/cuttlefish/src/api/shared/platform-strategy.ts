@@ -465,7 +465,7 @@ export interface PlatformAsyncStrategy {
    * them. Undefined = the framework has no board generation (the config's
    * board field then requires a different resolution path).
    */
-  generateBoardModule?(target: string): { boardTs: string; boardJson: string } | undefined;
+  generateBoardModule?(target: string, opts?: { factsJson?: string; asBuiltJson?: string; busPins?: Record<string, Record<string, number>> }): { boardTs: string; boardJson: string; warnings?: readonly string[] } | undefined;
 
   /**
    * Lines to inject into the loop/run function body to drive async tasks.

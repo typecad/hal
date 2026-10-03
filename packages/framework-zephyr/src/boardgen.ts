@@ -27,6 +27,7 @@
 // ----------------------------------------------------------------------------
 
 import type { BoardDataEntry } from '@typecad/cuttlefish/board-catalog';
+import { parseBusPins } from './boardgen/bus-pins.js';
 import { parseAsBuiltJson, type AsBuiltFile, type AsBuiltRoute } from './as-built.js';
 import {
   loadBoardCatalogOverlay,
@@ -518,6 +519,7 @@ export function buildModule(
   userFacts?: UserBoardFacts,
   factsSuffix = '',
   seedWarnings: readonly string[] = [],
+  busPinSpecs: readonly import('./boardgen/bus-pins.js').BusPinSpec[] = [],
 ): GeneratedBoard {
   // The ungated surface is derived from the project's own hal copy — same
   // resolution (project → cwd → monorepo sibling) as the engine's HAL parser.
@@ -835,7 +837,36 @@ export function buildModule(
   // channels; specs ride virtual pins from 8192 (above every real range and
   // the opaque controller blocks).
   const pwmLedSpecs = (entry.pwmLeds ?? []).filter((l) => l.alias);
-  const buses = entry.buses ?? { i2c: [], spi: [], uart: [] };
+  let buses = entry.buses ?? { i2c: [] as string[], spi: [] as string[], uart: [] as string[] };
+  // Config-specified bus controllers (zephyr.buses — the ESP32 pin matrix):
+  // each becomes an available controller at its HAL selector index. Adding
+  // to the arrays flows everywhere: the board module's singletons + class
+  // gating, the peripherals.<bus>.count capacity constants, and the
+  // zephyr.<bus>.controllers.<i>.* constants the chip reconstruction and
+  // overlay read.
+  const busPinByKindIndex = new Map<string, import('./boardgen/bus-pins.js').BusPinSpec>();
+  for (const spec of busPinSpecs) busPinByKindIndex.set(`${spec.kind}:${spec.index}`, spec);
+  if (busPinSpecs.length > 0) {
+    const merged: Record<'i2c' | 'spi' | 'uart', string[]> = { i2c: [...buses.i2c], spi: [...buses.spi], uart: [...buses.uart] };
+    for (const kind of ['i2c', 'spi', 'uart'] as const) {
+      for (const spec of busPinSpecs.filter((s) => s.kind === kind).sort((a, b) => a.index - b.index)) {
+        // The selector index must land on the array densely: either on an
+        // existing controller (remux — the synthesized pinctrl overrides
+        // its routes) or exactly one past the end (append). A gap would
+        // fabricate an un-pinned controller at the skipped index.
+        if (spec.index > merged[kind].length) {
+          userWarnings.push(`zephyr.buses: ${kind}${spec.index} skips ${kind}${merged[kind].length} — specify the skipped controller too; ignored.`);
+          continue;
+        }
+        if (spec.index === merged[kind].length) {
+          merged[kind].push(spec.nodeLabel);
+        } else {
+          merged[kind][spec.index] = spec.nodeLabel;
+        }
+      }
+    }
+    buses = merged;
+  }
   // nRF PWM: any GPIO pad can carry any channel of a PWM peripheral (psel
   // routing — pinctrl psel order IS channel order), so it is a matrix like
   // the ESP32's LEDC: channels are assigned to the driven pads at overlay
@@ -1386,6 +1417,22 @@ export function buildModule(
       constants[`zephyr.uart.controllers.${i}.pads`] = routes.filter((r) => r.pad).map((r) => `${r.role ?? ''}=${r.pad}`).join(',');
     }
   });
+  // Config-specified bus controllers (zephyr.buses): the synthesized
+  // pinctrl group rides the controller constants — collectBusControllers
+  // (chips/resolve) reconstructs it into the chip view, so the C++ shims
+  // address the right nodelabel and the overlay emits the remux group +
+  // enables the controller. Written AFTER the harvest blocks so a remuxed
+  // controller's synthesis replaces its harvested route names (the config
+  // wiring is the user's ground truth).
+  for (const spec of busPinSpecs) {
+    const i = spec.index;
+    const prefix = `zephyr.${spec.kind}.controllers.${i}`;
+    constants[`${prefix}.nodeLabel`] = spec.nodeLabel;
+    constants[`${prefix}.pinctrl.include`] = spec.include;
+    constants[`${prefix}.pinctrl.pinmux`] = spec.pinmux.join(',');
+    constants[`${prefix}.pinctrlGroupName`] = spec.groupName;
+  }
+
   // The board's console controller (chosen zephyr,console) — the
   // diagnostics annotate the UART instance the bootloader logs on.
   if (entry.console) constants['zephyr.console'] = entry.console;
@@ -1489,7 +1536,7 @@ export function buildModule(
  */
 export function generateBoard(
   target: string,
-  opts?: { factsJson?: string; asBuiltJson?: string },
+  opts?: { factsJson?: string; asBuiltJson?: string; busPins?: Record<string, Record<string, number>> },
 ): GeneratedBoard {
   const found = findBoardData(target);
   if (!found) {
@@ -1529,7 +1576,14 @@ export function generateBoard(
   // The hash only joins the fingerprint when the snapshot actually applied
   // (a foreign-board snapshot is ignored and must not force regeneration).
   if (asBuiltApplied && opts?.asBuiltJson !== undefined) suffix += factsFingerprint(opts.asBuiltJson);
-  return buildModule(entry, facts, suffix, asBuiltWarnings);
+  // Config-specified bus pins join the fingerprint — a pin change must
+  // regenerate the board module (its constants carry the remux).
+  const busPins = opts?.busPins;
+  const busPinsResult = parseBusPins(busPins, socOfTarget(found.identifier));
+  if (busPins && Object.keys(busPins).length > 0) {
+    suffix += factsFingerprint(JSON.stringify(busPins));
+  }
+  return buildModule(entry, facts, suffix, [...asBuiltWarnings, ...busPinsResult.warnings], busPinsResult.specs);
 }
 
 /**

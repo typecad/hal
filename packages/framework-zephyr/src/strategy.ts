@@ -2213,10 +2213,10 @@ export class ZephyrStrategy implements PlatformStrategy {
    */
   generateBoardModule(
     target: string,
-    opts?: { factsJson?: string; asBuiltJson?: string },
+    opts?: { factsJson?: string; asBuiltJson?: string; busPins?: Record<string, Record<string, number>> },
   ): { boardTs: string; boardJson: string; warnings?: readonly string[] } | undefined {
     try {
-      const g = generateBoard(target, { factsJson: opts?.factsJson, asBuiltJson: opts?.asBuiltJson });
+      const g = generateBoard(target, { factsJson: opts?.factsJson, asBuiltJson: opts?.asBuiltJson, busPins: opts?.busPins });
       return { boardTs: g.boardTs, boardJson: g.boardJson, ...(g.warnings ? { warnings: g.warnings } : {}) };
     } catch (err) {
       // A malformed facts/as-built file is the USER's error — surface it

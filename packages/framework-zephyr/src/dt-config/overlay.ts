@@ -194,15 +194,25 @@ export function generateOverlay(
   // The pinmux header include is collected and spliced before all blocks
   // (tokens must be defined before use).
   const pinctrlIncludes = new Map<string, string[]>();
-  const controllerBlock = (c: { nodeLabel: string; pinctrlRef?: string; props?: readonly string[]; pinctrl?: { include: string; pinmux: readonly string[]; inputPinmux?: readonly string[]; defines?: readonly string[] } }): void => {
+  const controllerBlock = (c: { nodeLabel: string; pinctrlRef?: string; pinctrlGroupName?: string; props?: readonly string[]; pinctrl?: { include: string; pinmux: readonly string[]; inputPinmux?: readonly string[]; defines?: readonly string[] } }): void => {
     const extra: string[] = [...(c.props ?? [])];
     if (c.pinctrl) {
-      pinctrlIncludes.set(c.pinctrl.include, c.pinctrl.defines ? [...c.pinctrl.defines] : []);
-      const group = `${c.nodeLabel}_default`;
+      // The include may be a comma-joined chain (the ESP32 remux trio:
+      // common pinctrl + per-SoC pinmux macros + gpio sigmap) — split so
+      // each header gets its own #include line.
+      for (const inc of c.pinctrl.include.split(',')) {
+        pinctrlIncludes.set(inc.trim(), c.pinctrl.defines ? [...c.pinctrl.defines] : []);
+      }
+      // Config-remuxed groups must not collide with the board's own
+      // <label>_default groups (a redefinition is a DT error).
+      const group = c.pinctrlGroupName ?? `${c.nodeLabel}_default`;
       lines.push('&pinctrl {');
       lines.push(`    ${group}: ${group} {`);
       lines.push(`        group1 {`);
-      lines.push(`            pinmux = <${c.pinctrl.pinmux.join(', ')}>;`);
+      // Each token is one 32-bit cell — separate bracketed cells
+      // (`<A>, <B>`), the reference board dtsis' form. A comma INSIDE one
+      // bracket (`<A, B>`) is a DT grammar error.
+      lines.push(`            pinmux = ${c.pinctrl.pinmux.map((t) => `<${t}>`).join(', ')};`);
       lines.push(`        };`);
       if (c.pinctrl.inputPinmux && c.pinctrl.inputPinmux.length > 0) {
         lines.push(`        group2 {`);

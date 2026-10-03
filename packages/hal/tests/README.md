@@ -21,6 +21,24 @@ over the `[TC:` protocol. Pin choices live in each board's
 - **`network/`** — WiFi/BLE/MQTT/HTTP; hand-configured (SSID in the test
   header, local `npm run test:http` server). Not part of default runs.
 
+## Bus pin remux (`zephyr.buses`)
+
+ESP32-family boards route every controller through the GPIO matrix — any pad
+can carry any peripheral signal — but a board's default devicetree wires only
+what the vendor chose (the devkitC ships `i2c0`/`i2c1` **disabled**). The
+`zephyr.buses` section of a board's `typecad-hal.config.ts` states the
+wiring and the overlay enables + remuxes the controller:
+
+```ts
+zephyr: {
+  buses: { i2c0: { sda: 8, scl: 9 } },   // also spi0: { sck, mosi, miso? }, uart1: { tx, rx }
+}
+```
+
+The board module then exports the bus singleton, the peripheral-capacity
+validator counts it, and the C++ shims address the remuxed pads. Fixed-pin
+SoCs (STM32, nRF) get a warning — their pins come from the board DT.
+
 ## Known untested surfaces (deliberate)
 
 | Surface | Why |

@@ -33,9 +33,26 @@ for (const bd of boardDirs) {
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, `${base}.ts`), pre);
+  // Forward the board config's own zephyr section (buses remux etc.) into
+  // the derived config — a bracket scan between 'zephyr: {' and its
+  // closing brace (the suite configs are machine-shaped).
+  let zephyrSection = '';
+  const zStart = cfg.indexOf('zephyr: {');
+  if (zStart >= 0) {
+    let depth = 0;
+    const open = cfg.indexOf('{', zStart);
+    let i = open;
+    for (; i < cfg.length; i++) {
+      if (cfg[i] === '{') depth += 1;
+      else if (cfg[i] === '}') { depth -= 1; if (depth === 0) break; }
+    }
+    zephyrSection = cfg.slice(open, i + 1);
+  }
   fs.writeFileSync(path.join(dir, 'typecad-hal.config.ts'),
     `import type { TypecadConfig } from '@typecad/cuttlefish/api';\n` +
-    `const config: TypecadConfig = {\n  entry: './${base}.ts',\n  board: '${board}',\n  framework: '${fw}',\n  output: { outDir: './out' },\n};\nexport default config;\n`);
+    `const config: TypecadConfig = {\n  entry: './${base}.ts',\n  board: '${board}',\n  framework: '${fw}',\n  output: { outDir: './out' },` +
+    (zephyrSection ? `\n  zephyr: ${zephyrSection},\n` : '') +
+    `};\nexport default config;\n`);
   try {
     execSync(`node "${cli}" build --skip-type-check --force`, { cwd: dir, stdio: 'pipe', timeout: 120000 });
     console.log(`PASS ${base} [${path.basename(absBoard)}]`);

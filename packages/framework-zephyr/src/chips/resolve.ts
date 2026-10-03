@@ -63,6 +63,7 @@ function collectBusControllers(
     const inputPinmux = splitCsv(m.get(`${prefix}.${i}.pinctrl.inputPinmux`));
     const defines = splitCsv(m.get(`${prefix}.${i}.pinctrl.defines`));
     const pinctrlRef = m.get(`${prefix}.${i}.pinctrlRef`) as string | undefined;
+    const pinctrlGroupName = m.get(`${prefix}.${i}.pinctrlGroupName`) as string | undefined;
     const props = splitCsv(m.get(`${prefix}.${i}.props`));
     return {
       nodeLabel,
@@ -77,6 +78,7 @@ function collectBusControllers(
           }
         : {}),
       ...(pinctrlRef ? { pinctrlRef } : {}),
+      ...(pinctrlGroupName ? { pinctrlGroupName } : {}),
       ...(props ? { props } : {}),
     };
   });

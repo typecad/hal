@@ -622,7 +622,21 @@ export function parseConfigFile(configPath: string): ResolvedTypecadConfig | und
         ...(zephyrTraceAlarms !== undefined ? { alarms: zephyrTraceAlarms } : {}),
       }
     : undefined;
-  if (zephyrKconfig || zephyrCmakeArgs || zephyrRunnerArgs || typeof zephyrRunner === "string" || typeof zephyrProbe === "string" || typeof zephyrCustomBoard === "boolean" || zephyrTrace) {
+  // zephyr.buses — bus selector → pin record (i2c0: { sda, scl }). The
+  // values are number records; extractFrameworkSection walks the literals.
+  // The zephyr section's own object literal (extractFrameworkSection's shape,
+  // for the nested buses record).
+  const zephyrSection = extractFrameworkSection(configObject, 'zephyr', warn);
+  const zephyrBusesRaw = zephyrSection?.buses as Record<string, unknown> | undefined;
+  // Values must be number records: { i2c0: { sda: 8, scl: 9 } }.
+  const zephyrBuses = zephyrBusesRaw && typeof zephyrBusesRaw === 'object'
+    ? Object.fromEntries(
+        Object.entries(zephyrBusesRaw).filter(
+          ([, v]) => v && typeof v === 'object' && Object.values(v as Record<string, unknown>).every((x) => typeof x === 'number'),
+        ),
+      )
+    : undefined;
+  if (zephyrKconfig || zephyrCmakeArgs || zephyrRunnerArgs || typeof zephyrRunner === "string" || typeof zephyrProbe === "string" || typeof zephyrCustomBoard === "boolean" || zephyrTrace || zephyrBuses) {
     resolved.zephyrConfig = {
       ...(zephyrKconfig ? { kconfig: zephyrKconfig } : {}),
       ...(zephyrCmakeArgs ? { cmakeArgs: zephyrCmakeArgs } : {}),
@@ -631,6 +645,7 @@ export function parseConfigFile(configPath: string): ResolvedTypecadConfig | und
       ...(typeof zephyrRunner === "string" ? { runner: zephyrRunner } : {}),
       ...(zephyrCustomBoard === true ? { customBoard: true } : {}),
       ...(zephyrTrace ? { trace: zephyrTrace } : {}),
+      ...(zephyrBuses ? { buses: zephyrBuses } : {}),
     };
   }
 
@@ -744,11 +759,16 @@ function ensureGeneratedBoard(config: ResolvedTypecadConfig, cuttlefishDir: stri
         && existing.identifier.toLowerCase() === config.board!.toLowerCase();
       const overlay = loadBoardCatalogOverlay();
       const entry = overlay && sameBoard ? findBoardInCatalog(overlay.data, config.board!) : undefined;
+      const busPinsFp = (config.zephyrConfig as { buses?: Record<string, Record<string, number>> } | undefined)?.buses;
       const sameSource = entry && overlay
         ? existing.source?.fingerprint
           === boardRecordFingerprint(entry, overlay)
             + factsFingerprint(readUserFactsJson(config) ?? "")
             + factsFingerprint(readAsBuiltJson(config) ?? "")
+            // zephyr.buses changes the board module's own content (the
+            // config-specified controllers + their pinctrl synthesis) —
+            // a pin edit must regenerate, same as a facts edit.
+            + factsFingerprint(busPinsFp ? JSON.stringify(busPinsFp) : "")
         : true; // no overlay to verify against — keep the existing module
       if (sameBoard && sameSource) return;
     } catch {
@@ -807,7 +827,7 @@ export function regenBoardModule(config: ResolvedTypecadConfig): string {
  *  facts merge into the generated manifest, and the strategy hashes the
  *  same text into the module's source fingerprint. */
 interface BoardGenStrategy {
-  generateBoardModule?(target: string, opts?: { factsJson?: string; asBuiltJson?: string }): {
+  generateBoardModule?(target: string, opts?: { factsJson?: string; asBuiltJson?: string; busPins?: Record<string, Record<string, number>> }): {
     boardTs: string;
     boardJson: string;
     warnings?: readonly string[];
@@ -864,9 +884,11 @@ function loadFrameworkBoardModule(
       };
       const Ctor = mod.ZephyrStrategy ?? (mod.default as (new () => BoardGenStrategy) | undefined);
       const strategy = typeof Ctor === "function" ? new Ctor() : undefined;
-      const opts: { factsJson?: string; asBuiltJson?: string } = {};
+      const opts: { factsJson?: string; asBuiltJson?: string; busPins?: Record<string, Record<string, number>> } = {};
       if (factsJson !== undefined) opts.factsJson = factsJson;
       if (asBuiltJson !== undefined) opts.asBuiltJson = asBuiltJson;
+      const busPins = (config.zephyrConfig as { buses?: Record<string, Record<string, number>> } | undefined)?.buses;
+      if (busPins && Object.keys(busPins).length > 0) opts.busPins = busPins;
       return strategy?.generateBoardModule?.(target, Object.keys(opts).length > 0 ? opts : undefined) ?? undefined;
     } catch {
       return undefined;

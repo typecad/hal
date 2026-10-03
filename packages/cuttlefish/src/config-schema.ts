@@ -69,6 +69,15 @@ const ZephyrConfig = z.object({
   customBoard: z.boolean().optional(),
   /** Runtime tracing (heartbeat sampler + [TR: console stream). */
   trace: ZephyrTraceConfig.optional(),
+  /** Bus pin assignments for pin-matrix SoCs (the ESP32 family): which
+   *  pads carry which controller's signals. Keys are HAL bus selectors
+   *  (i2c0, i2c1, spi0, uart1); values name the pads — i2c: sda/scl,
+   *  spi: sck/mosi (+miso), uart: tx/rx. Each entry enables + remuxes
+   *  that controller in the build's devicetree overlay, so a board whose
+   *  default DTS wires no I2C (esp32s3_devkitc ships i2c0/i2c1 disabled)
+   *  gains the bus at the specified pads. Fixed-pin SoCs get a warning —
+   *  their pins come from the board devicetree. */
+  buses: z.record(z.string(), z.record(z.string(), z.number())).optional(),
 }).strict();
 
 /**
