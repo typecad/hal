@@ -1,0 +1,142 @@
+{
+  "name": "vscode-typecad-hal",
+  "displayName": "typeCAD/hal",
+  "description": "The typeCAD/hal VS Code extension — .ui syntax highlighting, board-aware diagnostics and hovers from the project's own engine, quick-fixes, and C++ declaration generation",
+  "version": "0.4.0",
+  "private": true,
+  "publisher": "typecad",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/typecad/hal.git"
+  },
+  "engines": {
+    "vscode": "^1.89.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/typecad-hal.config.ts"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "typecad-ui",
+        "aliases": [
+          "typeCAD/hal UI",
+          "typecad-ui"
+        ],
+        "extensions": [
+          ".ui"
+        ],
+        "icon": {
+          "light": "./ui-language/file-icon-light.png",
+          "dark": "./ui-language/file-icon-dark.png"
+        },
+        "configuration": "./ui-language/language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "typecad-ui",
+        "scopeName": "source.typecad-ui",
+        "path": "./ui-language/syntaxes/typecad-ui.tmLanguage.json"
+      },
+      {
+        "scopeName": "markdown.typecad-ui.codeblock",
+        "path": "./ui-language/syntaxes/markdown-ui.json",
+        "injectTo": [
+          "text.html.markdown"
+        ]
+      }
+    ],
+    "snippets": [
+      {
+        "language": "typecad-ui",
+        "path": "./ui-language/snippets/typecad-ui.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "typecad-intel.reanalyze",
+        "title": "typeCAD/hal: Re-analyze Project"
+      },
+      {
+        "command": "typecad-intel.flashMonitor",
+        "title": "typeCAD/hal: Flash & Monitor"
+      },
+      {
+        "command": "typecad-intel.runTests",
+        "title": "typeCAD/hal: Run Tests on Hardware"
+      },
+      {
+        "command": "typecad-intel.selectPort",
+        "title": "typeCAD/hal: Select Serial Port"
+      },
+      {
+        "command": "typecad-debug.generateDeclaration",
+        "title": "typeCAD/hal: Generate Declaration from C++"
+      },
+      {
+        "command": "typecad-trace.capture",
+        "title": "typeCAD/hal: Trace — Capture from Board"
+      },
+      {
+        "command": "typecad-trace.view",
+        "title": "typeCAD/hal: Trace — View Timeline"
+      },
+      {
+        "command": "typecad-trace.report",
+        "title": "typeCAD/hal: Trace — Show Report"
+      },
+      {
+        "command": "typecad-trace.enable",
+        "title": "typeCAD/hal: Trace — Enable in Project"
+      },
+      {
+        "command": "typecad-diagnostics.generate",
+        "title": "typeCAD/hal: Diagnostics — Generate Report"
+      },
+      {
+        "command": "typecad-diagnostics.showProblems",
+        "title": "typeCAD/hal: Diagnostics — Show Problems"
+      }
+    ],
+    "configuration": {
+      "title": "typeCAD/hal Trace",
+      "properties": {
+        "typecad-hal.trace.captureDurationSeconds": {
+          "type": "number",
+          "default": 15,
+          "minimum": 0,
+          "description": "Capture length for typeCAD/hal: Trace — Capture from Board (0 = until Ctrl+C in the terminal)."
+        },
+        "typecad-hal.trace.openViewerOnCapture": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open the live Trace timeline panel when a capture starts."
+        },
+        "typecad-hal.diagnostics.onBuild": {
+          "type": "boolean",
+          "default": false,
+          "description": "Pass --diagnostics on builds launched from the addon (Flash & Monitor), keeping diagnostics.md/json fresh."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-yarn --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "@types/vscode": "^1.89.0",
+    "@vscode/vsce": "^3.2.0",
+    "typescript": "^5.7.3"
+  }
+}

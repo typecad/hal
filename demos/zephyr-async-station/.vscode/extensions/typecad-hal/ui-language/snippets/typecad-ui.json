@@ -1,0 +1,80 @@
+{
+  "Import ui": {
+    "prefix": "import-ui",
+    "body": ["import { ui } from '@typecad/ui';"],
+    "description": "Import the ui runtime"
+  },
+  "Screen": {
+    "prefix": "screen",
+    "body": [
+      "<screen id=\"${1:id}\">",
+      "  <body>",
+      "    <header class=\"screenHeader\">",
+      "      <a class=\"backLink\" href=\"#home\">&lt; Back</a>",
+      "      <h2 class=\"screenTitle\">${2:Title}</h2>",
+      "    </header>",
+      "    <main class=\"scrollBody\">",
+      "      $0",
+      "    </main>",
+      "  </body>",
+      "</screen>"
+    ],
+    "description": "New screen with header and scroll body"
+  },
+  "Button": {
+    "prefix": "button",
+    "body": [
+      "<button id=\"${1:id}\" class=\"btn btn-primary\" on:click={${2:handler}}>${3:Label}</button>"
+    ],
+    "description": "Button with click handler"
+  },
+  "Text": {
+    "prefix": "text",
+    "body": ["<text id=\"${1:id}\" class=\"${2:badge}\">${3:text}</text>"],
+    "description": "Text element"
+  },
+  "Interpolation": {
+    "prefix": "interp",
+    "body": ["{${1:expr}}"],
+    "description": "Interpolated expression in markup"
+  },
+  "Signal": {
+    "prefix": "signal",
+    "body": ["export const ${1:name} = ui.signal(${2:0});"],
+    "description": "Reactive signal"
+  },
+  "Handler": {
+    "prefix": "handler",
+    "body": ["export function ${1:onTap}() {", "  $0", "}"],
+    "description": "Exported event handler"
+  },
+  "Bind": {
+    "prefix": "bind",
+    "body": [
+      "ui.bind(screen.${1:elem}, '${2|text,visible,background,color,borderColor|}', () => ${3:expr});"
+    ],
+    "description": "Bind an element property to an expression"
+  },
+  "Canvas": {
+    "prefix": "canvas",
+    "body": [
+      "ui.drawCanvas(screen.${1:elem}, (ctx) => {",
+      "  ctx.fillScreen('${2:#101828}');",
+      "  $0",
+      "});"
+    ],
+    "description": "Canvas draw block"
+  },
+  "List": {
+    "prefix": "list",
+    "body": [
+      "ui.bindList(",
+      "  screen.${1:elem},",
+      "  () => ${2:count},",
+      "  (i: number) => `${3:Row }${i}`,",
+      "  (i: number) => { ${4:onTap(i)} },",
+      ");"
+    ],
+    "description": "Virtualized list binding"
+  }
+}
