@@ -1,5 +1,266 @@
 # @typecad/hal
 
+## 1.0.0-alpha.29
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies
+  - @typecad/cuttlefish@1.0.0-alpha.29
+
+## 1.0.0-alpha.28
+
+### Patch Changes
+
+- ## Ship the alpha.27 changes
+  
+  The `1.0.0-alpha.27` tarballs were published before the release work was
+  finished, so they are missing the CLI output improvements, the safety review
+  fixes, the Wi-Fi radio facts (`wifi-radios`), the updated board gate, and the
+  refreshed bundled editor extension. This release contains all of them. There
+  are no other changes.
+- Updated dependencies
+  - @typecad/cuttlefish@1.0.0-alpha.28
+
+## 1.0.0-alpha.27
+
+### Patch Changes
+
+- Updated dependencies
+  - @typecad/cuttlefish@1.0.0-alpha.27
+
+## 1.0.0-alpha.26
+
+### Patch Changes
+
+- @typecad/cuttlefish@1.0.0-alpha.26
+
+## 1.0.0-alpha.25
+
+### Minor Changes
+
+- 3142206: Port the PCB repo's skills system to the HAL toolchain: the API-pattern
+  catalog as a live registry, a `typecad-hal skills` command family, and a
+  skills.md stamped into every project `create` scaffolds.
+  
+  - **The registry** (`cuttlefish/src/skills/`): 29 curated entries across 8
+    categories (workflow, core, buses, analog, peripherals, testing,
+    compliance, project) — each with the canonical import, usage signature,
+    worked examples, and notes. Content is DATA; the AGENTS.md rules apply
+    (no board-name branches, datasheet pin names in examples).
+  - **`typecad-hal skills [list|get <name>|search <query>|export]`**: find
+    the right pattern before writing code. `--json` on list/get/search for
+    agents; `export` writes `.claude/skills/typecad-<name>/SKILL.md` files
+    (the agent-skill convention Claude Code / Cursor read). Parser follows
+    the query-subcommand strictness contract: unknown flags/subcommands and
+    valueless value-flags are errors, never silent drops.
+  - **Create-time stamping**: `typecad-hal create` now writes `skills.md`
+    (the full catalog, one line per skill) into every new project, and the
+    scaffolded AGENTS.md gains the live "Skill categories" section plus the
+    skills commands — both rendered from the same registry the CLI reads,
+    so the stamped files can never drift from the tooling (the PCB repo's
+    "AGENTS.md from live registry" pattern).
+
+### Patch Changes
+
+- Updated dependencies [3142206]
+  - @typecad/cuttlefish@1.0.0-alpha.25
+
+## 1.0.0-alpha.24
+
+### Patch Changes
+
+- Updated dependencies [3246ff9]
+  - @typecad/cuttlefish@1.0.0-alpha.24
+
+## 1.0.0-alpha.23
+
+### Patch Changes
+
+- Demo-driven convergence rounds 5–10: ~60 engine fixes, each proven on ESP32-S3 hardware before landing.
+  
+  **cuttlefish — the data corruptors (values that lied on the wire):**
+  
+  - Runtime Store/Preferences keys compose as expressions when either half is
+    non-literal — `"tc/" + ns + "/" + key` no longer bakes a stale literal, and
+    fact-resolved namespace values are re-quoted before they hit C++ (`F11`).
+  - Inherited methods resolve their return types through the base chain
+    (bounded walk) — `air.source()` through a subclass no longer types as the
+    numeric default and prints `(%d)` garbage (`F7`).
+  - `ble.notify(...)` carries expression arguments through lowering — no more
+    `0.notify` falls (`E2`); uint8 BLE writes deliver their byte; the shim
+    state is ONE firmware-wide instance (named struct types — the anonymous
+    struct `weak` never merged, per-TU copies double-counted) (`F17`).
+  - i2s.write retries through a full TX queue — multi-block programs no
+    longer hit `-EIO` mid-phrase.
+  - Serial reads decode UTF-8 incrementally — no more banner mojibake.
+  
+  **cuttlefish — cross-module programs:**
+  
+  - Cross-module HAL-instance class fields dissolve to ops (`E8`); class-state
+    cluster closed: module-let single definition, cross-module instances
+    render through the pointer (`F8`), module-init flags run AFTER the TU's
+    own definitions (`F9`), a module's self-import emits no include (`F6`).
+  - Interface-return object literals in every context (argument, return,
+    assignment, array element); import cycles rejected loudly at transpile
+    start (`TS2CPP_IMPORT_CYCLE`) instead of emitting broken includes (`F5`);
+    async fire-and-forget boundaries carry diagnostics.
+  - Concatenation-built exported consts are never promoted (`F10`);
+    class-referenced private consts emit module-qualified (`R3` collision
+    class); computed receivers with string return types lower their value
+    methods (`R1` string twin); sibling-class unions coalesce to struct —
+    no more `UNCLASSIFIABLE` noise; ambient `@types` no longer leak DOM
+    globals into firmware programs (`R4`); standalone GCC notes no longer
+    print under the error header (`R6`); reserved-named variables survive
+    tree-shaking.
+  
+  **cuttlefish — engine hardening:**
+  
+  - esp32 wifi programs cap radio TX power at 10 dBm, engine-seeded (the
+    bench brownout fix); `wifi.scan_count` lowers through `static_cast` —
+    strict-clean by construction; polyfill guards are overload-aware;
+    `vector` indexOf/includes take the value as a second template type; a UI
+    mount without a configured display diagnoses the missing config; the GPIO
+    read shim carries a define guard (multi-module UI programs redefine it).
+  
+  **framework-zephyr:**
+  
+  - Synthesized sensor child nodes carry binding-required DT properties
+    (sensirion `sht4x`/`sts4x`/`shtcx` enum-with-default family) — gen2
+    overlays generate instead of failing gen1 validation (`F1`).
+  - `zephyr.trace.alarms` move stack/frame threshold detection onto the
+    device; `.trace(gate, dwellMs)` DSL assertions evaluate host-side over
+    the `it()` window; `trace capture --flash --gates-file` is the one-command
+    agent loop.
+  
+  **hal:**
+  
+  - Testing-DSL surface keeps pace with the engine fixes (trace gate
+    assertions, retire-proof fixture updates).
+- Updated dependencies
+  - @typecad/cuttlefish@1.0.0-alpha.23
+
+## 1.0.0-alpha.22
+
+### Patch Changes
+
+- HAL hardware-suite coverage expansion — closes the gaps found by auditing
+  all 82 HAL exports against the 31 suite files (round 3 follow-up):
+  
+  - **New suites**: `common/23-thread` (start → shared-flag sequencing with a
+    bounded poll, `join()` visibility, default-options construction),
+    `common/24-trace` (Trace.mark/event callables — first suite coverage of
+    the trace surface), `common/25-usb` (USB0 CDC console: write/writeLine,
+    numeric write, read −1 / available 0 on the unopened port; excluded on
+    esp32s3 where the CDC port IS the runner's protocol channel).
+  - **Extended suites**: `11-adc` gains `readMillivolts()` (vref-range bounds
+    plus stability across an interleaved raw read — every prior test used
+    `.read()` only); `14-preferences` gains getString/setString roundtrip,
+    `remove()` true/false, and `clear()` in a fresh namespace (persistence
+    across re-flashing can no longer leak state between groups).
+  - **New wired tier**: `02-uart-loopback` (TX→RX jumper; arms the receive
+    ring, writes a unique marker, scans for it — byte-exact echo is
+    impossible where the port is console-shared) and `03-interrupt-fire`
+    (the edge path board/01-gpio only registers: a generated falling edge
+    fires the handler; `offInterrupt()` stops further edges). Both follow
+    the demo-style module-scope wiring the engine is known to lower.
+  - **Role plumbing**: `uartLoop` (wired UART) and `onewire` role consts
+    added to the canonical PIN_ROLES map — the preprocessor now substitutes
+    them when a board defines the role. blackpill defines `uartLoop`;
+    esp32s3 documents each deliberate skip in its config header (led: no
+    led0 node; usb/i2c: the protocol channel / no enabled i2c controller in
+    the default devicetree — the peripheral validator rejects I2C0/I2C1 at
+    capacity 0).
+  - **Suitable-for-purpose verification tooling**:
+    `scripts/verify-hw-test.mjs` replicates the runner's exact pipeline
+    (preprocess → test-pin substitution → derived config → transpile) so
+    suite files can be gated in CI without a board attached; all new and
+    existing common/board files pass it on both board configs, and
+    23-thread west-compiles to an ELF for blackpill.
+  - **`tests/README.md`** now documents the suite layout and every
+    deliberately-untested surface (Power: destructive; await-async: the DSL
+    preprocessor cannot express it; DAC: no route facts on the rig boards;
+    Scan/WiFiAP: no AP fixture; I2CResponder: needs a second controller;
+    1-Wire Sensor: role absent until wired AND the Pin-form Sensor
+    constructor does not lower — HAL_SENSOR_CTOR accepts only I2C devices,
+    a newly surfaced engine gap).
+- `zephyr.buses` — config-specified bus pin assignments for the ESP32 pin
+  matrix (answers "esp32's have all common peripherals; they are defined by
+  specifying which pin does what"):
+  
+  ```ts
+  zephyr: {
+    buses: {
+      i2c0: { sda: 8, scl: 9 },
+      spi0: { sck: 12, mosi: 11, miso: 13 },   // SPI0 = the SoC's GPSPI2
+      uart1: { tx: 17, rx: 18 },
+    },
+  }
+  ```
+  
+  - **Config surface**: `zephyr.buses` in typecad-hal.config.ts — keys are HAL
+    bus selectors, values name the pads. Validated by the Zod schema
+    (record of records of numbers) and parsed by
+    `framework-zephyr/src/boardgen/bus-pins.ts` (unit-tested): I2C needs both
+    sda+scl, SPI at least sck+mosi, UART both tx+rx; unknown keys and
+    non-ESP32 SoCs warn and skip (fixed-pin silicon: pins come from the board
+    devicetree — the honest limitation).
+  - **One source of truth**: each spec becomes a bus controller in the
+    generated board module — the singleton export (`I2C0`), the
+    `peripherals.i2c.count` capacity constant (the peripheral validator
+    accepts the bus), and the `zephyr.i2c.controllers.N.pinctrl.*` constants
+    the chip reconstruction reads. The C++ shims and the overlay both flow
+    from those constants, so there is no second path to drift. A pin edit
+    joins the board module's regeneration fingerprint.
+  - **Overlay synthesis**: the controller enable block emits a `&pinctrl`
+    remux group using the SoC pinctrl headers' named macros
+    (`I2C0_SDA_GPIO8`, `SPIM2_SCLK_GPIO12`), with the include chain the
+    reference board dtsis use (`esp-pinctrl-common.h` + `<soc>-pinctrl.h` +
+    `<soc>-gpio-sigmap.h` — without the sigmap header the macros expand to a
+    bare identifier the DT grammar rejects). The group label is
+    `<nodeLabel>_tc_remux` — the board's own `<label>_default` group may
+    already exist, and redefining it is a DT error.
+  - **DT cell fix (found by the chain)**: synthesized `pinmux` values now emit
+    as separate bracketed cells (`<A>, <B>` — the reference dtsis' form); a
+    comma inside one bracket is a DT grammar parse error. Overlay include
+    values may be comma-joined chains (one `#include` per header).
+  - **The esp32s3 rig gains the I2C suite**: the devkitC config remuxes i2c0
+    onto GPIO8/9 (free pads), the `i2cBus` role returns to its test-pins, and
+    `09-i2c` — previously skipping by capacity — transpiles AND west-compiles
+    for the board (verified: the merged devicetree enables `i2c0` with
+    `pinctrl-0 = <&i2c0_tc_remux>`, and the C++ shims address
+    `DEVICE_DT_GET(DT_NODELABEL(i2c0))`). The verify script forwards the
+    board config's `zephyr` section into its derived per-test config, and
+    `tests/README.md` documents the section.
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+  - @typecad/cuttlefish@1.0.0-alpha.22
+
+## 1.0.0-alpha.21
+
+### Patch Changes
+
+- Updated dependencies [e4c9f40]
+- Updated dependencies [b4bceae]
+- Updated dependencies [b4bceae]
+- Updated dependencies [e4c9f40]
+- Updated dependencies [823df94]
+  - @typecad/cuttlefish@1.0.0-alpha.21
+
+## 1.0.0-alpha.20
+
+### Patch Changes
+
+- Updated dependencies [a3a9459]
+  - @typecad/cuttlefish@1.0.0-alpha.20
+
 ## 1.0.0-alpha.19
 
 ### Minor Changes

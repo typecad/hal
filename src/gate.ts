@@ -13,8 +13,10 @@
 // board-gated. The ungated list is DERIVED (index.ts's runtime exports minus
 // the gated set) by the board generators at generation time — via the
 // engine's board-gate reader — so a new export in index.ts classifies itself
-// as ungated without touching this file. Type-only exports cannot be
-// introspected at runtime, so the ungated type list stays here by hand.
+// as ungated without touching this file. Type-only exports are derived the
+// same way (index.ts's `export type` specifiers, parsed statically by the
+// same reader) — a new `export type` line re-exports itself from every
+// generated board module with no list edits here.
 //
 // Drift is checked by tests/packages/cuttlefish/board-gate.test.ts.
 // ---------------------------------------------------------------------------
@@ -44,26 +46,8 @@ export const GATED_EXPORTS: readonly string[] = [
   'Mouse',
   'Store',
   'File',
-];
-
-/**
- * Hal TYPE-ONLY exports re-exported unconditionally by generated board
- * modules (`export type { ... }`). Mirrors the `export type` lines of
- * index.ts; not runtime-introspectable, so kept in sync by hand.
- */
-export const BOARD_UNGATED_TYPE_EXPORTS: readonly string[] = [
-  'DigitalValue',
-  'AnalogValue',
-  'InterruptHandler',
-  'ArchitectureIdentifier',
-  'SerialValue',
-  'SensorToken',
-  'SensorChannelName',
-  'SensorPartInfo',
-  'Bit',
-  'Bits',
-  'RequestOpts',
-  'MqttOpts',
-  'GattCharacteristicDef',
-  'CharValue',
+  'BLE',
+  'WiFi',
+  'Scan',
+  'WiFiAP',
 ];

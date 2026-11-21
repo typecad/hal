@@ -14,6 +14,11 @@
 //   - ADC runs on both SARADC units (adcPin on adc0, adcPinAlt on adc1);
 //     PWM runs on the LEDC matrix (pwm/pwmAlt).
 //   - 11-led skips by role: the devkitC devicetree has no led0 node.
+//   - 25-usb excluded: this rig's [TC: protocol rides the USB bridge, so
+//     the CDC port is the runner's own channel (the 08-uart precedent).
+//   - 09-i2c runs: the devkitC's default devicetree ships i2c DISABLED, so
+//     zephyr.buses.i2c0 (below) enables + remuxes it onto GPIO8/9 (the
+//     ESP32 pin matrix — any pad carries any peripheral signal).
 // ---------------------------------------------------------------------------
 
 import type { TypecadConfig } from '@typecad/cuttlefish/api';
@@ -31,6 +36,15 @@ const config: TypecadConfig = {
 
   toolchain: {
     type: 'west',
+  },
+
+  zephyr: {
+    // The devkitC ships i2c0/i2c1 disabled (capacity 0). The pin matrix
+    // routes I2C0 onto free pads GPIO8/9 — the wiring every S3 breakout
+    // uses — so the I2C suite runs on this board too.
+    buses: {
+      i2c0: { sda: 8, scl: 9 },
+    },
   },
 
   // Console stays on uart0 through the on-board bridge (the board's own
@@ -55,6 +69,9 @@ const config: TypecadConfig = {
     ],
     exclude: [
       'tests/common/08-uart.test.ts',
+      // The CDC port on this rig is the protocol channel's USB bridge —
+      // same reason 08-uart is excluded (board note above).
+      'tests/common/25-usb.test.ts',
     ],
   },
 };

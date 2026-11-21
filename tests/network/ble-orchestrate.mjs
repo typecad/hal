@@ -40,7 +40,15 @@ const sh = (cmd, args, cwd, log, env = process.env) => new Promise((resolve) => 
 });
 
 function parseProtocol(text) {
-  const expects = [...text.matchAll(/\[TC:EXPECT:[^:]+:([^:]*):([^\]]*)\]/g)];
+  // Framed wire format: [TC:EXPECT:matcher:expected:actual*<checksum>] —
+  // strip the trailing checksum before comparing, and tolerate the wire
+  // escapes (`\:` `\*` `\\`) inside values. Frames without a checksum
+  // (legacy) parse unchanged.
+  const expects = [...text.matchAll(/\[TC:EXPECT:([^:]+):(.*):(.*)\]/g)].map((m) => {
+    const actual = m[3].replace(/(?<!\\)\*[0-9a-fA-F]{2}$/, '').replace(/\\([\\:*])/g, '$1');
+    const expected = m[2].replace(/\\([\\:*])/g, '$1');
+    return [m[1], expected, actual];
+  });
   const pass = expects.filter((m) => m[1] === m[2]);
   return { total: expects.length, passed: pass.length, failed: expects.length - pass.length };
 }
@@ -49,10 +57,11 @@ for (let attempt = 1; attempt <= MAX; attempt++) {
   console.log(`\n=== BLE cycle ${attempt}/${MAX} ===`);
 
   // 1. Build the expect firmware (transpile + west build, no upload).
+  // The runner CLI is the repo's typecad-hal bin (the old
+  // packages/expect/dist/host/cli.js path predates the merge).
   const build = await sh(
-    process.execPath,
-    [path.join(repoRoot, 'packages', 'expect', 'dist', 'host', 'cli.js'),
-     '--config', 'ble-demo.config.ts', '--dry-run', 'ble-peripheral.test.ts'],
+    'cmd', ['/c', 'npx', 'typecad-hal', 'test',
+            '--config', 'ble-demo.config.ts', '--dry-run', 'ble-peripheral.test.ts'],
     here, path.join(repoRoot, 'tmp-ble-build.log'),
   );
   if (build !== 0) { console.log('build FAILED'); continue; }

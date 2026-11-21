@@ -32,6 +32,9 @@ const config: TypecadConfig = {
   // CONFIG_ESP32_USE_UNSUPPORTED_REVISION is required for the ESP32 DevKitC
   // rev in this workspace — mirrors packages/hal/boards/esp32-devkit.config.ts.
   zephyr: {
+    kconfig: {
+      CONFIG_PSA_WANT_KEY_TYPE_RSA_PUBLIC_KEY: 'y',
+    },
   },
   test: {
     // The CH34x bridge identity — resolves before AND after flashing.

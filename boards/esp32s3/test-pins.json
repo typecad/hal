@@ -8,7 +8,16 @@
     "adcPin": "GPIO1",
     "adcPinAlt": "GPIO11",
     "pwm": "GPIO6",
-    "pwmAlt": "GPIO7"
+    "pwmAlt": "GPIO7",
+    "i2cBus": "'I2C0'",
+    "matrixRows": [
+      "GPIO4",
+      "GPIO5"
+    ],
+    "matrixCols": [
+      "GPIO6",
+      "GPIO7"
+    ]
   },
   "facts": {
     "adcMax": 4095

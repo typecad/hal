@@ -40,16 +40,11 @@ import { WiFi, Mqtt, Time } from '@typecad/hal';
 // as a single string literal so it lands at file scope (an imported const or
 // multi-line concat lands in setup()-local scope where the test functions
 // can't see it).
-const CA_CERT_PEM = "-----BEGIN CERTIFICATE-----\nMIIDUzCCAjugAwIBAgIUfRQUm6IDRUUG1oRt6qNXmysZ6LgwDQYJKoZIhvcNAQEL\nBQAwMTEdMBsGA1UEAwwUVHlwZUNBRCBIVFRQIFRlc3QgQ0ExEDAOBgNVBAoMB1R5\ncGVDQUQwHhcNMjYwODAzMDYwNDIyWhcNMzYwNzMxMDYwNDIyWjAxMR0wGwYDVQQD\nDBRUeXBlQ0FEIEhUVFAgVGVzdCBDQTEQMA4GA1UECgwHVHlwZUNBRDCCASIwDQYJ\nKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMsrQFM93bvXAoUOUYYtNWwSssO02VZP\npMli0uHVxFBE0pqUa+uvDjw1RCKJ+PJL33svQLhtj+cXOriA2G30waknHpMPf1aM\najO4CIafX2FcWHvexQhCqfEcvCrFBxDAQNFdYsNMbI+AC/ovvTDaLdzcdpIcfoO5\nkE/Iu+k4ugcaqjnAPW0FME+mV2sp5/hez5LP/IYhpEuNvpvJZ8w3eZHPwxruLMNZ\nn8LmtVzg093yPLijjOvXPQi2O7P3xocUbU+w/5ON1NkXzqpVh+O7fHnkKiJp6ANu\nd5WDjoRNSJqCA467Ch9mDFeUNtureg7GzR1ILqchSdxX8eETm6Jh9dUCAwEAAaNj\nMGEwHwYDVR0RBBgwFoIUVHlwZUNBRCBIVFRQIFRlc3QgQ0EwDwYDVR0TAQH/BAUw\nAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFKWORpJuIVWrKQKrgm058sJN\nIQ+3MA0GCSqGSIb3DQEBCwUAA4IBAQCyfyasbiXOdmNCh2ybiLqpzDr6dbcZUSJS\nRaNZgYBctpeeWQHbNh/lObkzdhSr7sHNn1IgaWxSyxsOs8kBsAXRPluyy8oDxxMZ\neOH+XIa9fcm0fh+fkmlCHIJNzwFA0dcHv4lnrjohlVSfs3tC2TSlaWJLFef1oXIs\ngl1HLscOn9OrEtIHPKhiSJ1rgGJyoFoZGw7XO3AnoWlCKcg0W8HhmtKuqv5GKIEA\n0TsliYmsnjTj0449/Izyqlqa5GW9V2q4VJWZwMQ0vfnJMFSaRsI+Qqnw5WbkKmy5\naov/Lt+pikXo1wnSW7+0ZPROtLry4SLOn+qTOkqQi8vpInTStM3ss\n-----END CERTIFICATE-----"
+const CA_CERT_PEM = "-----BEGIN CERTIFICATE-----\nMIIDMjCCAhqgAwIBAgIUCZy37pHW/M1HbNcRmCp4GuBJpyswDQYJKoZIhvcNAQEL\nBQAwMTEdMBsGA1UEAwwUVHlwZUNBRCBIVFRQIFRlc3QgQ0ExEDAOBgNVBAoMB1R5\ncGVDQUQwHhcNMjQwMTAxMDAwMDAwWhcNMzYwMTAxMDAwMDAwWjAxMR0wGwYDVQQD\nDBRUeXBlQ0FEIEhUVFAgVGVzdCBDQTEQMA4GA1UECgwHVHlwZUNBRDCCASIwDQYJ\nKoZIhvcNAQEBBQADggEPADCCAQoCggEBAI7T7wafITxhRIEopnqBnoxz2tRlg4F2\n/MEzSejMxEOm2lu1n8CUIv9cw3g/UCt8b9Vf5+xJ2SvKneN0BJxjgh7D4zPkA62z\n4c7SkhMLWHYfQsybWP4ebSWqxZmckHhmSVfudEuldY8epq2TC5BPgw7/6e6LSCkB\nMVYYsSKBgUCpQ/XrKXgr+aYIOUIL8apKtaWiMI2Nsb5kO8eoGwwC+/n7l7yE28g0\nBu9IVdg4ESJ0fDR59PY8POB5CJmk6O0tzNkx5252HqM4QojhVM39DaJX2WZ/lXWI\nfvaSMD7kWFOUyOkkmPeAcIOsE+Q0gzZnI7qB8VCD0uTjUq6kXFhiGBcCAwEAAaNC\nMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFD9m\n83zTIuFMNtC2Y/DAnob9XqlyMA0GCSqGSIb3DQEBCwUAA4IBAQBERlvVXrRSoL3R\n0gLSadZbmN7mXi19ZDcAdBX0fvVsHu886kSR+BxY+Kt//IiKA7UfRLl7AHCzL8IP\nMjjkTB8+mGPQXzlAOZg3RQBOpTrvuPwc+Git5NflxJnTYXRITplpG+YNxlnJZF/1\nk/pHkjl3jCol+z8xUSIA9f3sVs5VSvEE/Cq/v7El4UYJETra1AItAsIyPsTeoeVO\niW8Xo1+boRCZKMowOpknca9TtBder1DaTXSsH007q2rnw35SyG2FCGb4nPub7eSL\n+aa8W6/UJkNrkM913rihfXIrYTwLs0xlXZsTsEcyKCDoY0dFSONAjiOX6NE3nGCi\ngsNvfrcp\n-----END CERTIFICATE-----";
 
-const wifi = new WiFi(WIFI_SSID, { psk: WIFI_PASSWORD, timeoutMs: 30000 });
-wifi.join();
-
-// Globals the onMessage callback writes and the assertions busy-wait on. The
-// broker forwards a publish after the subscribe acks, so the test publishes then
-// pumps Timing.delay until the callback flips received.
-let received: number = 0;
-let receivedPayload: string = "";
+// Callback state — module-level so the callback and the expects share it.
+let received = 0;
+let receivedPayload = "";
 
 // The onMessage callback — the firmware transpiler lowers this to a C function
 // whose name is passed to Mqtt.onMessage. It sets the globals the test reads.
@@ -66,6 +61,11 @@ function onMessage(topic: string, payload: string): void {
 // provisioned yet (DNS EAI_FAIL on the first beat).
 
 // ── Plain mqtt:// — connect + linked ───────────────────────────────
+
+// Bring the station up FIRST — without a join the connect loop below hits
+// EADDRNOTAVAIL forever (the suite is hand-run, so this rotted out).
+const wifi = new WiFi(WIFI_SSID, { psk: WIFI_PASSWORD, timeoutMs: 30000 });
+wifi.join();
 
 const mqtt = new Mqtt("mqtt://192.168.2.184:1883", { clientId: "typecad-hal test" });
 for (let i = 0; i < 12; i = i + 1) {

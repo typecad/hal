@@ -268,8 +268,11 @@ export function createTestServer(port = 8080): Promise<TestServer> {
 export function createHttpsTestServer(port = 8443): Promise<TestServer> {
 	return new Promise((resolve, reject) => {
 		const key = readFileSync(resolvePath(CERTS_DIR, 'server.key'));
-		const cert = readFileSync(resolvePath(CERTS_DIR, 'server.crt'));
+		const cert = readFileSync(resolvePath(CERTS_DIR, 'server-fullchain.crt'));
 		const server = createHttpsServer({ key, cert }, requestHandler);
+	(server as import('node:https').Server).on('tlsClientError', (err, tlsSocket) => {
+		console.log(`[tls] client error: ${err.message} from ${tlsSocket?.remoteAddress}`);
+	});
 		server.on('error', reject);
 		server.listen(port, '0.0.0.0', () => {
 			resolve({
@@ -338,7 +341,7 @@ export function createMqttBroker(port = 1883): Promise<TestServer> {
 export function createMqttTlsBroker(port = 8883): Promise<TestServer> {
 	return aedesBrokerReady().then((broker) => new Promise((resolve, reject) => {
 		const key = readFileSync(resolvePath(CERTS_DIR, 'server.key'));
-		const cert = readFileSync(resolvePath(CERTS_DIR, 'server.crt'));
+		const cert = readFileSync(resolvePath(CERTS_DIR, 'server-fullchain.crt'));
 		const server = createTlsServer({ key, cert }, broker.handle.bind(broker));
 		server.on('error', reject);
 		server.listen(port, '0.0.0.0', () => {

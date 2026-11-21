@@ -65,8 +65,9 @@ export { BLE, BleChain, BleValueType, BlePerm, GATT } from './ble.js';
 export type { GattCharacteristicDef, CharValue } from './ble.js';
 
 // Board-gate classification — which value exports are gated on board facts
-// (see gate.ts). The ungated list is derived by the board generators from
-// this index's runtime exports minus GATED_EXPORTS; the type list is manual.
+// (see gate.ts). The ungated VALUE list and the TYPE-ONLY list are both
+// derived by the board generators from this index's export statements
+// (value exports minus GATED_EXPORTS; `export type` specifiers verbatim).
 // Reachable under the './core' subpath so board tooling can import it without
 // colliding with the project-level '@typecad/hal' mapping.
-export { GATED_EXPORTS, BOARD_UNGATED_TYPE_EXPORTS } from './gate.js';
+export { GATED_EXPORTS } from './gate.js';

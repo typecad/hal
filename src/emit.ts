@@ -299,7 +299,7 @@ export function mqttDisconnect(): void {}
 // ---------------------------------------------------------------------------
 
 export function preferencesClear(ns: string): void {}
-export function preferencesRemove(ns: string, key: string): void {}
+export function preferencesRemove(ns: string, key: string): boolean { return false; }
 export function preferencesPutInt(ns: string, key: string, value: number): void {}
 export function preferencesGetInt(ns: string, key: string, defaultValue: number): number { return 0; }
 export function preferencesPutBool(ns: string, key: string, value: boolean): void {}

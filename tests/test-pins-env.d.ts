@@ -14,6 +14,9 @@ declare module '@typecad/test-pins' {
 
   export const GPIO_OUT: Pin;
   export const GPIO_IN: Pin;
+  /** Key-matrix pads (array roles — substituted as an array literal). */
+  export const MATRIX_ROWS: Pin[];
+  export const MATRIX_COLS: Pin[];
   export const PWM_PIN: Pin;
   export const PWM_ALT: Pin;
   export const ADC_PIN: Pin;
@@ -22,6 +25,10 @@ declare module '@typecad/test-pins' {
   export const INT_PIN: Pin;
   export const LED_PIN: Pin;
   export const BUTTON_PIN: Pin;
+  /** Wired tier: the UART loopback instance selector (e.g. UART0). */
+  export const UART_LOOP: string;
+  /** Wired tier: the 1-Wire data line. */
+  export const ONEWIRE_PIN: Pin;
   /** Bus instance selector text (e.g. I2C0), not a Pin. */
   export const I2C_BUS: string;
 

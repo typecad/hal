@@ -27,28 +27,38 @@ typeCAD/hal moves those checks into your editor:
 
 ## Quick start
 
-Requires Node.js 22+. One command scaffolds a project wired to your board:
+Requires Node.js 22.11+. Before creating an embedded project, install the
+pinned Zephyr SDK:
+
+```bash
+npx --package @typecad/framework-zephyr zephyr-installer
+```
+
+Then scaffold a project:
 
 ```bash
 npx @typecad/hal create my-firmware
 ```
 
-Pick your board (or plug one in and let it find it), then:
+Pick your board in the wizard, then choose its serial port from the detected
+ports or enter it yourself. The scaffold attempts to install dependencies; if
+that fails, run `npm install` inside the project. Then compile and flash:
 
 ```bash
 cd my-firmware
-npm run compile    # TypeScript → C++ → firmware image
-npm run upload     # flash it to the board
+npm run upload -- --port COM4  # compile and flash
 ```
 
-The first embedded project also sets up the Zephyr SDK toolchain — the CLI
-checks for it and gives you the one command to install it.
+Replace `COM4` with your board's port (for example, `/dev/ttyACM0` on Linux);
+probe-based flashing may not need a port. Use `npm run compile` when you want
+to build without flashing. The CLI checks
+the SDK before creating an embedded project and provides the installer command
+if it is missing.
 
 Your starter program is already blinking:
 
 ```ts
-import { LED } from '@typecad/hal';
-import { GPIO, Time } from '@typecad/hal';
+import { LED, GPIO, Time } from '@typecad/hal';
 
 const led = new GPIO(LED, GPIO.OUTPUT);
 

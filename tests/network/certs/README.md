@@ -30,6 +30,16 @@ The server cert's SAN includes the LAN IP `192.168.2.184`, `127.0.0.1`, and
 the SAN). **If your LAN IP differs, regenerate the certs** so the SAN matches,
 or the `caCert()` verify tests will fail hostname verification.
 
+## Validity window
+
+The committed pair is BACKDATED (notBefore 2024-01-01) deliberately: a board
+without a wall-clock source (the common boot state) must parse and accept the
+chain during `MBEDTLS_HAVE_TIME`-style checks; certs dated "now" look
+not-yet-valid to a freshly booted board. Regenerate with the same
+`-not_before 20240101000000Z` shape below. The HTTPS listener presents
+`server-fullchain.crt` (server + CA) so verifying clients can build the full
+path; `server.crt` alone is the EE leaf.
+
 ## Regenerating
 
 If the LAN IP changed (or you just want a fresh pair):
@@ -74,6 +84,11 @@ EOF
 openssl req -newkey rsa:2048 -nodes -keyout server.key -out server.csr -config server.cnf
 openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 3650 -extfile server.cnf -extensions v3_req
 rm server.csr ca.srl ca.cnf server.cnf
+
+# Rebuild the full chain the HTTPS listener presents (server + CA —
+# `server.ts` reads server-fullchain.crt; the certs/ dir is gitignored, so
+# this file is force-added: git add -f server-fullchain.crt):
+cat server.crt ca.crt > server-fullchain.crt
 
 # Refresh the inline CA_CERT_PEM in http-client.test.ts from the new ca.crt:
 node -e 'const fs=require("fs");const p=fs.readFileSync("ca.crt","utf8").trim();console.log("const CA_CERT_PEM = "+JSON.stringify(p)+";")'

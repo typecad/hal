@@ -82,9 +82,10 @@ export class Store {
     return preferencesGetString(this._ns, key, defaultValue);
   }
 
-  /** Delete one key (flash + cache). No-op when absent. */
-  remove(key: string): void {
-    preferencesRemove(this._ns, key);
+  /** Delete one key (flash + cache). Returns whether the key existed —
+   *  the ESP32-Preferences parity contract. */
+  remove(key: string): boolean {
+    return preferencesRemove(this._ns, key);
   }
 
   /** Delete every key under this store's namespace. */
